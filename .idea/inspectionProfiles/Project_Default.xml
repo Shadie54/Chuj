@@ -1,0 +1,50 @@
+<component name="InspectionProjectProfileManager">
+  <profile version="1.0">
+    <option name="myName" value="Project Default" />
+    <inspection_tool class="PyPackageRequirementsInspection" enabled="true" level="WARNING" enabled_by_default="true">
+      <option name="ignoredPackages">
+        <list>
+          <option value="numpy" />
+          <option value="opencv-python" />
+          <option value="PyQt6" />
+          <option value="ultralytics" />
+          <option value="certifi" />
+          <option value="charset-normalizer" />
+          <option value="contourpy" />
+          <option value="cycler" />
+          <option value="filelock" />
+          <option value="fonttools" />
+          <option value="fsspec" />
+          <option value="idna" />
+          <option value="Jinja2" />
+          <option value="kiwisolver" />
+          <option value="MarkupSafe" />
+          <option value="matplotlib" />
+          <option value="mpmath" />
+          <option value="networkx" />
+          <option value="opencv-contrib-python" />
+          <option value="packaging" />
+          <option value="pillow" />
+          <option value="polars" />
+          <option value="polars-runtime-32" />
+          <option value="psutil" />
+          <option value="pyparsing" />
+          <option value="PyQt6-Qt6" />
+          <option value="PyQt6_sip" />
+          <option value="python-dateutil" />
+          <option value="PyYAML" />
+          <option value="requests" />
+          <option value="scipy" />
+          <option value="six" />
+          <option value="sympy" />
+          <option value="torch" />
+          <option value="torchaudio" />
+          <option value="torchvision" />
+          <option value="typing_extensions" />
+          <option value="ultralytics-thop" />
+          <option value="urllib3" />
+        </list>
+      </option>
+    </inspection_tool>
+  </profile>
+</component>
