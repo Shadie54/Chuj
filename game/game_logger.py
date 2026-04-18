@@ -133,7 +133,7 @@ class GameLogger:
     def _card_str(card: Card) -> str:
         suit_symbols = {
             "heart": "♥", "bell": "●",
-            "leaf": "♣", "acorn": "♠"
+            "leaf": "♠", "acorn": "♣"
         }
         rank_symbols = {
             "seven": "7", "eight": "8", "nine": "9",

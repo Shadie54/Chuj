@@ -118,6 +118,5 @@ def main():
                 if next_action == "new_game":
                     active_game_state, active_ai_players = _create_game(settings)
 
-
 if __name__ == "__main__":
     main()
