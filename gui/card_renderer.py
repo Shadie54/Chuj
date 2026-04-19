@@ -60,8 +60,7 @@ class CardRenderer:
 
     def draw_hand(self, cards, player_index, is_human,
                   selected_cards, highlight_playable,
-                  lead_suit, played_cards=None,
-                  selected_illumination=None, trick_number: int = 0):
+                  lead_suit,selected_illumination=None, trick_number: int = 0):
         """Nakreslí ruku hráča."""
         if not cards:
             return
@@ -86,14 +85,24 @@ class CardRenderer:
             # Posun vysvietených horníkov ← presunuté sem
             if selected_illumination and card in selected_illumination:
                 if config["direction"] == "horizontal":
-                    y -= 20
+                    if player_index == 2:
+                        y += 20  # PC2 — dole
+                    else:
+                        y -= 20  # PC0 — hore (hráč)
                 else:
-                    x -= 20
+                    if player_index == 1:
+                        x += 20  # PC1 — doprava
+                    else:
+                        x -= 20  # PC3 — doľava
 
             if show_faces:
                 img = self._get_card_image(card)
             else:
-                img = self._get_card_back()
+                # AI karta — skontroluj či je vysvietená
+                if selected_illumination and card in selected_illumination:
+                    img = self._get_card_image(card)  # líc namiesto rubu
+                else:
+                    img = self._get_card_back()
 
             # Rotácia
             if config["direction"] == "vertical":
@@ -116,6 +125,7 @@ class CardRenderer:
                     self._draw_highlight(x, y, CARD_SIZE_MEDIUM, COLOR_GREEN)
                 else:
                     self._draw_highlight(x, y, CARD_SIZE_MEDIUM, (100, 100, 100, 100))
+
     @staticmethod
     def _card_position(config: dict, index: int) -> tuple[int, int]:
         """Vypočíta pozíciu karty v ruke podľa konfigurácie."""

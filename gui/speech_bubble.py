@@ -44,19 +44,19 @@ class SpeechBubble:
             color=COLOR_GOLD
         )
 
-    def show_bid(self, player_index: int, amount: int | None,
+    def show_bid(self, player_index: int, text: str,
                  duration_ms: int = 5000):
         """Zobrazí biddingová bublinu."""
-        if amount is None:
-            text = "ja som DOBRÝ"
+        if text is None:
+            display_text = "Ja nič"
             color = (150, 150, 150)
         else:
-            text = f"Svietim {amount}!"
+            display_text = text
             color = COLOR_YELLOW
 
         self._add_bubble(
             player_index=player_index,
-            text=text,
+            text=display_text,
             suit=None,
             duration_ms=duration_ms,
             color=color

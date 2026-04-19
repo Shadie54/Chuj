@@ -2,6 +2,14 @@
 
 from config import CARD_POINTS, ILLUMINATED_POINTS, RANKS, LEAF_OVER, ACORN_OVER
 
+RANK_DISPLAY = {
+    "seven": "7", "eight": "8", "nine": "9", "ten": "10",
+    "under": "J", "over": "Q", "king": "K", "ace": "A"
+}
+
+SUIT_DISPLAY = {
+    "heart": "♥", "bell": "●", "leaf": "♠", "acorn": "♣"
+}
 
 class Card:
     def __init__(self, suit: str, rank: str):
@@ -15,6 +23,12 @@ class Card:
 
     def __hash__(self) -> int:
         return hash((self.suit, self.rank))
+
+    def __repr__(self) -> str:
+        return f"{RANK_DISPLAY[self.rank]}{SUIT_DISPLAY[self.suit]}"
+
+    def __str__(self) -> str:
+        return f"{RANK_DISPLAY[self.rank]}{SUIT_DISPLAY[self.suit]}"
 
     @property
     def base_points(self) -> int:

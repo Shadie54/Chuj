@@ -31,7 +31,7 @@ CARD_SIZE_LARGE = (363, 585)
 # ------------------------------------------------------------------
 SUITS = ["heart", "bell", "leaf", "acorn"]
 
-# Poradie kariet od najvyššej po najnižšiu (iné ako v Tisíci!)
+# Poradie kariet od najvyššej po najnižšiu (iné, ako v Tisíci!)
 RANKS = ["ace", "king", "over", "under", "ten", "nine", "eight", "seven"]
 
 # Bodová hodnota kariet (trestné body)
@@ -56,7 +56,7 @@ ILLUMINATED_POINTS = {
     "acorn": {"over": 8},           # žaluďový horník vysvietený
 }
 
-# Bonus za zobranie všetkých trestných kariet v kole
+# Bonus za zobrazenie všetkých trestných kariet v kole
 SHOOT_MOON_BONUS = -10              # -10b za všetky karty v kole
 
 # Záväzky
@@ -74,7 +74,7 @@ NO_PENALTY_BONUS = -10              # bonus za sériu
 NUM_PLAYERS = 4
 CARDS_PER_PLAYER = 8
 TRICKS_PER_ROUND = 8
-WINNING_SCORE = 100                 # prehráva hráč ktorý prekročí 100b
+WINNING_SCORE = 100                 # prehráva hráč, ktorý prekročí 100b
 RESET_SCORE = 90                    # ak má hráč presne 100b → reset na 90
 HIGH_SCORE_THRESHOLD = 90           # nad 90b sa nepočítajú horníci
 
@@ -150,7 +150,7 @@ PC2_HAND_Y = 30
 PC3_HAND_X = SCREEN_WIDTH - 30 - CARD_SIZE_MEDIUM[1]
 PC3_HAND_Y = 150
 
-# Pozície štychov na stole
+# Pozície štichov na stole
 TRICK_POS = {
     0: (TABLE_CENTER_X, TABLE_CENTER_Y + 120),      # hráč
     1: (TABLE_CENTER_X - 150, TABLE_CENTER_Y),       # PC1
@@ -163,12 +163,12 @@ TRICK_POS = {
 # ------------------------------------------------------------------
 HAND_CONFIGS = {
     0: {"direction": "horizontal", "x": 400,  "y": 860,  "offset": 100},
-    1: {"direction": "vertical",   "x": 30,   "y": 150,  "offset": 50},
-    2: {"direction": "horizontal", "x": 400,  "y": -50,  "offset": 100},  # ← záporné y = orezané
-    3: {"direction": "vertical",   "x": 1600, "y": 150,  "offset": 50},
+    1: {"direction": "vertical",   "x": 30,   "y": 150,  "offset": 65},  # 50 → 65
+    2: {"direction": "horizontal", "x": 400,  "y": -50,  "offset": 100},
+    3: {"direction": "vertical",   "x": 1600, "y": 150,  "offset": 65},  # 50 → 65
 }
 
-# Štartové pozície štychov na stole
+# Štartové pozície štichov na stole
 TRICK_START_POSITIONS = {
     0: (TABLE_CENTER_X, TABLE_CENTER_Y + 120),
     1: (TABLE_CENTER_X - 150, TABLE_CENTER_Y),

@@ -157,6 +157,9 @@ class Screen:
         for i, ai in enumerate(self.ai_players):
             if ai is not None:
                 ai.reset_memory()
+                ai.memory.init_with_hand(
+                    self.game_state.players[ai.player.index].hand.cards
+                )
 
         # Reset stavov
         self.declaration_index = 0
@@ -447,11 +450,12 @@ class Screen:
                 if other_ai is not None:
                     other_ai.record_illumination(i, illuminate_leaf, illuminate_acorn)
 
-            if illuminate_leaf or illuminate_acorn:
-                self.speech_bubble.show_bid(i, "Svietim")
-                self.game_state.logger.log_illumination(
-                    player.name, illuminate_leaf, illuminate_acorn
-                )
+            if illuminate_leaf and illuminate_acorn:
+                self.speech_bubble.show_bid(i, "Svietim oboch!")
+            elif illuminate_leaf:
+                self.speech_bubble.show_bid(i, "Svietim zeleného!")
+            elif illuminate_acorn:
+                self.speech_bubble.show_bid(i, "Svietim žaluďového!")
 
     # ------------------------------------------------------------------
     # Postup fázami
@@ -537,14 +541,22 @@ class Screen:
             current_index, illuminate_leaf, illuminate_acorn
         )
 
-        if illuminate_leaf:
-            self.speech_bubble.show_bid(
-                current_index, "ZELENÉHO!"
-            )
-        else:
-            self.speech_bubble.show_bid(
-                current_index, "ŽALUĎOVÉHO!"
-            )
+        for other_ai in self.ai_players:
+            if other_ai is not None:
+                other_ai.record_illumination(
+                    current_index, illuminate_leaf, illuminate_acorn
+                )
+
+        if illuminate_leaf and illuminate_acorn:
+            self.speech_bubble.show_bid(current_index, "Svietim oboch!")
+        elif illuminate_leaf:
+            self.speech_bubble.show_bid(current_index, "Svietim zeleného!")
+        elif illuminate_acorn:
+            self.speech_bubble.show_bid(current_index, "Svietim žaluďového!")
+
+        self.game_state.logger.log_illumination(
+            player.name, illuminate_leaf, illuminate_acorn
+        )
 
         self._advance_revealing()
 
@@ -717,6 +729,16 @@ class Screen:
                 else None
             )
 
+            # Získaj vysvietené karty pre daného hráča
+            if not player.is_human:
+                illuminated = []
+                if player.illuminated_leaf:
+                    illuminated += [c for c in player.hand.cards if c.is_leaf_over]
+                if player.illuminated_acorn:
+                    illuminated += [c for c in player.hand.cards if c.is_acorn_over]
+            else:
+                illuminated = self.selected_illumination
+
             self.card_renderer.draw_hand(
                 player.hand.cards,
                 player_index=i,
@@ -724,14 +746,8 @@ class Screen:
                 selected_cards=[],
                 highlight_playable=is_current and player.is_human,
                 lead_suit=lead_suit,
-                played_cards=(
-                    current_round.current_trick.played_cards
-                    if current_round and current_round.current_trick
-                    else []
-                ),
-                selected_illumination=self.selected_illumination
-                if i == self.game_state.human_index else [],
-                trick_number=current_round.trick_number if current_round else 0  # ← pridané
+                selected_illumination=illuminated,
+                trick_number=current_round.trick_number if current_round else 0
             )
 
     def _draw_current_trick(self):

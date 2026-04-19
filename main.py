@@ -106,17 +106,28 @@ def main():
             )
 
             if result == "game_over" and active_game_state.loser is not None:
-                game_over = GameOverScreen(
-                    window,
-                    active_game_state.players,
-                    active_game_state.loser,
-                    active_game_state.round_number
-                )
-                next_action = game_over.run()
-                active_game_state = None
-                active_ai_players = None
-                if next_action == "new_game":
-                    active_game_state, active_ai_players = _create_game(settings)
+                while True:
+                    game_over = GameOverScreen(
+                        window,
+                        active_game_state.players,
+                        active_game_state.loser,
+                        active_game_state.round_number
+                    )
+                    next_action = game_over.run()
+                    active_game_state = None
+                    active_ai_players = None
+
+                    if next_action == "new_game":
+                        # Rovno spusti novú hru bez menu
+                        active_game_state, active_ai_players = _create_game(settings)
+                        result, active_game_state, active_ai_players = _run_game(
+                            window, active_game_state, active_ai_players
+                        )
+                        if result != "game_over" or active_game_state.loser is None:
+                            break
+                    else:
+                        # menu — skoč von zo slučky
+                        break
 
 if __name__ == "__main__":
     main()

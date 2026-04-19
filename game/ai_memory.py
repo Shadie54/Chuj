@@ -1,8 +1,30 @@
 # game/ai_memory.py
 
+from dataclasses import dataclass
 from game.card import Card
 from config import NUM_PLAYERS, SUITS, RANKS
 
+
+# ------------------------------------------------------------------
+# SuitProfile — hodnotenie jednej farby v ruke
+# ------------------------------------------------------------------
+
+@dataclass
+class SuitProfile:
+    suit: str
+    count: int                        # počet kariet v tejto farbe
+    is_void: bool                     # nemám túto farbu
+    my_cards: list[Card]              # moje karty v tejto farbe
+    trap_cards: list[Card]            # karty bez coverage (zoberú štych)
+    escape_cards: list[Card]          # karty s coverage (môžem podliezť)
+    coverage: list[Card]              # vyššie karty vonku (+ current trick)
+    has_special: bool                 # mám horníka tejto farby
+    special_reserves: int             # počet kariet okrem horníka (rezervy)
+
+
+# ------------------------------------------------------------------
+# AIMemory
+# ------------------------------------------------------------------
 
 class AIMemory:
     def __init__(self, player_index: int):
@@ -11,7 +33,8 @@ class AIMemory:
         # Zahraté karty
         self.played_cards: set[Card] = set()
 
-        # Pre každú farbu — ostávajúce karty
+        # Pre každú farbu — ostávajúce karty u súperov
+        # (po init_with_hand sem nepatria moje karty)
         self.remaining: dict[str, list[Card]] = {
             suit: [Card(suit, rank) for rank in RANKS]
             for suit in SUITS
@@ -38,6 +61,29 @@ class AIMemory:
             "acorn": None
         }
 
+        # Počet štichov, ktoré každý hráč zobral v tomto kole
+        self.tricks_taken: dict[int, int] = {
+            i: 0 for i in range(NUM_PLAYERS)
+        }
+
+        # Discardy — čo kto zahodil keď bol void
+        self.discards: dict[int, list[Card]] = {
+            i: [] for i in range(NUM_PLAYERS)
+        }
+
+    # ------------------------------------------------------------------
+    # Inicializácia s rukou
+    # ------------------------------------------------------------------
+
+    def init_with_hand(self, my_hand: list[Card]):
+        """
+        Zavolať po rozdaní kariet.
+        Odstráni moje karty z remaining — viem presne čo mám.
+        Remaining = karty u súperov (neznáme).
+        """
+        for card in my_hand:
+            self._remove_from_remaining(card)
+
     # ------------------------------------------------------------------
     # Aktualizácia po štychu
     # ------------------------------------------------------------------
@@ -48,26 +94,27 @@ class AIMemory:
         lead_suit = played_cards[0][1].suit
 
         for player_idx, card in played_cards:
-            # Zaznamená zahratú kartu
             self.played_cards.add(card)
             self._remove_from_remaining(card)
 
-            # Ak hráč nezahral lead farbu → je void
+            # Void detekcia — len pre followera (nie leadera)
             if player_idx != played_cards[0][0] and card.suit != lead_suit:
                 self.void_suits[player_idx].add(lead_suit)
-                # Void = nemôže mať horníka tej farby
+                self.discards[player_idx].append(card)
                 if lead_suit == "leaf":
                     self.special_possible_holders["leaf"].discard(player_idx)
                 elif lead_suit == "acorn":
                     self.special_possible_holders["acorn"].discard(player_idx)
 
-            # Ak bol zahraný horník → gone
+            # Horník zahraný → gone
             if card.is_leaf_over:
                 self.special_gone["leaf"] = True
                 self.special_possible_holders["leaf"] = set()
             if card.is_acorn_over:
                 self.special_gone["acorn"] = True
                 self.special_possible_holders["acorn"] = set()
+
+        self.tricks_taken[winner_index] += 1
 
     def record_illumination(self, player_index: int,
                              leaf: bool, acorn: bool):
@@ -79,21 +126,82 @@ class AIMemory:
             self.illuminated_by["acorn"] = player_index
             self.special_possible_holders["acorn"] = {player_index}
 
-    def record_declaration(self, player_index: int,
-                            declaration: str | None):
-        """Zaznamená záväzok."""
-        pass  # zatiaľ len placeholder
+    # ------------------------------------------------------------------
+    # SuitProfile — hlavná metóda hodnotenia farby
+    # ------------------------------------------------------------------
+
+    def build_suit_profile(self, suit: str,
+                            my_hand: list[Card],
+                            current_trick_cards: list[Card]) -> SuitProfile:
+        """
+        Vybuduje profil farby pre aktuálnu situáciu.
+
+        Coverage = remaining[suit] + karty tejto farby v aktuálnom štychu.
+        Karty v štychu sú dočasne preč ale stále sú coverage —
+        kým štych neskončí, sú to reálne karty vonku.
+        """
+        my_cards = [c for c in my_hand if c.suit == suit]
+
+        if not my_cards:
+            return SuitProfile(
+                suit=suit,
+                count=0,
+                is_void=True,
+                my_cards=[],
+                trap_cards=[],
+                escape_cards=[],
+                coverage=[],
+                has_special=False,
+                special_reserves=0
+            )
+
+        # Coverage = ostávajúce u súperov + karty v aktuálnom štychu
+        trick_suit_cards = [c for c in current_trick_cards if c.suit == suit]
+        coverage = self.remaining[suit] + trick_suit_cards
+
+        trap_cards = []
+        escape_cards = []
+
+        for card in my_cards:
+            higher = [c for c in coverage if c.rank_order > card.rank_order]
+            if higher:
+                escape_cards.append(card)   # niekto vyšší vonku → môžem podliezť
+            else:
+                trap_cards.append(card)     # nikto vyšší → zoberiem štych
+
+        has_special = any(c.is_special for c in my_cards)
+        special_reserves = len(my_cards) - (1 if has_special else 0)
+
+        return SuitProfile(
+            suit=suit,
+            count=len(my_cards),
+            is_void=False,
+            my_cards=my_cards,
+            trap_cards=trap_cards,
+            escape_cards=escape_cards,
+            coverage=coverage,
+            has_special=has_special,
+            special_reserves=special_reserves
+        )
+
+    def build_all_profiles(self, my_hand: list[Card],
+                            current_trick_cards: list[Card]
+                            ) -> dict[str, SuitProfile]:
+        """Vybuduje profily pre všetky farby."""
+        return {
+            suit: self.build_suit_profile(suit, my_hand, current_trick_cards)
+            for suit in SUITS
+        }
 
     # ------------------------------------------------------------------
-    # Dotazy na pamäť
+    # Dotazy — ostávajúce karty
     # ------------------------------------------------------------------
 
     def get_remaining(self, suit: str) -> list[Card]:
-        """Vráti ostávajúce karty danej farby."""
+        """Vráti ostávajúce karty danej farby u súperov."""
         return self.remaining[suit].copy()
 
     def get_remaining_count(self, suit: str) -> int:
-        """Vráti počet ostávajúcich kariet danej farby."""
         return len(self.remaining[suit])
 
     def get_highest_remaining(self, suit: str) -> Card | None:
@@ -102,104 +210,168 @@ class AIMemory:
         return max(self.remaining[suit], key=lambda c: c.rank_order)
 
     def is_highest_remaining(self, card: Card) -> bool:
-        """Skontroluje či je karta najvyššia ostávajúca v svojej farbe."""
         highest = self.get_highest_remaining(card.suit)
-        return highest == card
+        return highest is not None and highest == card
 
     def is_special_gone(self, suit: str) -> bool:
-        """Skontroluje či horník danej farby už bol zahraný."""
         return self.special_gone.get(suit, False)
 
     def who_has_special(self, suit: str) -> set[int]:
-        """Vráti možných držiteľov horníka."""
         return self.special_possible_holders.get(suit, set()).copy()
 
-    def is_safe_to_lead(self, card: Card,
-                         my_hand: list[Card]) -> bool:
+    # ------------------------------------------------------------------
+    # Dotazy — situácia a poradie
+    # ------------------------------------------------------------------
+
+    def can_anyone_beat(self, card: Card,
+                         players_after_me: list[int],
+                         current_trick_cards: list[Card]) -> bool:
         """
-        Je bezpečné zahrať túto kartu ako leader?
-        Bezpečné = pravdepodobne nezoberiem štych.
+        Môže niekto z hráčov po mne prebiť túto kartu?
+
+        Coverage zahŕňa aj karty v aktuálnom štychu.
+        Hráč môže prebiť ak:
+        1. Nie je void na danú farbu
+        2. Existuje vyššia karta v coverage
         """
-        # Horník → nikdy nie je bezpečné ako lead
-        if card.is_special:
+        trick_suit_cards = [c for c in current_trick_cards
+                            if c.suit == card.suit]
+        coverage = self.remaining[card.suit] + trick_suit_cards
+        higher = [c for c in coverage if c.rank_order > card.rank_order]
+
+        if not higher:
             return False
 
-        # Červeň → nie je bezpečné
-        if card.suit == "heart":
-            return False
+        for player_idx in players_after_me:
+            if card.suit not in self.void_suits[player_idx]:
+                return True
 
-        # Najvyššia ostávajúca → zoberieme štych
-        if self.is_highest_remaining(card):
-            return False
+        return False
 
-        # Mám horníka tej farby a som najvyšší? → nebezpečné
-        my_special = any(
-            c.is_special and c.suit == card.suit
-            for c in my_hand
+    def will_someone_else_take(self,
+                               current_trick_played: list[tuple[int, Card]],
+                               players_after_me: list[int]) -> str:
+        if not current_trick_played:
+            return "maybe"
+
+        lead_suit = current_trick_played[0][1].suit
+
+        best_idx = current_trick_played[0][0]
+        best_card = current_trick_played[0][1]
+        for idx, card in current_trick_played[1:]:
+            if card.suit == lead_suit and card.rank_order > best_card.rank_order:
+                best_card = card
+                best_idx = idx
+
+        if best_idx == self.player_index:
+            return "maybe"
+
+        higher_remaining = [
+            c for c in self.remaining[lead_suit]
+            if c.rank_order > best_card.rank_order
+        ]
+        if not higher_remaining:
+            return "yes"
+
+        non_void_after = [
+            p for p in players_after_me
+            if lead_suit not in self.void_suits[p]
+        ]
+        remaining_count = self.get_remaining_count(lead_suit)
+        void_prob = self._estimate_void_probability(remaining_count)
+        if non_void_after and void_prob <= 0.5:
+            return "yes"
+
+        return "maybe"
+
+    @staticmethod
+    def _estimate_void_probability(remaining_count: int) -> float:
+        """
+        Odhadne pravdepodobnosť, že náhodný hráč je void na danú farbu.
+
+        Čím menej kariet ostáva, tým väčšia šanca, že niekto je void.
+        """
+        if remaining_count == 0:
+            return 1.0
+        if remaining_count >= 6:
+            return 0.1
+        if remaining_count >= 4:
+            return 0.25
+        if remaining_count >= 2:
+            return 0.5
+        return 0.8
+
+    def active_players_in_suit(self, suit: str) -> int:
+        """Počet hráčov ktorí ešte majú karty danej farby."""
+        return sum(
+            1 for i in range(NUM_PLAYERS)
+            if suit not in self.void_suits[i]
         )
-        if my_special:
-            higher = [
-                c for c in self.remaining[card.suit]
-                if c.rank_order > card.rank_order
-                and c not in my_hand
-            ]
-            if not higher:
-                return False  # môj horník by zostal najvyšší
 
-        return True
+    # ------------------------------------------------------------------
+    # Post-win risk
+    # ------------------------------------------------------------------
 
-    def can_underplay(self, card: Card, current_best: Card) -> bool:
+    def worst_possible_discard(self, lead_suit: str,
+                                players_after_me: list[int]) -> int:
         """
-        Môžem podliezť current_best kartou card?
+        Ak zoberiem štych, čo najhoršie mi môže padnúť od hráčov po mne?
+
+        Pre každého hráča po mne:
+        - Ak je void na lead_suit → môže hodiť čokoľvek nebezpečné
+        - Ak nevieme → škálujeme podľa void_probability
+
+        Vracia maximálne možné body, ktoré môžu padnúť.
         """
-        if card.suit != current_best.suit:
-            return True  # iná farba = nemôžem zobrať
-        return card.rank_order < current_best.rank_order
+        worst_points = 0
+        remaining_count = self.get_remaining_count(lead_suit)
+        void_prob = self._estimate_void_probability(remaining_count)
 
-    def get_dangerous_cards(self, my_hand: list[Card]) -> list[Card]:
+        for player_idx in players_after_me:
+            is_void = lead_suit in self.void_suits[player_idx]
+
+            if is_void:
+                max_discard = self._max_discard_points(lead_suit)
+                worst_points = max(worst_points, max_discard)
+            else:
+                max_discard = self._max_discard_points(lead_suit)
+                expected = int(max_discard * void_prob)
+                worst_points = max(worst_points, expected)
+
+        return worst_points
+
+    def _max_discard_points(self, exclude_suit: str) -> int:
         """
-        Vráti nebezpečné karty v mojej ruke — zoradené od najnebezpečnejšej.
-        Nebezpečné = ťažko sa ich zbavím.
+        Najväčší počet bodov, ktoré môžu padnúť, ako discard
+        (karty inej farby, ako lead).
         """
-        dangerous = []
-
-        for card in my_hand:
-            score = 0
-
-            # Horník = najnebezpečnejší
-            if card.is_special:
-                score += 100
-
-            # Červeň = nebezpečná
-            if card.suit == "heart":
-                score += card.rank_order * 5
-
-            # Najvyššia ostávajúca farby kde nie je void = nebezpečná
-            if self.is_highest_remaining(card):
-                remaining = self.get_remaining_count(card.suit)
-                score += remaining * 3
-
-            if score > 0:
-                dangerous.append((card, score))
-
-        dangerous.sort(key=lambda x: x[1], reverse=True)
-        return [c for c, _ in dangerous]
+        max_pts = 0
+        for suit in SUITS:
+            if suit == exclude_suit:
+                continue
+            for card in self.remaining[suit]:
+                if card.is_leaf_over:
+                    max_pts = max(max_pts, 8)
+                elif card.is_acorn_over:
+                    max_pts = max(max_pts, 4)
+                elif suit == "heart":
+                    max_pts = max(max_pts, 1)
+        return max_pts
 
     # ------------------------------------------------------------------
     # Pomocné
     # ------------------------------------------------------------------
 
     def _remove_from_remaining(self, card: Card):
-        """Odstráni kartu z ostávajúcich."""
         self.remaining[card.suit] = [
             c for c in self.remaining[card.suit]
             if c != card
         ]
 
     def reset(self):
-        """Resetuje pamäť pre nové kolo."""
         self.__init__(self.player_index)
 
     def __repr__(self) -> str:
         return (f"AIMemory(played={len(self.played_cards)}, "
+                f"tricks_taken={self.tricks_taken}, "
                 f"specials_gone={self.special_gone})")
