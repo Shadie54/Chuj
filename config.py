@@ -60,7 +60,8 @@ ILLUMINATED_POINTS = {
 SHOOT_MOON_BONUS = -10              # -10b za všetky karty v kole
 
 # Záväzky
-DECLARATION_ALL_BONUS = -20         # zoberiem všetky štychy
+DECLARATION_ALL_BONUS = -20         # zoberiem všetky štichy
+DECLARATION_ALL_PENALTY = 20        # ak nesplním, +20b, ostatní 0b
 DECLARATION_NONE_BONUS = -10        # nechytím ani jeden trestný bod
 DECLARATION_FAIL_PENALTY = 10       # ostatní dostanú -10b ak záväzok nesplní
 
@@ -152,28 +153,28 @@ PC3_HAND_Y = 150
 
 # Pozície štichov na stole
 TRICK_POS = {
-    0: (TABLE_CENTER_X, TABLE_CENTER_Y + 120),      # hráč
-    1: (TABLE_CENTER_X - 150, TABLE_CENTER_Y),       # PC1
-    2: (TABLE_CENTER_X, TABLE_CENTER_Y - 120),       # PC2
-    3: (TABLE_CENTER_X + 150, TABLE_CENTER_Y),       # PC3
+    0: (TABLE_CENTER_X, TABLE_CENTER_Y + 120),      # hráč — dole
+    1: (TABLE_CENTER_X + 150, TABLE_CENTER_Y),       # PC1 — vpravo
+    2: (TABLE_CENTER_X, TABLE_CENTER_Y - 120),       # PC2 — hore
+    3: (TABLE_CENTER_X - 150, TABLE_CENTER_Y),       # PC3 — vľavo
 }
 
 # ------------------------------------------------------------------
 # Pozície rúk hráčov — použité v card_renderer, deal_animation, screen
 # ------------------------------------------------------------------
 HAND_CONFIGS = {
-    0: {"direction": "horizontal", "x": 400,  "y": 860,  "offset": 100},
-    1: {"direction": "vertical",   "x": 30,   "y": 150,  "offset": 65},  # 50 → 65
-    2: {"direction": "horizontal", "x": 400,  "y": -50,  "offset": 100},
-    3: {"direction": "vertical",   "x": 1600, "y": 150,  "offset": 65},  # 50 → 65
+    0: {"direction": "horizontal", "x": 400,  "y": 860,  "offset": 100},  # Hráč — dole
+    1: {"direction": "vertical",   "x": 1600, "y": 150,  "offset": 65},   # PC1 — vpravo (bolo vľavo)
+    2: {"direction": "horizontal", "x": 400,  "y": -50,  "offset": 100},  # PC2 — hore
+    3: {"direction": "vertical",   "x": 30,   "y": 150,  "offset": 65},   # PC3 — vľavo (bolo vpravo)
 }
 
 # Štartové pozície štichov na stole
 TRICK_START_POSITIONS = {
     0: (TABLE_CENTER_X, TABLE_CENTER_Y + 120),
-    1: (TABLE_CENTER_X - 150, TABLE_CENTER_Y),
+    1: (TABLE_CENTER_X + 150, TABLE_CENTER_Y),
     2: (TABLE_CENTER_X, TABLE_CENTER_Y - 120),
-    3: (TABLE_CENTER_X + 150, TABLE_CENTER_Y),
+    3: (TABLE_CENTER_X - 150, TABLE_CENTER_Y),
 }
 
 # ------------------------------------------------------------------

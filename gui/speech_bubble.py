@@ -22,10 +22,10 @@ class SpeechBubble:
 
         # Pozície bublín pre každého hráča
         self.bubble_positions = {
-            0: (TABLE_CENTER_X, 780),  # hráč — nad kartami
-            1: (300, SCREEN_HEIGHT // 2),  # PC1 — vľavo, stred
-            2: (TABLE_CENTER_X, 150),  # PC2 — hore
-            3: (SCREEN_WIDTH - 300, SCREEN_HEIGHT // 2),  # PC3 — vpravo, stred
+            0: (TABLE_CENTER_X, 780),
+            1: (SCREEN_WIDTH - 300, SCREEN_HEIGHT // 2),  # PC1 — vpravo
+            2: (TABLE_CENTER_X, 150),
+            3: (300, SCREEN_HEIGHT // 2),  # PC3 — vľavo
         }
 
     # ------------------------------------------------------------------
@@ -172,37 +172,37 @@ class SpeechBubble:
 
     def _draw_tail(self, cx: int, base_y: int,
                    player_index: int, color: tuple):
-        """Nakreslí chvost bubliny smerom k hráčovi."""
         tail_size = 12
 
         if player_index == 0:
-            # Chvost dole (k hráčovi dole)
+            # Chvost dole
             points = [
                 (cx - tail_size, base_y),
                 (cx + tail_size, base_y),
                 (cx, base_y + tail_size * 2)
             ]
         elif player_index == 1:
-            # Chvost doľava
-            points = [
-                (base_y - tail_size, cx),
-                (base_y + tail_size, cx),
-                (base_y - tail_size * 2, cx)
-            ]
-            # Pre ľavého AI upravíme súradnice
+            # PC1 vpravo — chvost doprava
             bx, by = self.bubble_positions[1]
-            points = [
-                (bx - tail_size * 2, by),
-                (bx - tail_size * 2, by + tail_size * 2),
-                (bx - tail_size * 4, by + tail_size)
-            ]
-        else:
-            # Chvost doprava
-            bx, by = self.bubble_positions[2]
             points = [
                 (bx + tail_size * 2, by),
                 (bx + tail_size * 2, by + tail_size * 2),
                 (bx + tail_size * 4, by + tail_size)
+            ]
+        elif player_index == 2:
+            # PC2 hore — chvost hore
+            points = [
+                (cx - tail_size, base_y),
+                (cx + tail_size, base_y),
+                (cx, base_y + tail_size * 2)
+            ]
+        else:
+            # PC3 vľavo — chvost doľava
+            bx, by = self.bubble_positions[3]
+            points = [
+                (bx - tail_size * 2, by),
+                (bx - tail_size * 2, by + tail_size * 2),
+                (bx - tail_size * 4, by + tail_size)
             ]
 
         pygame.draw.polygon(self.screen, color, points)

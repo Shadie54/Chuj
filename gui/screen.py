@@ -16,7 +16,7 @@ from config import (
     COLOR_BG, COLOR_YELLOW,
     COLOR_WHITE, COLOR_GOLD,
     FONT_SIZE_MEDIUM, FONT_SIZE_LARGE, FONT_SIZE_SMALL,
-    TABLE_CENTER_X,
+    TABLE_CENTER_X, TABLE_CENTER_Y,
     BUTTON_HEIGHT, BUTTON_RADIUS, BUTTON_Y,
     BUTTON_SORT_X, BUTTON_SORT_Y, BUTTON_SORT_WIDTH, BUTTON_SORT_HEIGHT,
     BUTTON_INFO_X, BUTTON_INFO_Y, BUTTON_INFO_WIDTH, BUTTON_INFO_HEIGHT,
@@ -59,7 +59,7 @@ class Screen:
         self.font_medium = pygame.font.SysFont(None, FONT_SIZE_MEDIUM)
         self.font_large = pygame.font.SysFont(None, FONT_SIZE_LARGE)
 
-        # Štych stav
+        # štich stav
         self.trick_waiting: bool = False
         self.trick_display_timer: int = 0
         self._trick_anim_started: bool = False
@@ -100,6 +100,9 @@ class Screen:
         self.round_scores_history: list[list[int]] = []
 
         self.round_status = RoundStatus(self.screen)
+
+        self.sort_ascending = False
+
     # ------------------------------------------------------------------
     # Hlavná slučka
     # ------------------------------------------------------------------
@@ -134,6 +137,11 @@ class Screen:
                 if self.deal_animation.done:
                     self.dealing = False
                     self.deal_animation = None
+                    # Automatické zoradenie po rozdaní
+                    self.sort_ascending = False
+                    self.game_state.players[
+                        self.game_state.human_index
+                    ].hand.sort_hand()
             else:
                 self._process_waiting_trick()
                 self.trick_animation.update()
@@ -220,10 +228,12 @@ class Screen:
     def _handle_click(self, pos: tuple[int, int]):
         """Spracuje klik myši."""
         # Vždy dostupné tlačidlá
+
         if self._button_sort_rect().collidepoint(pos):
+            self.sort_ascending = not self.sort_ascending
             self.game_state.players[
                 self.game_state.human_index
-            ].hand.sort_hand()
+            ].hand.sort_hand(self.sort_ascending)
             return
 
         if self._button_info_rect().collidepoint(pos):
@@ -328,7 +338,7 @@ class Screen:
             self._advance_revealing()  # ← len "Hotovo" posúva ďalej
 
     def _handle_tricks_click(self, pos: tuple[int, int]):
-        """Spracuje klik počas štychov."""
+        """Spracuje klik počas štichov."""
         if self.trick_waiting:
             return
 
@@ -364,7 +374,7 @@ class Screen:
                 self.trick_display_timer = pygame.time.get_ticks() + 1500
 
     def _confirm_preparation(self):
-        """Potvrdí prípravu a začne štychy."""
+        """Potvrdí prípravu a začne štichy."""
         current_round = self.game_state.current_round
         player_index = self.game_state.human_index
         player = self.game_state.players[player_index]
@@ -400,7 +410,15 @@ class Screen:
             if ai is not None:
                 ai.record_illumination(player_index, illuminate_leaf, illuminate_acorn)
 
-        # Bublina
+        # Bublina pre vysvietenie
+        if illuminate_leaf and illuminate_acorn:
+            self.speech_bubble.show_bid(player_index, "Svietim oboch!")
+        elif illuminate_leaf:
+            self.speech_bubble.show_bid(player_index, "Svietim zeleného!")
+        elif illuminate_acorn:
+            self.speech_bubble.show_bid(player_index, "Svietim žaluďového!")
+
+        # Bublina pre záväzok — prepíše vysvietenie
         if self.active_declaration:
             text = "Beriem všetko!" if self.active_declaration == "all" \
                 else "Nechytím nič!"
@@ -413,7 +431,7 @@ class Screen:
         # AI hráči spracovania
         self._process_ai_preparation()
 
-        # Začni štychy
+        # Začni štichy
         current_round.finish_preparation()
 
     def _process_ai_preparation(self):
@@ -585,11 +603,11 @@ class Screen:
         self.waiting_for_ai = False
 
     # ------------------------------------------------------------------
-    # Spracovanie štychu
+    # Spracovanie štichu
     # ------------------------------------------------------------------
 
     def _process_waiting_trick(self):
-        """Spracuje štych po uplynutí zobrazovacieho času."""
+        """Spracuje štich po uplynutí zobrazovacieho času."""
         if not self.trick_waiting:
             return
 
@@ -617,7 +635,7 @@ class Screen:
         if not self.trick_animation.is_done:
             return
 
-        # Uzavri štych
+        # Uzavri štich
         self._trick_anim_started = False
         self.trick_waiting = False
 
@@ -645,7 +663,7 @@ class Screen:
 
         winner_index = current_round.finish_trick()
         winner_name = self.game_state.players[winner_index].name
-        self._show_message(f"{winner_name} vyhral štych!")
+        self._show_message(f"{winner_name} vyhral štich!")
 
         if current_round.phase == "scoring":
 
@@ -696,6 +714,7 @@ class Screen:
         if not self._trick_anim_started:
             self._draw_current_trick()
         self.trick_animation.draw()
+        self._draw_player_labels()
 
         self.chujogram.draw(self.game_state.bullet_history,self.round_scores_history)
         self.round_status.draw(self.game_state.players,self.game_state.current_round)
@@ -750,8 +769,32 @@ class Screen:
                 trick_number=current_round.trick_number if current_round else 0
             )
 
+    def _draw_player_labels(self):
+        """Nakreslí menovky hráčov."""
+        font = pygame.font.SysFont(None, 28)
+
+        label_positions = {
+            0: (TABLE_CENTER_X, SCREEN_HEIGHT - 30),
+            1: (SCREEN_WIDTH - 120, TABLE_CENTER_Y),
+            2: (TABLE_CENTER_X, 60),
+            3: (120, TABLE_CENTER_Y),
+        }
+
+        for i, player in enumerate(self.game_state.players):
+            pos = label_positions[i]
+            surf = font.render(player.name, True, COLOR_WHITE)
+            rect = surf.get_rect(center=pos)
+
+            bg_rect = rect.inflate(16, 8)
+            bg = pygame.Surface((bg_rect.width, bg_rect.height), pygame.SRCALPHA)
+            bg.fill((0, 0, 0, 160))
+            self.screen.blit(bg, bg_rect.topleft)
+            pygame.draw.rect(self.screen, COLOR_GOLD, bg_rect, width=1, border_radius=6)
+
+            self.screen.blit(surf, rect)
+
     def _draw_current_trick(self):
-        """Nakreslí karty aktuálneho štychu."""
+        """Nakreslí karty aktuálneho štichu."""
         current_round = self.game_state.current_round
         if current_round and current_round.current_trick:
             self.card_renderer.draw_trick(current_round.current_trick)
@@ -807,12 +850,12 @@ class Screen:
         if player.is_human:
             self._draw_button(
                 self._button_decl_all_rect(),
-                "Všetky štychy (-20b)",
+                "Všetky štichy -20b",
                 COLOR_BUTTON_PRIMARY
             )
             self._draw_button(
                 self._button_decl_none_rect(),
-                "Žiadny trestný bod (-10b)",
+                "Žiadny trestný bod -10b",
                 COLOR_BUTTON_PRIMARY
             )
             self._draw_button(
@@ -891,7 +934,7 @@ class Screen:
                 else COLOR_BUTTON_SECONDARY
             self._draw_button(
                 self._button_decl_all_rect(),
-                "Beriem všetko (-20b)",
+                "Beriem všetko  [-20b]",
                 color_all
             )
 
@@ -900,7 +943,7 @@ class Screen:
                 else COLOR_BUTTON_SECONDARY
             self._draw_button(
                 self._button_decl_none_rect(),
-                "Nechytím nič (-10b)",
+                "Nechytím nič  [-10b]",
                 color_none
             )
 
@@ -1023,7 +1066,7 @@ class Screen:
         self.message_timer = pygame.time.get_ticks() + duration_ms
 
     def _reset_trick_state(self):
-        """Resetuje stav štychu pri odchode."""
+        """Resetuje stav štichu pri odchode."""
         current_round = self.game_state.current_round
         if (current_round and current_round.current_trick and
                 current_round.current_trick.is_complete):

@@ -23,7 +23,7 @@ class GameState:
         self.round_history: list[dict] = []
         self.phase: str = "setup"           # setup → playing → game_over
 
-        # Kto začína prvý štych
+        # Kto začína prvý štich
         self.first_player_index: int = 0
 
         # Chujogram — história guličiek
@@ -37,7 +37,7 @@ class GameState:
     # ------------------------------------------------------------------
 
     def setup_first_player(self):
-        """Náhodne vyberie hráča, ktorý začína prvý štych."""
+        """Náhodne vyberie hráča, ktorý začína prvý štich."""
         self.first_player_index = random.randint(0, NUM_PLAYERS - 1)
 
     # ------------------------------------------------------------------

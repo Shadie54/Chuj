@@ -204,6 +204,16 @@ class ChujogramPanel:
         for round_idx, round_bullets in enumerate(bullet_history):
             y = self.header_h + round_idx * self.row_h - self.scroll_y + 10
 
+            # Vodorovná čiara po každých 4 kolách
+            if round_idx > 0 and round_idx % 4 == 0:
+                line_y = y - 5
+                pygame.draw.line(
+                    self.screen, COLOR_GOLD,
+                    (self.panel_x + 5, line_y),
+                    (self.panel_x + self.panel_w - 5, line_y),
+                    width=1
+                )
+
             if y < self.header_h - self.row_h:
                 bullet_positions.append([None] * NUM_PLAYERS)
                 continue

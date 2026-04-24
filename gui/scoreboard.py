@@ -171,12 +171,12 @@ class Scoreboard:
         if not current_round:
             return
 
-        # Fáza a štych — v strede nad panelom
+        # Fáza a štich — v strede nad panelom
         phase_labels = {
             "dealing": "Rozdávanie",
             "game_declaration": "Záväzok",
             "revealing": "Vysvietenie",
-            "tricks": f"Štych {current_round.trick_number + 1} / 8",
+            "tricks": f"štich {current_round.trick_number + 1} / 8",
             "scoring": "Bodovanie",
             "done": "Koniec kola"
         }

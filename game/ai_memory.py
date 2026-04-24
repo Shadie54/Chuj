@@ -15,7 +15,7 @@ class SuitProfile:
     count: int                        # počet kariet v tejto farbe
     is_void: bool                     # nemám túto farbu
     my_cards: list[Card]              # moje karty v tejto farbe
-    trap_cards: list[Card]            # karty bez coverage (zoberú štych)
+    trap_cards: list[Card]            # karty bez coverage (zoberú štich)
     escape_cards: list[Card]          # karty s coverage (môžem podliezť)
     coverage: list[Card]              # vyššie karty vonku (+ current trick)
     has_special: bool                 # mám horníka tejto farby
@@ -85,12 +85,12 @@ class AIMemory:
             self._remove_from_remaining(card)
 
     # ------------------------------------------------------------------
-    # Aktualizácia po štychu
+    # Aktualizácia po štichu
     # ------------------------------------------------------------------
 
     def record_trick(self, played_cards: list[tuple[int, Card]],
                      winner_index: int):
-        """Zaznamená odohraný štych a aktualizuje pamäť."""
+        """Zaznamená odohraný štich a aktualizuje pamäť."""
         lead_suit = played_cards[0][1].suit
 
         for player_idx, card in played_cards:
@@ -136,9 +136,9 @@ class AIMemory:
         """
         Vybuduje profil farby pre aktuálnu situáciu.
 
-        Coverage = remaining[suit] + karty tejto farby v aktuálnom štychu.
-        Karty v štychu sú dočasne preč ale stále sú coverage —
-        kým štych neskončí, sú to reálne karty vonku.
+        Coverage = remaining[suit] + karty tejto farby v aktuálnom štichu.
+        Karty v štichu sú dočasne preč ale stále sú coverage —
+        kým štich neskončí, sú to reálne karty vonku.
         """
         my_cards = [c for c in my_hand if c.suit == suit]
 
@@ -155,7 +155,7 @@ class AIMemory:
                 special_reserves=0
             )
 
-        # Coverage = ostávajúce u súperov + karty v aktuálnom štychu
+        # Coverage = ostávajúce u súperov + karty v aktuálnom štichu
         trick_suit_cards = [c for c in current_trick_cards if c.suit == suit]
         coverage = self.remaining[suit] + trick_suit_cards
 
@@ -167,7 +167,7 @@ class AIMemory:
             if higher:
                 escape_cards.append(card)   # niekto vyšší vonku → môžem podliezť
             else:
-                trap_cards.append(card)     # nikto vyšší → zoberiem štych
+                trap_cards.append(card)     # nikto vyšší → zoberiem štich
 
         has_special = any(c.is_special for c in my_cards)
         special_reserves = len(my_cards) - (1 if has_special else 0)
@@ -229,7 +229,7 @@ class AIMemory:
         """
         Môže niekto z hráčov po mne prebiť túto kartu?
 
-        Coverage zahŕňa aj karty v aktuálnom štychu.
+        Coverage zahŕňa aj karty v aktuálnom štichu.
         Hráč môže prebiť ak:
         1. Nie je void na danú farbu
         2. Existuje vyššia karta v coverage
@@ -315,7 +315,7 @@ class AIMemory:
     def worst_possible_discard(self, lead_suit: str,
                                 players_after_me: list[int]) -> int:
         """
-        Ak zoberiem štych, čo najhoršie mi môže padnúť od hráčov po mne?
+        Ak zoberiem štich, čo najhoršie mi môže padnúť od hráčov po mne?
 
         Pre každého hráča po mne:
         - Ak je void na lead_suit → môže hodiť čokoľvek nebezpečné

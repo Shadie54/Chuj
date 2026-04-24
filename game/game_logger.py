@@ -39,7 +39,7 @@ class GameLogger:
     def log_declaration(self, player: str, declaration: str | None):
         """Zaznamená záväzok hráča."""
         if declaration == "all":
-            self.entries.append(f"  Záväzok [{player}]: VŠETKY ŠTYCHY (-20b)")
+            self.entries.append(f"  Záväzok [{player}]: VŠETKY štichY (-20b)")
         elif declaration == "none":
             self.entries.append(f"  Záväzok [{player}]: ŽIADNY TRESTNÝ BOD (-10b)")
         else:
@@ -60,13 +60,13 @@ class GameLogger:
     def log_trick(self, trick_number: int,
                   played: list[tuple[str, Card]],
                   winner: str, trick_points: int):
-        """Zaznamená štych."""
+        """Zaznamená štich."""
         cards_str = "  |  ".join(
             f"{name}: {self._card_str(card)}"
             for name, card in played
         )
         self.entries.append(
-            f"  Štych {trick_number:2d}: {cards_str}"
+            f"  štich {trick_number:2d}: {cards_str}"
             f"  → {winner} (+{trick_points})"
         )
 

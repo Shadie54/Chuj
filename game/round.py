@@ -11,7 +11,7 @@ class Round:
     def __init__(self, players: list[Player], first_player_index: int):
         """
         players: zoznam všetkých hráčov
-        first_player_index: index hráča, ktorý začína prvý štych
+        first_player_index: index hráča, ktorý začína prvý štich
         """
         self.players = players
         self.first_player_index = first_player_index
@@ -61,14 +61,14 @@ class Round:
             player.declare_all()
             self.declaration_player = player_index
             self.declaration_type = "all"
-            # Hráč so záväzkom začína prvý štych
+            # Hráč so záväzkom začína prvý štich
             self.current_leader_index = player_index
             self.first_player_index = player_index
         elif declaration == "none":
             player.declare_none()
             self.declaration_player = player_index
             self.declaration_type = "none"
-            # Hráč so záväzkom začína prvý štych
+            # Hráč so záväzkom začína prvý štich
             self.current_leader_index = player_index
             self.first_player_index = player_index
         else:
@@ -93,16 +93,16 @@ class Round:
             self.acorn_illuminated = True
 
     def finish_preparation(self):
-        """Ukončí prípravu a začne štychy."""
+        """Ukončí prípravu a začne štichy."""
         self.phase = "tricks"
         self.start_trick()
 
     # ------------------------------------------------------------------
-    # FÁZA 3: Štychy
+    # FÁZA 3: štichy
     # ------------------------------------------------------------------
 
     def start_trick(self):
-        """Začne nový štych."""
+        """Začne nový štich."""
         self.current_trick = Trick(
             self.players,
             self.current_leader_index
@@ -122,8 +122,8 @@ class Round:
 
     def finish_trick(self) -> int:
         """
-        Uzavrie štych, určí víťaza, pripočíta body.
-        Vracia index víťaza štychu.
+        Uzavrie štich, určí víťaza, pripočíta body.
+        Vracia index víťaza štichu.
         """
         winner_index = self.current_trick.get_winner_index()
         cards = self.current_trick.get_all_cards()

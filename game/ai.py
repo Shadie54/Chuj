@@ -20,7 +20,7 @@ class HandEval:
     trap_cards: list[Card]        # všetky trap karty naprieč farbami
     escape_cards: list[Card]      # všetky escape karty naprieč farbami
     tricks_remaining: int
-    i_will_be_leader: bool        # ak vyhrám tento štych, budem leader
+    i_will_be_leader: bool        # ak vyhrám tento štich, budem leader
 
 
 # ------------------------------------------------------------------
@@ -124,7 +124,7 @@ class AI:
         hand = self.player.hand.cards
         tricks_remaining = 8 - trick_number
 
-        # Karty v aktuálnom štychu (pre coverage výpočet)
+        # Karty v aktuálnom štichu (pre coverage výpočet)
         trick_cards = [c for _, c in current_trick.played_cards]
 
         # --- KROK 1: HAND_EVAL ---
@@ -170,7 +170,7 @@ class AI:
             for c in p.escape_cards
         ]
 
-        # Ak vyhrám tento štych, budem leader v ďalšom
+        # Ak vyhrám tento štich, budem leader v ďalšom
         i_will_be_leader = len(trick.played_cards) == NUM_PLAYERS - 1
 
         return HandEval(
@@ -258,7 +258,7 @@ class AI:
                 return Situation.FOLLOWER_WAIT
 
         else:
-            # Štych má trestné body
+            # štich má trestné body
             if is_last:
                 return Situation.FOLLOWER_FORCED
             else:
@@ -325,7 +325,7 @@ class AI:
                    trick: Trick, is_leader: bool,
                    hand_eval: HandEval) -> Card:
         """
-        Cieľ: nezobrať štych.
+        Cieľ: nezobrať štich.
         Leader: najnižšia escape karta.
         Follower: najvyššia karta ktorou ešte podliezam.
         """
@@ -382,7 +382,7 @@ class AI:
     def _play_take(self, playable: list[Card],
                    trick: Trick, situation: str) -> Card:
         """
-        Cieľ: zobrať štych kontrolovane.
+        Cieľ: zobrať štich kontrolovane.
         LEADER_AGGRESSIVE: vytiahni horníka.
         FOLLOWER_FORCED: najvyššia lead (nie horník ak možné).
         """
@@ -400,7 +400,7 @@ class AI:
                                   f"vytiahni horníka {suit}: {card}")
                         return card
 
-        # FOLLOWER_FORCED: zoberiem štych — najvyššia nie-horník
+        # FOLLOWER_FORCED: zoberiem štich — najvyššia nie-horník
         lead_suit = trick.lead_suit
         lead_cards = [c for c in playable if c.suit == lead_suit]
         non_special_lead = [c for c in lead_cards if not c.is_special]
@@ -455,7 +455,7 @@ class AI:
             self._log(Strategy.DUMP_HEART, f"{takes}: {card}")
             return card
 
-        # Priorita 3: trap karta (zoberiem štych ak leadujem)
+        # Priorita 3: trap karta (zoberiem štich ak leadujem)
         trap_playable = [
             c for c in playable
             if not c.is_special
@@ -531,7 +531,7 @@ class AI:
 
     def _evaluate_post_win_risk(self, trick: Trick) -> int:
         """
-        Ak zoberiem tento štych, čo najhoršie mi môže padnúť?
+        Ak zoberiem tento štich, čo najhoršie mi môže padnúť?
 
         Vracia maximálne možné body (nie float ale reálne body).
         Používa worst_possible_discard z pamäte.
@@ -625,7 +625,7 @@ class AI:
                 for i in range(NUM_PLAYERS)]
 
     def _get_players_after_me(self, trick: Trick) -> list[int]:
-        """Vráti indexy hráčov ktorí ešte nehrajú v tomto štychu."""
+        """Vráti indexy hráčov ktorí ešte nehrajú v tomto štichu."""
         played_indices = {idx for idx, _ in trick.played_cards}
         order = self._get_play_order(trick)
         return [

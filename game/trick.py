@@ -7,7 +7,7 @@ class Trick:
     def __init__(self, players: list[Player], leader_index: int):
         """
         players: zoznam všetkých hráčov
-        leader_index: index hráča, ktorý začína štych
+        leader_index: index hráča, ktorý začína štich
         V Chuji nie sú tromfy.
         """
         self.players = players
@@ -16,14 +16,14 @@ class Trick:
 
     @property
     def lead_suit(self) -> str | None:
-        """Farba prvej zahranej karty v štychu."""
+        """Farba prvej zahranej karty v štichu."""
         if self.played_cards:
             return self.played_cards[0][1].suit
         return None
 
     @property
     def is_complete(self) -> bool:
-        """Štych je kompletný ak zahrali všetci hráči."""
+        """štich je kompletný ak zahrali všetci hráči."""
         return len(self.played_cards) == len(self.players)
 
     def play_card(self, player_index: int, card: Card):
@@ -32,7 +32,7 @@ class Trick:
 
     def get_winner_index(self) -> int:
         """
-        Určí víťaza štychu podľa pravidiel:
+        Určí víťaza štichu podľa pravidiel:
         - Najvyššia karta v hranej farbe vyhráva
         - Karty inej farby, ako lead_suit nemôžu vyhrať
         - Nie sú tromfy
@@ -65,7 +65,7 @@ class Trick:
 
     @property
     def total_base_points(self) -> int:
-        """Celkové základné body kariet v štychu."""
+        """Celkové základné body kariet v štichu."""
         return sum(card.base_points for _, card in self.played_cards)
 
     def total_points(self, leaf_illuminated: bool = False,
@@ -77,7 +77,7 @@ class Trick:
         )
 
     def get_all_cards(self) -> list[Card]:
-        """Vráti všetky karty v štychu."""
+        """Vráti všetky karty v štichu."""
         return [card for _, card in self.played_cards]
 
     def get_played_card(self, player_index: int) -> Card | None:

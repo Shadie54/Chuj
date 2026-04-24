@@ -49,7 +49,7 @@ class Menu:
         buttons_data.append(("Nastavenia", "settings", COLOR_BUTTON_SECONDARY))
         buttons_data.append(("Koniec", "quit", COLOR_BUTTON_SECONDARY))
 
-        start_y = 320
+        start_y = 420
 
         self.buttons = []
         for i, (label, action, color) in enumerate(buttons_data):
@@ -163,7 +163,7 @@ class Menu:
     def _draw_logo(self):
         if self.logo:
             logo_rect = self.logo.get_rect(
-                center=(SCREEN_WIDTH // 2, 150)
+                center=(SCREEN_WIDTH // 2, 200)
             )
             self.screen.blit(self.logo, logo_rect)
         else:

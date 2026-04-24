@@ -62,7 +62,7 @@ class Card:
 
     @property
     def rank_order(self) -> int:
-        """Poradie karty pre porovnávanie v štychu (vyššie = silnejšia)."""
+        """Poradie karty pre porovnávanie v štichu (vyššie = silnejšia)."""
         return len(RANKS) - 1 - RANKS.index(self.rank)
 
     @property

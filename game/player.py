@@ -24,7 +24,7 @@ class Player:
         self.illuminated_acorn: bool = False    # vysvietil žaluďového horníka
 
         # Štatistiky kola
-        self.tricks_won: int = 0            # počet vyhraných štychov
+        self.tricks_won: int = 0            # počet vyhraných štichov
         self.penalty_cards: list[Card] = [] # trestné karty zozbierané v kole
 
         # Séria bez trestných bodov
@@ -51,7 +51,7 @@ class Player:
     # ------------------------------------------------------------------
 
     def declare_all(self):
-        """Hráč vyhlási záväzok — zoberiem všetky štychy."""
+        """Hráč vyhlási záväzok — zoberiem všetky štichy."""
         self.declaration = "all"
 
     def declare_none(self):
@@ -75,13 +75,13 @@ class Player:
         self.illuminated_acorn = True
 
     # ------------------------------------------------------------------
-    # Štychy a body
+    # štichy a body
     # ------------------------------------------------------------------
 
     def add_trick(self, cards: list[Card],
                   leaf_illuminated: bool, acorn_illuminated: bool):
         """
-        Hráč vyhral štych — pridá karty a body.
+        Hráč vyhral štich — pridá karty a body.
         """
         self.tricks_won += 1
         for card in cards:
@@ -110,18 +110,17 @@ class Player:
             points = SHOOT_MOON_BONUS       # -10b
             self.declaration_fulfilled = True
 
-        # Záväzok — všetky štychy
+        # Záväzok — všetky štichy
         elif self.declaration == "all":
             if self.tricks_won == 8:
                 from config import DECLARATION_ALL_BONUS
                 points = DECLARATION_ALL_BONUS  # -20b
                 self.declaration_fulfilled = True
             else:
-                # Nesplnil — ostatní dostanú -10b
+                from config import DECLARATION_ALL_PENALTY
+                points = DECLARATION_ALL_PENALTY  # +20b
                 self.declaration_fulfilled = False
-                from config import DECLARATION_FAIL_PENALTY
-                for other in other_players:
-                    other.total_score -= DECLARATION_FAIL_PENALTY
+                # ostatní dostanú 0b — nič nerobíme
 
         # Záväzok — žiadny trestný bod
         elif self.declaration == "none":
@@ -143,7 +142,6 @@ class Player:
             for card in self.penalty_cards:
                 if card.is_special:
                     points -= card.get_points(leaf_illuminated, acorn_illuminated)
-                    points += 1 if card.suit == "heart" else 0
 
         self.total_score += points
 

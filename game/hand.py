@@ -31,12 +31,12 @@ class Hand:
         """
         Vráti karty ktoré môže hráč zahrať.
         - Ak je leader: môže zahrať čokoľvek
-          (okrem srdcí v 1. štychu)
+          (okrem srdcí v 1. štichu)
         - Ak má farbu: môže zahrať akúkoľvek kartu tej farby
           (aj nižšiu — podliezanie)
         - Ak nemá farbu: môže zahrať čokoľvek
         """
-        # Prvý štych — žiadna červeň
+        # Prvý štich — žiadna červeň
         if trick_number == 0:
             non_heart = [c for c in self.cards if c.suit != "heart"]
             available = non_heart if non_heart else self.cards
@@ -72,13 +72,13 @@ class Hand:
         """Skontroluje či hráč má žaluďového horníka."""
         return any(card.is_acorn_over for card in self.cards)
 
-    def sort_hand(self):
-        """Zoradí karty zostupne podľa farby a hodnoty."""
+    def sort_hand(self, ascending: bool = False):
+        """Zoradí karty podľa farby a hodnoty."""
         from config import SUITS as SUIT_ORDER
         self.cards.sort(
             key=lambda c: (
                 SUIT_ORDER.index(c.suit),
-                -c.rank_order
+                -c.rank_order if not ascending else c.rank_order
             )
         )
 
