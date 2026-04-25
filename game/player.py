@@ -98,20 +98,10 @@ class Player:
                        leaf_illuminated: bool,
                        acorn_illuminated: bool,
                        other_players: list) -> int:
-        """
-        Uzavrie kolo a vypočíta body.
-        Vracia skutočné body pridané k total_score.
-        """
         points = self.round_points
 
-        # Shoot the moon — zobrali sme všetky trestné karty
-        if all_penalty_taken:
-            from config import SHOOT_MOON_BONUS
-            points = SHOOT_MOON_BONUS       # -10b
-            self.declaration_fulfilled = True
-
-        # Záväzok — všetky štichy
-        elif self.declaration == "all":
+        # Záväzok "all" — len success/fail, nič iné sa nepočíta
+        if self.declaration == "all":
             if self.tricks_won == 8:
                 from config import DECLARATION_ALL_BONUS
                 points = DECLARATION_ALL_BONUS  # -20b
@@ -120,28 +110,33 @@ class Player:
                 from config import DECLARATION_ALL_PENALTY
                 points = DECLARATION_ALL_PENALTY  # +20b
                 self.declaration_fulfilled = False
-                # ostatní dostanú 0b — nič nerobíme
 
-        # Záväzok — žiadny trestný bod
+        # Záväzok "none" — len success/fail
         elif self.declaration == "none":
             if self.round_points == 0:
                 from config import DECLARATION_NONE_BONUS
                 points = DECLARATION_NONE_BONUS  # -10b
                 self.declaration_fulfilled = True
             else:
-                # Nesplnil — ostatní dostanú -10b
                 self.declaration_fulfilled = False
                 from config import DECLARATION_FAIL_PENALTY
                 for other in other_players:
                     other.total_score -= DECLARATION_FAIL_PENALTY
 
-        # 90b hranica — nepočítajú sa horníci
-        from config import HIGH_SCORE_THRESHOLD
-        if self.total_score >= HIGH_SCORE_THRESHOLD:
-            # Odpočítaj body za horníkov
-            for card in self.penalty_cards:
-                if card.is_special:
-                    points -= card.get_points(leaf_illuminated, acorn_illuminated)
+        # Sweep — len ak nie je záväzok
+        elif all_penalty_taken:
+            from config import SHOOT_MOON_BONUS
+            points = SHOOT_MOON_BONUS  # -10b
+
+        # Normálny priebeh — 90b hranica
+        else:
+            from config import HIGH_SCORE_THRESHOLD
+            if self.total_score >= HIGH_SCORE_THRESHOLD:
+                for card in self.penalty_cards:
+                    if card.is_special:
+                        points -= card.get_points(
+                            leaf_illuminated, acorn_illuminated
+                        )
 
         self.total_score += points
 
@@ -150,7 +145,7 @@ class Player:
         if self.total_score == WINNING_SCORE:
             self.total_score = RESET_SCORE
 
-        # Séria bez trestných bodov
+        # Séria — podľa skutočných trestných bodov
         if self.round_points == 0:
             self.no_penalty_streak += 1
             from config import NO_PENALTY_STREAK, NO_PENALTY_BONUS

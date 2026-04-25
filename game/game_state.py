@@ -94,11 +94,14 @@ class GameState:
         """
         Aktualizuje chujogram — pridá guličky hráčom
         s najvyšším celkovým skóre po tomto kole.
+        Gulička = najhoršia pozícia (najvyššie skóre).
+        Ak sú všetci na rovnakom skóre — nikto nedostane guličku.
         """
-        max_score = max(p.total_score for p in self.players)
+        scores = [p.total_score for p in self.players]
+        max_score = max(scores)
 
-        # Ak nikto nemá body — nikto nedostane guličku
-        if max_score == 0:
+        # Ak sú všetci na rovnakom skóre — nikto nie je "najhorší"
+        if all(s == max_score for s in scores):
             self.bullet_history.append([0] * NUM_PLAYERS)
             return
 

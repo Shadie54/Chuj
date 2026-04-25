@@ -460,7 +460,9 @@ class Screen:
             self.game_state.logger.log_declaration(player.name, declaration)
 
             # Vysvietenie
-            illuminate_leaf, illuminate_acorn = ai.decide_illumination()
+            illuminate_leaf, illuminate_acorn = ai.decide_illumination(
+                current_round.first_player_index
+            )
             current_round.process_revealing(i, illuminate_leaf, illuminate_acorn)
 
             # Zaznamená vysvietenie ← až tu, po definícii
@@ -554,7 +556,9 @@ class Screen:
 
         ai = self.ai_players[current_index]
         pygame.time.delay(300)
-        illuminate_leaf, illuminate_acorn = ai.decide_illumination()
+        illuminate_leaf, illuminate_acorn = ai.decide_illumination(
+            current_round.first_player_index
+        )
         current_round.process_revealing(
             current_index, illuminate_leaf, illuminate_acorn
         )

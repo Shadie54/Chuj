@@ -45,6 +45,18 @@ class GameLogger:
         else:
             self.entries.append(f"  Záväzok [{player}]: žiadny")
 
+    def log_illumination_decision(self, player: str, suit: str,
+                                  reserve_quality: str, risk_level: str,
+                                  compensation: int, result: bool):
+        """Zaznamená detailné rozhodnutie AI o vysvietení."""
+        suit_name = "zelený" if suit == "leaf" else "žaluďový"
+        decision = "ÁNO" if result else "NIE"
+        self.entries.append(
+            f"  [AI {player}] Vysvietenie {suit_name}: {decision} "
+            f"(rezerva={reserve_quality}, riziko={risk_level}, "
+            f"kompenzácia={compensation})"
+        )
+
     def log_illumination(self, player: str,
                          leaf: bool, acorn: bool):
         """Zaznamená vysvietenie horníkov."""

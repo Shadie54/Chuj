@@ -61,7 +61,7 @@ class AI:
             return "all"
         return None
 
-    def decide_illumination(self) -> tuple[bool, bool]:
+    def decide_illumination(self, first_player_index: int) -> tuple[bool, bool]:
         if self.difficulty == "easy":
             return False, False
 
@@ -70,45 +70,191 @@ class AI:
         illuminate_acorn = False
 
         if self.difficulty in ("medium", "hard"):
-            illuminate_leaf = self._should_illuminate(hand, "leaf")
-            illuminate_acorn = self._should_illuminate(hand, "acorn")
+            position = (self.player.index - first_player_index) % NUM_PLAYERS
+            illuminate_leaf, leaf_debug = self._should_illuminate(
+                hand, "leaf", position
+            )
+            illuminate_acorn, acorn_debug = self._should_illuminate(
+                hand, "acorn", position
+            )
+            if self.logger:
+                self.logger.log_illumination_decision(
+                    self.player_name, "leaf", *leaf_debug, illuminate_leaf
+                )
+                self.logger.log_illumination_decision(
+                    self.player_name, "acorn", *acorn_debug, illuminate_acorn
+                )
 
         return illuminate_leaf, illuminate_acorn
 
-    @staticmethod
-    def _should_illuminate(hand: list[Card], suit: str) -> bool:
-        """
-        Má zmysel vysvietiť horníka danej farby?
-
-        Logika:
-        - Mám horníka? (inak False)
-        - Mám rezervy?
-          0 rezerv → False (plonkový horník = samovražda)
-          1 rezerva → True len ak je nízka (nie A, K)
-          2+ rezervy → True
-        """
-        # Mám horníka?
+    def _should_illuminate(self, hand: list[Card], suit: str,
+                           position: int) -> tuple[bool, tuple]:
         special = next(
             (c for c in hand if c.is_special and c.suit == suit), None
         )
         if special is None:
-            return False
+            return False, ("none", "none", 0)
 
-        # Rezervy = ostatné karty tej farby okrem horníka
-        reserves = [
-            c for c in hand
-            if c.suit == suit and not c.is_special
-        ]
+        reserves = [c for c in hand if c.suit == suit and not c.is_special]
+
+        # Vypočítame vždy pre debugging
+        reserve_quality = self._reserve_quality(reserves) if reserves else "plonk"
+        risk_level = self._hand_risk_level(hand, suit)
+        compensation = self._compensation_count(hand, position)
 
         if len(reserves) == 0:
-            return False  # plonkový horník
+            return False, (reserve_quality, risk_level, compensation)
 
-        if len(reserves) == 1:
-            # Nízka rezerva → True, vysoká → False
-            return reserves[0].rank not in ("ace", "king")
+        if reserve_quality == "bad":
+            return False, (reserve_quality, risk_level, compensation)
 
-        # 2+ rezervy → True
-        return True
+        result = self._illumination_decision(reserve_quality, risk_level, compensation)
+        return result, (reserve_quality, risk_level, compensation)
+
+    def _reserve_quality(self, reserves: list[Card]) -> str:
+        """
+        strong     = 3+ rezervy
+        good       = 2 rezervy s aspoň jednou nízkou (9-7) a druhou max J/10
+                     alebo 1 rezerva 9-7
+        borderline = 2 rezervy: jedna vysoká + jedna nízka
+                     alebo obe J/10
+                     alebo 1 rezerva J/10
+        bad        = 2 rezervy: obe vysoké, alebo jedna vysoká + jedna J/10
+                     alebo 1 rezerva A/K
+        """
+        if len(reserves) >= 3:
+            return "strong"
+
+        if len(reserves) == 2:
+            high = [c for c in reserves if c.rank in ("ace", "king")]
+            low = [c for c in reserves if c.rank in ("nine", "eight", "seven")]
+            mid = [c for c in reserves if c.rank in ("under", "ten")]
+
+            if len(high) == 2:
+                return "bad"  # obe vysoké
+            if len(high) == 1 and not low:
+                return "bad"  # jedna vysoká + J/10
+            if len(high) == 1 and low:
+                return "borderline"  # jedna vysoká + nízka
+            if len(mid) == 2:
+                return "borderline"  # obe J/10
+            return "good"  # aspoň jedna 9-7, druhá max J/10
+
+        # 1 rezerva
+        rank = reserves[0].rank
+        if rank in ("ace", "king"):
+            return "bad"
+        if rank in ("under", "ten"):
+            return "borderline"
+        return "good"  # nine, eight, seven
+
+    @staticmethod
+    def _hand_risk_level(hand: list[Card], special_suit: str) -> str:
+        """
+        Hodnotí celkové riziko ruky pre vysvietenie.
+
+        Pre každú farebu okrem bell:
+        - Vysoké karty (A/K/Q) sú rizikové
+        - Nárazníky = nízke karty (9-7) tej istej farby
+        - J/10 sú polovičné nárazníky
+
+        critical = aspoň 1 vysoká karta bez nárazníka
+        medium   = vysoké karty s 1 nárazníkom
+        low      = žiadne vážne riziká
+        """
+        worst = "low"
+
+        for suit in SUITS:
+            if suit == "bell":
+                continue
+
+            suit_cards = [
+                c for c in hand
+                if c.suit == suit and not c.is_special
+            ]
+            high_cards = [
+                c for c in suit_cards
+                if c.rank in ("ace", "king", "queen")
+            ]
+            if not high_cards:
+                continue
+
+            low_cards = [
+                c for c in suit_cards
+                if c.rank in ("nine", "eight", "seven")
+            ]
+            mid_cards = [
+                c for c in suit_cards
+                if c.rank in ("under", "ten")  # J a 10
+            ]
+            buffers = len(low_cards) + len(mid_cards)
+
+            for _ in high_cards:
+                if buffers == 0:
+                    return "critical"
+                elif buffers == 1 and worst == "low":
+                    worst = "medium"
+                buffers = max(0, buffers - 1)
+
+        return worst
+
+    @staticmethod
+    def _compensation_count(hand: list[Card], position: int) -> int:
+        """
+        Počet kompenzačných faktorov:
+        - void alebo rýchly void (1 karta) na farbu → +1 za každú
+        - nie som leader (position > 0) → +1
+        - som posledný (position == 3) → +1
+        """
+        count = 0
+
+        for suit in SUITS:
+            suit_count = sum(1 for c in hand if c.suit == suit)
+            if suit_count <= 1:
+                count += 1
+
+        if position > 0:
+            count += 1
+
+        if position == 3:
+            count += 1
+
+        return count
+
+    @staticmethod
+    def _illumination_decision(reserve_quality: str,
+                               risk_level: str,
+                               compensation: int) -> bool:
+        """
+        Kombinácia kvality rezervy × rizík × kompenzácie.
+
+        strong   + low      → True vždy
+        strong   + medium   → True ak aspoň 1 kompenzácia
+        strong   + critical → True ak aspoň 2 kompenzácie
+        good     + low      → True vždy
+        good     + medium   → True ak aspoň 1 kompenzácia
+        good     + critical → True ak aspoň 2 kompenzácie
+        borderline + low    → True ak aspoň 1 kompenzácia
+        borderline + medium → True ak aspoň 2 kompenzácie
+        borderline + critical → False vždy
+        """
+        if reserve_quality in ("strong", "good"):
+            if risk_level == "low":
+                return True
+            if risk_level == "medium":
+                return compensation >= 1
+            if risk_level == "critical":
+                return compensation >= 2
+
+        if reserve_quality == "borderline":
+            if risk_level == "low":
+                return compensation >= 1
+            if risk_level == "medium":
+                return compensation >= 2
+            if risk_level == "critical":
+                return False
+
+        return False
 
     # ------------------------------------------------------------------
     # Hlavný vstupný bod
@@ -324,30 +470,42 @@ class AI:
     def _play_safe(self, playable: list[Card],
                    trick: Trick, is_leader: bool,
                    hand_eval: HandEval) -> Card:
-        """
-        Cieľ: nezobrať štich.
-        Leader: najnižšia escape karta.
-        Follower: najvyššia karta ktorou ešte podliezam.
-        """
         if is_leader:
+            protected = self._protected_suits()
+
             escape_playable = [
                 c for c in hand_eval.escape_cards
                 if c in playable
-                   and (not c.is_special or self._special_is_safe_lead(c))
+                   and not c.is_special
+                   and c.suit not in protected
             ]
+
+            # Primárne: escape mimo protected farieb
             if escape_playable:
                 card = min(escape_playable, key=lambda c: c.rank_order)
                 self._log(Strategy.SAFE_LEAD, f"escape: {card}")
                 return card
 
-            # Fallback: najnižšia non-special karta
+            # Fallback: exhaustovanie ak podmienky sedia
+            exhaust_cards = [
+                c for c in playable
+                if not c.is_special
+                   and (c.suit not in protected
+                        or self._can_exhaust_suit(c.suit))
+            ]
+            if exhaust_cards:
+                card = min(exhaust_cards, key=lambda c: c.rank_order)
+                self._log(Strategy.SAFE_LEAD, f"exhaust fallback: {card}")
+                return card
+
+            # Posledná možnosť: čokoľvek nie je horník
             non_special = [
                 c for c in playable
                 if not c.is_special or self._special_is_safe_lead(c)
             ]
             pool = non_special if non_special else playable
             card = min(pool, key=lambda c: c.rank_order)
-            self._log(Strategy.SAFE_LEAD, f"fallback: {card}")
+            self._log(Strategy.SAFE_LEAD, f"last resort: {card}")
             return card
 
         else:
@@ -391,14 +549,21 @@ class AI:
                 if self.memory.is_special_gone(suit):
                     continue
                 holders = self.memory.who_has_special(suit)
-                if len(holders) == 1:
-                    suit_cards = [c for c in playable
-                                  if c.suit == suit and not c.is_special]
-                    if suit_cards:
-                        card = min(suit_cards, key=lambda c: c.rank_order)
-                        self._log(Strategy.FORCE_SPECIAL,
-                                  f"vytiahni horníka {suit}: {card}")
-                        return card
+                if not holders:
+                    continue
+                if self.player.index in holders:
+                    continue
+                suit_cards = [
+                    c for c in playable
+                    if c.suit == suit
+                       and not c.is_special
+                       and c.rank not in ("ace", "king")  # ← rovnaký filter
+                ]
+                if suit_cards:
+                    card = min(suit_cards, key=lambda c: c.rank_order)
+                    self._log(Strategy.FORCE_SPECIAL,
+                              f"vytiahni horníka {suit}: {card}")
+                    return card
 
         # FOLLOWER_FORCED: zoberiem štich — najvyššia nie-horník
         lead_suit = trick.lead_suit
@@ -475,6 +640,7 @@ class AI:
     def _open_play(self, playable: list[Card],
                    hand_eval: HandEval, trick: Trick) -> Card:
         is_leader = len(trick.played_cards) == 0
+        protected = self._protected_suits() if is_leader else set()
 
         # Priorita 1: void creation (len leader) — len escape karta nie trap
         if is_leader:
@@ -483,6 +649,7 @@ class AI:
                 if sum(1 for c in self.player.hand.cards
                        if c.suit == suit) == 1
                    and suit != "heart"
+                   and suit not in protected
             ]
             for suit in single_suit:
                 suit_cards = [
@@ -496,18 +663,31 @@ class AI:
                     self._log(Strategy.DUMP_SETUP, f"void: {card}")
                     return card
 
-        # Priorita 2: najnižšia escape karta
+        # Priorita 2: najnižšia escape karta mimo protected
         escape_playable = [
             c for c in hand_eval.escape_cards
             if c in playable
-               and (not c.is_special or self._special_is_safe_lead(c))
+               and not c.is_special
+               and c.suit not in protected
         ]
         if escape_playable:
             card = min(escape_playable, key=lambda c: c.rank_order)
             self._log(Strategy.WAIT, f"escape: {card}")
             return card
 
-        # Priorita 3: najnižšia lead karta (follower) — nie horník
+        # Priorita 3: exhaustovanie ak podmienky sedia
+        if is_leader:
+            exhaust_cards = [
+                c for c in playable
+                if not c.is_special
+                   and self._can_exhaust_suit(c.suit)
+            ]
+            if exhaust_cards:
+                card = min(exhaust_cards, key=lambda c: c.rank_order)
+                self._log(Strategy.WAIT, f"exhaust: {card}")
+                return card
+
+        # Priorita 4: najnižšia lead karta (follower) — nie horník
         if not is_leader:
             lead_cards = [c for c in playable if c.suit == trick.lead_suit]
             non_special_lead = [c for c in lead_cards if not c.is_special]
@@ -517,7 +697,7 @@ class AI:
                 self._log(Strategy.WAIT, f"wait: {card}")
                 return card
 
-        # Fallback: najnižšia non-special karta (trap je posledná možnosť)
+        # Fallback: najnižšia non-special
         non_special = [
             c for c in playable
             if not c.is_special or self._special_is_safe_lead(c)
@@ -667,6 +847,49 @@ class AI:
             return True
         return card.rank_order > current_best.rank_order
 
+    def _i_illuminated(self, suit: str) -> bool:
+        """Vysvietil som ja horníka tejto farby?"""
+        if suit not in ("leaf", "acorn"):
+            return False
+        return self.memory.illuminated_by[suit] == self.player.index
+
+    def _protected_suits(self) -> set[str]:
+        """
+        Farby kde mám vysvietiného horníka a málo rezerv (1-3)
+        → vyhýbam sa leadovaniu.
+        """
+        protected = set()
+        for suit in ("leaf", "acorn"):
+            if not self._i_illuminated(suit):
+                continue
+            hand = self.player.hand.cards
+            reserves = [
+                c for c in hand
+                if c.suit == suit and not c.is_special
+            ]
+            if len(reserves) <= 3:
+                protected.add(suit)
+        return protected
+
+    def _can_exhaust_suit(self, suit: str) -> bool:
+        """
+        Môžem aktívne hrať farbu kde som vysvietil horníka?
+        Len ak mám 4+ rezervy A rezervy sú prevažne nízke (nie A/K).
+        """
+        if not self._i_illuminated(suit):
+            return False
+        hand = self.player.hand.cards
+        reserves = [
+            c for c in hand
+            if c.suit == suit and not c.is_special
+        ]
+        if len(reserves) < 4:
+            return False
+        high_reserves = [
+            c for c in reserves
+            if c.rank in ("ace", "king")
+        ]
+        return len(high_reserves) == 0
     # ------------------------------------------------------------------
     # Verejné rozhranie — pamäť
     # ------------------------------------------------------------------
