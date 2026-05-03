@@ -1,0 +1,64 @@
+======================================================================
+TESTER EXPORT
+======================================================================
+Scenár: random_seed_54418
+Popis: Náhodné rozdanie (seed=54418)
+
+--- STAV ---
+Štych: 7/8
+Na ťahu: AI_2
+Override mode: nie
+First player kola: AI_2
+
+--- SKÓRE KOLA (round_points) ---
+  AI_0: 0b
+  AI_1: 17b
+  AI_2: 0b
+  AI_3: 0b
+
+--- RUKY ---
+  AI_0 (2): J♠ 9♠
+  AI_1 (1): K♥
+  AI_2 (2): 7♥ A♣ ← NA ŤAHU
+  AI_3 (2): 8♠ J♣
+
+--- AKTUÁLNY ŠTYCH ---
+Lead suit: heart
+  AI_1: 9♥
+
+--- HISTÓRIA ŠTICHOV (chronologicky) ---
+  T1: leader=AI_2 | AI_2: 8●  AI_3: A♠  AI_0: 7●  AI_1: A● → AI_1
+  T2: leader=AI_1 | AI_1: 7♣  AI_2: 10♣  AI_3: 9♣  AI_0: K♣ → AI_0
+  T3: leader=AI_0 | AI_0: 7♠  AI_1: Q♠  AI_2: Q♣  AI_3: 10♠ → AI_1
+  T4: leader=AI_1 | AI_1: K●  AI_2: J●  AI_3: Q♥  AI_0: 10● → AI_1
+  T5: leader=AI_1 | AI_1: Q●  AI_2: 9●  AI_3: 8♥  AI_0: 10♥ → AI_1
+  T6: leader=AI_1 | AI_1: A♥  AI_2: J♥  AI_3: 8♣  AI_0: K♠ → AI_1
+
+--- POSLEDNÝ ŤAH ---
+Hráč: AI_1 (AI_1)
+Zahraná karta: 9♥
+
+--- REASONING CHAIN POSLEDNÉHO ŤAHU ---
+  [AI_1] SWEEP_GATE1_DEBUG: hand_penalty=2, remaining=1, my_taken=7, already_taken=0
+  [AI_1] SWEEP_STATE: COMMITTED_FULL → IDLE
+  [SWEEP AI_1] štych 7: NIE | stav=IDLE | P(sweep)=0.00 | EV=0.0
+    → L1: hearts-driven
+    → L2: strength=STRONG, profile=HORNIK_BAIT
+    → L3: passed=True, lead_order=['heart', 'bell', 'leaf', 'acorn'], critical_events=0
+    → L4: passed=False, critical_events=[]
+  [AI_1] L-FORCED/OPEN: 9♥
+
+--- AIMemory (AI_2) ---
+  Tricks taken: {0: 1, 1: 5, 2: 0, 3: 0}
+  Specials gone: {'leaf': True, 'acorn': True}
+  Illuminated by: {'leaf': None, 'acorn': None}
+  Void suits:
+    AI_0: ['bell', 'heart']
+    AI_2: ['leaf']
+    AI_3: ['bell', 'heart']
+  Remaining (u súperov):
+    heart: K♥ 9♥
+    leaf: J♠ 9♠ 8♠
+    acorn: J♣
+    bell: (žiadne)
+  Sweep state: IDLE

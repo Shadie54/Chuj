@@ -102,6 +102,8 @@ class GameLogger:
                 f"  ✗ Záväzok nesplnený [{player}]: ostatní -10b"
             )
 
+
+
     def log_round_result(self, results: dict[str, dict]):
         self.entries.append("")
         self.entries.append("VÝSLEDOK KOLA:")
@@ -160,11 +162,26 @@ class GameLogger:
         return " ".join(self._card_str(c) for c in cards)
 
     def log_strategy(self, player: str, strategy: str, details: str = ""):
-        """Zaznamená použitú stratégiu AI."""
+        from config import DEBUG_MODE
+        if not DEBUG_MODE:
+            return
         if details:
             self.entries.append(f"  [AI {player}] {strategy}: {details}")
         else:
             self.entries.append(f"  [AI {player}] {strategy}")
+
+    def log_sweep_pipeline(self, player: str, result, trick_number: int):
+        from config import DEBUG_MODE
+        if not DEBUG_MODE:
+            return
+        if result.state.value == "IDLE":
+            return
+        self.entries.append(
+            f"  [SWEEP {player}] štich {trick_number}: "
+            f"{result.decision.value} | stav={result.state.value}"
+        )
+        for step in result.reasoning_chain:
+            self.entries.append(f"    → {step}")
 
     def __repr__(self) -> str:
         return f"GameLogger(rounds={self.round_number})"

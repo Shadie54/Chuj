@@ -155,14 +155,29 @@ class Round:
         """
         sweep_player = self._check_sweep()
 
+        # Zistíme či niekto nesplnil "all"
+        declaration_all_failed = (
+                self.declaration_type == "all"
+                and self.declaration_player is not None
+                and self.players[self.declaration_player].tricks_won != 8
+        )
+
         for i, player in enumerate(self.players):
             other_players = [p for p in self.players if p != player]
             all_penalty = (sweep_player == i)
+
+            # Ostatní dostanú 0b ak niekto nesplnil "all"
+            is_declaration_player = (i == self.declaration_player)
+            declaration_failed = (
+                    declaration_all_failed and not is_declaration_player
+            )
+
             player.finalize_round(
                 all_penalty_taken=all_penalty,
                 leaf_illuminated=self.leaf_illuminated,
                 acorn_illuminated=self.acorn_illuminated,
-                other_players=other_players
+                other_players=other_players,
+                declaration_failed=declaration_failed
             )
 
         self.phase = "done"

@@ -21,7 +21,6 @@ class SuitProfile:
     has_special: bool                 # mám horníka tejto farby
     special_reserves: int             # počet kariet okrem horníka (rezervy)
 
-
 # ------------------------------------------------------------------
 # AIMemory
 # ------------------------------------------------------------------
