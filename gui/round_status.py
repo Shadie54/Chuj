@@ -33,7 +33,11 @@ class RoundStatus:
     def draw(self, players: list, current_round=None):
         """Nakreslí panel so stavom kola."""
         self._draw_bg()
-        self._draw_title(current_round)
+
+        round_number = current_round.round_number if current_round else None
+        deal_seed = current_round.deal_seed if current_round else None
+        self._draw_title(round_number, deal_seed)
+
         self._draw_players(players, current_round)
 
     def _draw_bg(self):
@@ -47,12 +51,18 @@ class RoundStatus:
             width=2, border_radius=10
         )
 
-    def _draw_title(self, current_round=None):
+    def _draw_title(self, round_number: int | None = None,
+                    deal_seed: int | None = None):
         """Nakreslí nadpis."""
-        # Číslo kola
-        round_text = "KOLO"
-        if current_round:
-            from game.game_state import GameState
+        # Zostav text "KOLO X (seed: Y)"
+        if round_number is not None:
+            if deal_seed is not None:
+                round_text = f"KOLO {round_number} ({deal_seed})"
+            else:
+                round_text = f"KOLO {round_number}"
+        else:
+            round_text = "KOLO"
+
         title = self.font_medium.render(round_text, True, COLOR_GOLD)
         title_rect = title.get_rect(
             centerx=self.x + self.w // 2,

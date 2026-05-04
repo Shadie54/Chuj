@@ -8,31 +8,23 @@ from config import NUM_PLAYERS, CARDS_PER_PLAYER, SUITS, RANKS
 
 
 def random_scenario(seed: int | None = None) -> Scenario:
-    """
-    Vygeneruje náhodný scenár — rozdá 32 kariet medzi 4 hráčov.
-
-    Žiadna história, žiadne iluminácie, žiadne záväzky.
-    First player je tiež random.
-
-    Ak seed=None, použije sa časový seed (každé volanie iné).
-    """
     if seed is None:
         seed = int(time.time() * 1000) % 1_000_000
 
     rng = random.Random(seed)
 
-    # Vytvor balík 32 kariet
     deck = [Card(suit, rank) for suit in SUITS for rank in RANKS]
     rng.shuffle(deck)
 
-    # Rozdaj po 8 kariet každému hráčovi
-    hands = {}
-    for i in range(NUM_PLAYERS):
-        start = i * CARDS_PER_PLAYER
-        end = start + CARDS_PER_PLAYER
-        hands[i] = deck[start:end]
+    # Rozdanie 4-4-4-4 + 4-4-4-4 (kompatibilné s game/deck.py)
+    hands = {i: [] for i in range(NUM_PLAYERS)}
+    card_index = 0
+    for batch in [4, 4]:
+        for player in range(NUM_PLAYERS):
+            for _ in range(batch):
+                hands[player].append(deck[card_index])
+                card_index += 1
 
-    # Random first player
     first_player = rng.randint(0, NUM_PLAYERS - 1)
 
     return Scenario(

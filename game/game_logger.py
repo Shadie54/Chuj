@@ -24,12 +24,16 @@ class GameLogger:
     # ------------------------------------------------------------------
 
     def new_round(self, round_number: int, first_player: str,
-                  hands: dict[str, list[Card]]):
+                  hands: dict[str, list[Card]],
+                  deal_seed: int | None = None):
         """Zaznamená začiatok kola."""
         self.round_number = round_number
-        self.entries.append(f"\n{'='*60}")
-        self.entries.append(f"KOLO {round_number}")
-        self.entries.append(f"{'='*60}")
+        self.entries.append(f"\n{'=' * 60}")
+        if deal_seed is not None:
+            self.entries.append(f"KOLO {round_number} (seed: {deal_seed})")
+        else:
+            self.entries.append(f"KOLO {round_number}")
+        self.entries.append(f"{'=' * 60}")
         self.entries.append(f"Začína: {first_player}")
         self.entries.append("")
         for name, cards in hands.items():

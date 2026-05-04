@@ -33,16 +33,19 @@ class Round:
         self.phase: str = "dealing"
         # Fázy: dealing → preparation → tricks → scoring
 
+        # Seed kola
+        self.deal_seed: int | None = None
+
     # ------------------------------------------------------------------
     # FÁZA 1: Rozdávanie
     # ------------------------------------------------------------------
 
     def deal(self):
         """Rozdá karty hráčom."""
-        hands = self.deck.deal(NUM_PLAYERS)
+        hands, self.deal_seed = self.deck.deal(NUM_PLAYERS)
         for i, player in enumerate(self.players):
             player.receive_cards(hands[i])
-        self.phase = "preparation"  # ← zmenené z "game_declaration"
+        self.phase = "preparation"
 
     # ------------------------------------------------------------------
     # FÁZA 2: Príprava

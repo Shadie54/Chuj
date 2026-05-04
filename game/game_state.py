@@ -54,8 +54,19 @@ class GameState:
             self.first_player_index
         )
         self.current_round.deal()
+        self.current_round.round_number = self.round_number
         self.round_number += 1
         self.phase = "playing"
+
+        # Zaloguj začiatok kola so seedom
+        hands = {p.name: p.hand.cards for p in self.players}
+        first_name = self.players[self.first_player_index].name
+        self.logger.new_round(
+            self.round_number,
+            first_name,
+            hands,
+            deal_seed=self.current_round.deal_seed
+        )
 
     def finish_round(self):
         self.current_round.score_round()

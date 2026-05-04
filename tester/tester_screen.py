@@ -1,5 +1,11 @@
 # tester/tester_screen.py
-
+import sys
+if sys.platform == "win32":
+    import ctypes
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)  # PROCESS_PER_MONITOR_DPI_AWARE
+    except Exception:
+        ctypes.windll.user32.SetProcessDPIAware()
 import os
 import pygame
 
@@ -39,7 +45,7 @@ T_WARNING = (180, 40, 40)        # červená (koniec kola)
 # ------------------------------------------------------------------
 
 WIN_WIDTH = 1600
-WIN_HEIGHT = 1000
+WIN_HEIGHT = 980
 
 # Hlavička
 HEADER_HEIGHT = 60
