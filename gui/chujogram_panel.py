@@ -5,7 +5,7 @@ from config import (
     SCREEN_HEIGHT,
     COLOR_WHITE, COLOR_GRAY, COLOR_GOLD,
     BULLET_RADIUS, BULLET_COLOR,
-    NUM_PLAYERS
+    NUM_PLAYERS, get_font
 )
 
 
@@ -14,9 +14,9 @@ class ChujogramPanel:
         self.screen = screen
         self.player_names = player_names  # fixné poradie od začiatku hry
 
-        self.font_small = pygame.font.SysFont(None, 28)
-        self.font_medium = pygame.font.SysFont(None, 36)
-        self.font_large = pygame.font.SysFont(None, 48)
+        self.font_small = get_font( 28)
+        self.font_medium = get_font( 36)
+        self.font_large = get_font( 48)
 
         # Rozmery panelu
         self.panel_w = 480

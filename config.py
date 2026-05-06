@@ -223,3 +223,16 @@ CHUJOGRAM_Y = 20
 # Obrázok zadnej strany karty
 # ------------------------------------------------------------------
 CARD_BACK_IMAGE = "card-back.png"
+
+# ------------------------------------------------------------------
+# HELPER METÓDA PRE FONT
+# ------------------------------------------------------------------
+def get_font(size: int) -> pygame.font.Font:
+    """Vráti font s podporou Unicode znakov (♥ ● ♠ ♣)."""
+    for font_name in ("opensans", ):
+        try:
+            font = pygame.font.SysFont(font_name, size)
+            return font
+        except:
+            continue
+    return get_font( size)  # fallback

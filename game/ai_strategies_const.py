@@ -12,7 +12,9 @@ class Situation:
     FOLLOWER_VOID       = "F-VOID"
     FOLLOWER_FORCED     = "F-FORCED"
     FOLLOWER_CONTROLLED = "F-CONTROLLED"
+    FOLLOWER_FREE_TAKE  = "F-FREE_TAKE"
     FOLLOWER_WAIT       = "F-WAIT"
+
 
 
 class Mode:

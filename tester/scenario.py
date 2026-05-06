@@ -85,13 +85,13 @@ def cards(*codes: str) -> list[Card]:
 
 
 # ------------------------------------------------------------------
-# TrickHistory — jeden štych z histórie scenára
+# TrickHistory — jeden štich z histórie scenára
 # ------------------------------------------------------------------
 
 @dataclass
 class TrickHistory:
     """
-    Jeden štych z histórie scenára.
+    Jeden štich z histórie scenára.
 
     leader: index hráča ktorý začal štich (0-3)
     cards: zoznam (player_index, Card) v poradí ako sa hralo
@@ -291,7 +291,7 @@ def validate_scenario(scenario: Scenario) -> list[str]:
 
     # 9. History — kontrola každého štichu
     for i, th in enumerate(scenario.history):
-        trick_label = f"history štych {i+1}"
+        trick_label = f"history štich {i+1}"
 
         # 9a. Počet kariet
         if len(th.cards) != NUM_PLAYERS:
@@ -317,11 +317,11 @@ def validate_scenario(scenario: Scenario) -> list[str]:
                 f"očakávame {expected_order} (proti smeru hodín)"
             )
 
-        # 9d. Winner musí byť v štyche
+        # 9d. Winner musí byť v štiche
         player_indices = [pi for pi, _ in th.cards]
         if th.winner not in player_indices:
             errors.append(
-                f"{trick_label}: winner {th.winner} nehral v štyche"
+                f"{trick_label}: winner {th.winner} nehral v štiche"
             )
             continue
 

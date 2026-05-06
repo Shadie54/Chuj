@@ -96,29 +96,19 @@ class Player:
 
     def finalize_round(self, all_penalty_taken: bool,
                        leaf_illuminated: bool,
-                       acorn_illuminated: bool,
-                       other_players: list,
-                       declaration_failed: bool = False) -> int:
+                       acorn_illuminated: bool) -> int:
         """
-        Uzavrie kolo a vypočíta body.
+        Uzavrie kolo a vypočíta body pre tohto hráča.
+        Volajúci (score_round) zodpovedá za správny kontext.
         """
         from config import (SHOOT_MOON_BONUS, DECLARATION_ALL_BONUS,
                             DECLARATION_ALL_PENALTY, DECLARATION_NONE_BONUS,
-                            DECLARATION_FAIL_PENALTY, HIGH_SCORE_THRESHOLD,
-                            WINNING_SCORE, RESET_SCORE, NO_PENALTY_STREAK,
-                            NO_PENALTY_BONUS)
+                            HIGH_SCORE_THRESHOLD, WINNING_SCORE, RESET_SCORE,
+                            NO_PENALTY_STREAK, NO_PENALTY_BONUS)
 
-        # Niekto iný nesplnil "all" → my dostaneme 0b
-        if declaration_failed:
-            self.total_score += 0
-            self.no_penalty_streak = 0
-            if self.total_score == WINNING_SCORE:
-                self.total_score = RESET_SCORE
-            return 0
+        points = 0
 
-        points = self.round_points
-
-        # Záväzok "all" — len success/fail
+        # --- Záväzok "all" ---
         if self.declaration == "all":
             if self.tricks_won == 8:
                 points = DECLARATION_ALL_BONUS  # -20b
@@ -127,22 +117,23 @@ class Player:
                 points = DECLARATION_ALL_PENALTY  # +20b
                 self.declaration_fulfilled = False
 
-        # Záväzok "none" — len success/fail
+        # --- Záväzok "none" ---
         elif self.declaration == "none":
-            if self.round_points == 0:
+            if self.tricks_won == 0:
                 points = DECLARATION_NONE_BONUS  # -10b
                 self.declaration_fulfilled = True
             else:
+                points = 0  # 0b pre deklaranta
                 self.declaration_fulfilled = False
-                for other in other_players:
-                    other.total_score -= DECLARATION_FAIL_PENALTY
 
-        # Sweep — len ak nie je záväzok
+        # --- Sweep (bez záväzku) ---
         elif all_penalty_taken:
             points = SHOOT_MOON_BONUS  # -10b
 
-        # Normálny priebeh — 90b hranica
+        # --- Normálny priebeh ---
         else:
+            points = self.round_points
+            # 90b pravidlo — horníci sa nepočítajú
             if self.total_score >= HIGH_SCORE_THRESHOLD:
                 for card in self.penalty_cards:
                     if card.is_special:
@@ -156,14 +147,15 @@ class Player:
         if self.total_score == WINNING_SCORE:
             self.total_score = RESET_SCORE
 
-        # Séria — podľa skutočných trestných bodov
-        if self.round_points == 0:
-            self.no_penalty_streak += 1
-            if self.no_penalty_streak >= NO_PENALTY_STREAK:
-                self.total_score += NO_PENALTY_BONUS
+        # Séria — iba pri normálnom priebehu (nie záväzok)
+        if self.declaration is None:
+            if self.round_points == 0:
+                self.no_penalty_streak += 1
+                if self.no_penalty_streak >= NO_PENALTY_STREAK:
+                    self.total_score += NO_PENALTY_BONUS
+                    self.no_penalty_streak = 0
+            else:
                 self.no_penalty_streak = 0
-        else:
-            self.no_penalty_streak = 0
 
         return points
 

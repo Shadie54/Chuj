@@ -24,7 +24,7 @@ class Round:
         # Vysvietenie — globálny stav kola
         self.leaf_illuminated: bool = False
         self.acorn_illuminated: bool = False
-
+        self.illuminated_by: dict[str, int | None] = {"leaf": None, "acorn": None} # vysvietenie pre tester
         # Záväzky
         self.declaration_player: int | None = None  # kto vyhlásil záväzok
         self.declaration_type: str | None = None    # "all" / "none"
@@ -35,6 +35,7 @@ class Round:
 
         # Seed kola
         self.deal_seed: int | None = None
+        self.illuminated_by: dict[str, int | None] = {"leaf": None, "acorn": None}
 
     # ------------------------------------------------------------------
     # FÁZA 1: Rozdávanie
@@ -82,18 +83,17 @@ class Round:
     def process_revealing(self, player_index: int,
                           illuminate_leaf: bool,
                           illuminate_acorn: bool):
-        """
-        Spracuje vysvietenie horníkov hráča.
-        """
         player = self.players[player_index]
-
+        print(
+            f"[process_revealing] player={player_index}, leaf={illuminate_leaf}, acorn={illuminate_acorn}, has_leaf={player.hand.has_leaf_over()}, has_acorn={player.hand.has_acorn_over()}")
         if illuminate_leaf and player.hand.has_leaf_over():
             player.illuminate_leaf()
             self.leaf_illuminated = True
-
+            self.illuminated_by["leaf"] = player_index
         if illuminate_acorn and player.hand.has_acorn_over():
             player.illuminate_acorn()
             self.acorn_illuminated = True
+            self.illuminated_by["acorn"] = player_index
 
     def finish_preparation(self):
         """Ukončí prípravu a začne štichy."""
@@ -153,35 +153,58 @@ class Round:
     # ------------------------------------------------------------------
 
     def score_round(self):
-        """
-        Uzavrie kolo a aktualizuje skóre všetkých hráčov.
-        """
+        """Uzavrie kolo a aktualizuje skóre všetkých hráčov."""
+        from config import DECLARATION_FAIL_PENALTY
+
         sweep_player = self._check_sweep()
 
-        # Zistíme či niekto nesplnil "all"
-        declaration_all_failed = (
-                self.declaration_type == "all"
-                and self.declaration_player is not None
-                and self.players[self.declaration_player].tricks_won != 8
+        # Detekcia výsledku záväzku
+        decl_player = self.declaration_player
+        decl_type = self.declaration_type
+
+        declaration_none_failed = (
+                decl_type == "none"
+                and decl_player is not None
+                and self.players[decl_player].tricks_won > 0
         )
+        declaration_all_succeeded = (
+                decl_type == "all"
+                and decl_player is not None
+                and self.players[decl_player].tricks_won == 8
+        )
+        declaration_none_succeeded = (
+                decl_type == "none"
+                and decl_player is not None
+                and self.players[decl_player].tricks_won == 0
+        )
+        declaration_succeeded = declaration_all_succeeded or declaration_none_succeeded
 
         for i, player in enumerate(self.players):
-            other_players = [p for p in self.players if p != player]
+            is_decl_player = (i == decl_player)
             all_penalty = (sweep_player == i)
 
-            # Ostatní dostanú 0b ak niekto nesplnil "all"
-            is_declaration_player = (i == self.declaration_player)
-            declaration_failed = (
-                    declaration_all_failed and not is_declaration_player
-            )
+            if not is_decl_player and declaration_succeeded:
+                # Záväzok splnený → ostatní 0b
+                pass  # total_score sa nemení
 
-            player.finalize_round(
-                all_penalty_taken=all_penalty,
-                leaf_illuminated=self.leaf_illuminated,
-                acorn_illuminated=self.acorn_illuminated,
-                other_players=other_players,
-                declaration_failed=declaration_failed
-            )
+            elif not is_decl_player and declaration_none_failed:
+                # "none" nesplnený → ostatní -10b
+                player.total_score -= DECLARATION_FAIL_PENALTY
+                from config import WINNING_SCORE, RESET_SCORE
+                if player.total_score == WINNING_SCORE:
+                    player.total_score = RESET_SCORE
+
+            elif not is_decl_player and decl_type == "all":
+                # "all" nesplnený → ostatní 0b
+                pass  # total_score sa nemení
+
+            else:
+                # Deklarant alebo normálny hráč
+                player.finalize_round(
+                    all_penalty_taken=all_penalty,
+                    leaf_illuminated=self.leaf_illuminated,
+                    acorn_illuminated=self.acorn_illuminated,
+                )
 
         self.phase = "done"
 
@@ -205,6 +228,23 @@ class Round:
 
         return None
 
+    def check_declaration_failed(self) -> bool:
+        """
+        Skontroluje či záväzok práve zlyhal po dokončenom štichu.
+        """
+        if self.declaration_player is None:
+            return False
+        player = self.players[self.declaration_player]
+
+        if self.declaration_type == "none":
+            return player.tricks_won > 0  # chytil štich
+
+        if self.declaration_type == "all":
+            for i, p in enumerate(self.players):
+                if i != self.declaration_player and p.tricks_won > 0:
+                    return True
+
+        return False
     # ------------------------------------------------------------------
     # Pomocné metódy
     # ------------------------------------------------------------------

@@ -28,13 +28,14 @@ class SituationDetector:
 
     def to_mode(self, situation: str, trick: Trick) -> str:
         mapping = {
-            Situation.LEADER_SAFE:         Mode.SAFE,
-            Situation.LEADER_FORCED:       Mode.OPEN,
-            Situation.LEADER_AGGRESSIVE:   Mode.TAKE,
-            Situation.FOLLOWER_SAFE:       Mode.SAFE,
-            Situation.FOLLOWER_VOID:       Mode.OPEN,
-            Situation.FOLLOWER_FORCED:     Mode.TAKE,
-            Situation.FOLLOWER_WAIT:       Mode.OPEN,
+            Situation.LEADER_SAFE: Mode.SAFE,
+            Situation.LEADER_FORCED: Mode.OPEN,
+            Situation.LEADER_AGGRESSIVE: Mode.TAKE,
+            Situation.FOLLOWER_SAFE: Mode.SAFE,
+            Situation.FOLLOWER_VOID: Mode.OPEN,
+            Situation.FOLLOWER_FORCED: Mode.TAKE,
+            Situation.FOLLOWER_WAIT: Mode.OPEN,
+            Situation.FOLLOWER_FREE_TAKE: Mode.TAKE,
             Situation.FOLLOWER_CONTROLLED: None,
         }
         mode = mapping.get(situation)
@@ -80,6 +81,9 @@ class SituationDetector:
         if not lead_cards:
             return Situation.FOLLOWER_VOID
 
+        if self._trick_is_free_to_take(playable, trick):
+            return Situation.FOLLOWER_FREE_TAKE
+
         current_best = self._get_current_best(trick)
         can_underplay = any(
             c.rank_order < current_best.rank_order
@@ -109,6 +113,64 @@ class SituationDetector:
                     return Situation.FOLLOWER_WAIT
                 else:
                     return Situation.FOLLOWER_FORCED
+
+    def _trick_is_free_to_take(self, playable: list[Card],
+                               trick: Trick) -> bool:
+        """
+        štich je vhodný na bezpečné zbavenie sa A/K.
+
+        Spúšťač: vysvietený horník lead-suitu je u skoršieho hráča ktorý
+        v tomto štichu už zahral inú kartu (nie horníka)
+        → môj A/K v lead suit je trap, dumpnem ho zadarmo
+
+        Veto: niekto po mne je preukázane void na lead suit A môže mať
+        druhého horníka → riziko chytenia 4-16b
+        """
+        lead_suit = trick.lead_suit
+        if lead_suit is None:
+            return False
+
+        if lead_suit == "heart":
+            return False
+
+        lead_cards = [c for c in playable if c.suit == lead_suit]
+        if not lead_cards:
+            return False
+
+        has_high = any(c.rank in ("ace", "king") for c in lead_cards)
+        if not has_high:
+            return False
+
+        if lead_suit not in ("leaf", "acorn"):
+            return False
+
+        illuminator = self.memory.illuminated_by[lead_suit]
+        if illuminator is None or illuminator == self.player.index:
+            return False
+
+        played_indices = {idx for idx, _ in trick.played_cards}
+        if illuminator not in played_indices:
+            return False
+
+        hornik_played = any(
+            c.is_special and c.suit == lead_suit
+            for _, c in trick.played_cards
+        )
+        if hornik_played:
+            return False
+
+        # Veto: druhý horník môže prísť od void hráča po mne
+        other_suit = "acorn" if lead_suit == "leaf" else "leaf"
+        if not self.memory.is_special_gone(other_suit):
+            players_after = self._get_players_after_me(trick)
+            other_holders = self.memory.who_has_special(other_suit)
+            for player_idx in players_after:
+                is_void_lead = lead_suit in self.memory.void_suits[player_idx]
+                could_have_other = player_idx in other_holders
+                if is_void_lead and could_have_other:
+                    return False
+
+        return True
 
     def evaluate_post_win_risk(self, trick: Trick) -> int:
         lead_suit = trick.lead_suit

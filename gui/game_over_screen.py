@@ -8,7 +8,7 @@ from config import (
     COLOR_RED,
     COLOR_BUTTON_PRIMARY, COLOR_BUTTON_SECONDARY,
     FONT_SIZE_LARGE, FONT_SIZE_MEDIUM,
-    BUTTON_RADIUS
+    BUTTON_RADIUS, get_font
 )
 
 
@@ -26,9 +26,9 @@ class GameOverScreen:
         self.round_number = round_number
         self.clock = pygame.time.Clock()
 
-        self.font_title = pygame.font.SysFont(None, 120)
-        self.font_large = pygame.font.SysFont(None, FONT_SIZE_LARGE + 16)
-        self.font_medium = pygame.font.SysFont(None, FONT_SIZE_MEDIUM)
+        self.font_title = get_font( 120)
+        self.font_large = get_font( FONT_SIZE_LARGE + 16)
+        self.font_medium = get_font( FONT_SIZE_MEDIUM)
 
         try:
             self.bg = pygame.image.load("assets/graphics/table.jpg").convert()

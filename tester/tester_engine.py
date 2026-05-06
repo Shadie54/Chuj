@@ -19,11 +19,11 @@ class StepResult:
     """
     Výsledok jedného ťahu (AI zahrá jednu kartu).
 
-    Ak sa ťahom dokončil štych:
+    Ak sa ťahom dokončil štich:
         trick_completed=True, trick_winner+trick_points sú nastavené
 
     Ak sa ťahom dokončilo kolo:
-        round_completed=True (po poslednom štyche)
+        round_completed=True (po poslednom štiche)
     """
     player_index: int
     player_name: str
@@ -149,32 +149,61 @@ class TesterEngine:
         # 8. Aplikuj záväzky
         self._apply_declarations()
 
-        # 9. Ukončí prípravu, spustí prvý štych
+        # 9. Ukončí prípravu, spustí prvý štich
         self.round.finish_preparation()
 
         # 10. Prehrať históriu štichov
         self._replay_history()
 
     def _apply_illuminations(self):
-        """Aplikuje iluminácie zo scenára."""
         sc = self.scenario
 
-        # Spojíme iluminácie pre každého hráča
-        # (jeden hráč môže vysvietiť oboch horníkov)
+        # AI rozhodnutia
+        decisions: dict[int, tuple[bool, bool]] = {}
         for player_idx in range(NUM_PLAYERS):
-            leaf_yes = sc.illuminations.get("leaf") == player_idx
-            acorn_yes = sc.illuminations.get("acorn") == player_idx
+            leaf, acorn = self.ais[player_idx].decide_illumination(
+                sc.first_player_index
+            )
+            decisions[player_idx] = (leaf, acorn)
 
-            if not (leaf_yes or acorn_yes):
+        # Aplikuj override zo scenára
+        for suit in ("leaf", "acorn"):
+            if suit not in sc.illuminations:
+                continue  # žiadny override → AI rozhodnutie sa zachová
+            override_holder = sc.illuminations[suit]
+            if override_holder is None:
+                # Explicitne žiadne vysvietenie — vynuluj AI rozhodnutia
+                for pidx in range(NUM_PLAYERS):
+                    leaf, acorn = decisions[pidx]
+                    decisions[pidx] = (
+                        (False, acorn) if suit == "leaf" else (leaf, False)
+                    )
                 continue
+            # Override konkrétneho hráča
+            for pidx in range(NUM_PLAYERS):
+                leaf, acorn = decisions[pidx]
+                decisions[pidx] = (
+                    (False, acorn) if suit == "leaf" else (leaf, False)
+                )
+            hand = self.players[override_holder].hand.cards
+            has_special = any(
+                c.is_leaf_over if suit == "leaf" else c.is_acorn_over
+                for c in hand
+            )
+            if not has_special:
+                continue
+            leaf, acorn = decisions[override_holder]
+            decisions[override_holder] = (
+                (True, acorn) if suit == "leaf" else (leaf, True)
+            )
 
-            # Round.process_revealing() aktualizuje player.illuminated_*
-            # a round.leaf_illuminated / acorn_illuminated
-            self.round.process_revealing(player_idx, leaf_yes, acorn_yes)
-
-            # Zaznamenať do AIMemory všetkých AI
+        # Aplikuj všetky rozhodnutia
+        for player_idx, (leaf, acorn) in decisions.items():
+            if not (leaf or acorn):
+                continue
+            self.round.process_revealing(player_idx, leaf, acorn)
             for ai in self.ais.values():
-                ai.record_illumination(player_idx, leaf_yes, acorn_yes)
+                ai.record_illumination(player_idx, leaf, acorn)
 
     def _apply_declarations(self):
         """Aplikuje záväzky zo scenára."""
@@ -189,13 +218,13 @@ class TesterEngine:
         """
         Prehrá históriu zo scenára.
 
-        Pre každý štych:
+        Pre každý štich:
         1. Round už má aktívny current_trick (z finish_preparation alebo
            z predošlého finish_trick)
         2. Pre každú kartu zavolá round.play_card()
         3. Po 4. karte zavolá ai.record_trick() na všetkých AI
         4. Zavolá round.finish_trick() — to spustí start_trick() pre ďalší
-           štych implicitne? NIE — finish_trick len uzatvorí, ďalší trick
+           štich implicitne? NIE — finish_trick len uzatvorí, ďalší trick
            treba spustiť ručne cez start_trick() — POZOR
 
         Pozn: round.finish_trick() **nezavoláva** start_trick(),
@@ -214,8 +243,8 @@ class TesterEngine:
             self._replay_one_trick(th)
 
     def _replay_one_trick(self, th: TrickHistory):
-        """Prehrá jeden štych z histórie."""
-        # Pre každú kartu v štyche v poradí ako sa hralo
+        """Prehrá jeden štich z histórie."""
+        # Pre každú kartu v štiche v poradí ako sa hralo
         for player_idx, card in th.cards:
             success = self.round.play_card(player_idx, card)
             if not success:
@@ -224,7 +253,7 @@ class TesterEngine:
                     f"v histórii (možno karta nie je playable?)"
                 )
 
-        # Štych je kompletný — synchronizuj AI memory
+        # štich je kompletný — synchronizuj AI memory
         played_cards = list(self.round.current_trick.played_cards)
         winner_index = self.round.current_trick.get_winner_index()
         trick_number = self.round.trick_number
@@ -232,7 +261,7 @@ class TesterEngine:
         for ai in self.ais.values():
             ai.record_trick(played_cards, winner_index, trick_number)
 
-        # Uzatvor štych v Round (priradí karty víťazovi, inkrementuje counter)
+        # Uzatvor štich v Round (priradí karty víťazovi, inkrementuje counter)
         self.round.finish_trick()
 
         # Zaznamenaj do completed_tricks pre GUI
@@ -267,9 +296,9 @@ class TesterEngine:
         # Snapshot pre prípadný Back
         self._snapshot_state()
 
-        # Ak predošlý ťah dokončil štych, teraz vyčistíme stôl a spustíme
+        # Ak predošlý ťah dokončil štich, teraz vyčistíme stôl a spustíme
         # nový trick. Toto je tu (a nie v _finalize_trick) preto, aby GUI
-        # videlo kompletný 4-kartový štych medzi dvoma Next stlačeniami.
+        # videlo kompletný 4-kartový štich medzi dvoma Next stlačeniami.
         if self._pending_new_trick:
             self.round.start_trick()
             self._pending_new_trick = False
@@ -347,7 +376,7 @@ class TesterEngine:
         # Snapshot pre prípadný Back
         self._snapshot_state()
 
-        # Ak predošlý ťah dokončil štych, vyčisti stôl
+        # Ak predošlý ťah dokončil štich, vyčisti stôl
         if self._pending_new_trick:
             self.round.start_trick()
             self._pending_new_trick = False
@@ -432,7 +461,7 @@ class TesterEngine:
             self._last_trick_cards = []
 
     def _finalize_trick(self, result: StepResult):
-        """Pomocná metóda — dokončí štych a aktualizuje result."""
+        """Pomocná metóda — dokončí štich a aktualizuje result."""
         played_cards = list(self.round.current_trick.played_cards)
         winner_index = self.round.current_trick.get_winner_index()
         trick_number = self.round.trick_number
@@ -446,7 +475,7 @@ class TesterEngine:
         for ai in self.ais.values():
             ai.record_trick(played_cards, winner_index, trick_number)
 
-        # Round uzatvorí štych — priradí karty víťazovi, inkrementuje counter
+        # Round uzatvorí štich — priradí karty víťazovi, inkrementuje counter
         self.round.finish_trick()
 
         # Zaznamenaj pre GUI
@@ -468,7 +497,7 @@ class TesterEngine:
             result.round_completed = True
         else:
             # Nezačíname nový trick HNEĎ — flag pre next_step() aby GUI
-            # mohlo zobraziť kompletný 4-kartový štych pred vyčistením.
+            # mohlo zobraziť kompletný 4-kartový štich pred vyčistením.
             self._pending_new_trick = True
 
     def play_human_card(self, card: Card) -> StepResult:
@@ -493,7 +522,7 @@ class TesterEngine:
         if self.round is None:
             raise RuntimeError("Engine: round nie je inicializovaný")
 
-        # Aktuálny štych — môže byť None ak práve skončil posledný
+        # Aktuálny štich — môže byť None ak práve skončil posledný
         # alebo ak je _pending_new_trick (4. karta zahraná, čaká sa na Next)
         if self._pending_new_trick:
             current_trick_cards = list(self._last_trick_cards)
@@ -525,8 +554,8 @@ class TesterEngine:
                 for i in range(NUM_PLAYERS)
             },
             illuminations={
-                "leaf": self.scenario.illuminations.get("leaf"),
-                "acorn": self.scenario.illuminations.get("acorn"),
+                "leaf": self.round.illuminated_by["leaf"],
+                "acorn": self.round.illuminated_by["acorn"],
             },
             declarations=dict(self.scenario.declarations),
             is_complete=self._is_complete,

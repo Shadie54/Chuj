@@ -32,7 +32,7 @@ def random_scenario(seed: int | None = None) -> Scenario:
         description=f"Náhodné rozdanie (seed={seed})",
         hands=hands,
         first_player_index=first_player,
-        illuminations={"leaf": None, "acorn": None},
+        illuminations={},  # ← prázdny dict = AI rozhodnú sami
         declarations={i: None for i in range(NUM_PLAYERS)},
         history=[],
         start_after_trick=None,

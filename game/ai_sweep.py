@@ -1437,7 +1437,7 @@ class SweepPipeline:
 
         for suit in l3.recommended_lead_order:
             # POZN: Horníky (special karty) sú zahrnuté ako kandidáti.
-            # V poslednom štyche/štychoch je horník často top alive
+            # V poslednom štiche/štichoch je horník často top alive
             # a jediný spôsob ako ho zachrániť pred discardom.
             my_suit_cards = sorted(
                 [c for c in hand if c.suit == suit],

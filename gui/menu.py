@@ -11,7 +11,7 @@ from config import (
     FONT_SIZE_LARGE, FONT_SIZE_MEDIUM,
     BUTTON_RADIUS,
     CARDS_MEDIUM_PATH, CARD_SIZE_MEDIUM,
-    SUITS, RANKS
+    SUITS, RANKS, get_font
 )
 
 
@@ -21,8 +21,8 @@ class Menu:
         self.clock = pygame.time.Clock()
         self.show_continue = show_continue
 
-        self.font_button = pygame.font.SysFont(None, FONT_SIZE_LARGE)
-        self.font_medium = pygame.font.SysFont(None, FONT_SIZE_MEDIUM)
+        self.font_button = get_font( FONT_SIZE_LARGE)
+        self.font_medium = get_font( FONT_SIZE_MEDIUM)
 
         try:
             self.bg = pygame.image.load("assets/graphics/table.jpg").convert()
@@ -167,7 +167,7 @@ class Menu:
             )
             self.screen.blit(self.logo, logo_rect)
         else:
-            font_title = pygame.font.SysFont(None, 120)
+            font_title = get_font( 120)
             shadow = font_title.render("CHUJ", True, (0, 0, 0))
             title = font_title.render("CHUJ", True, COLOR_GOLD)
             rect = title.get_rect(center=(SCREEN_WIDTH // 2, 150))

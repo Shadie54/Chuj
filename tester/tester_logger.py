@@ -177,7 +177,7 @@ class TesterLogger:
                 return lines
 
             lines.append(
-                f"[SWEEP {entry.player}] štych {entry.trick_number}: "
+                f"[SWEEP {entry.player}] štich {entry.trick_number}: "
                 f"{r.decision.value} | stav={r.state.value} | "
                 f"P(sweep)={r.sweep_probability:.2f} | EV={r.expected_value}"
             )

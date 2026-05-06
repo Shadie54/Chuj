@@ -52,10 +52,12 @@ HEADER_HEIGHT = 60
 
 # Status bar
 STATUS_HEIGHT = 40
+# Setup bar
+SETUP_BAR_HEIGHT = 36
 
 # Stôl (ľavá časť)
 TABLE_X = 0
-TABLE_Y = HEADER_HEIGHT
+TABLE_Y = HEADER_HEIGHT + SETUP_BAR_HEIGHT
 TABLE_WIDTH = 1100
 TABLE_HEIGHT = WIN_HEIGHT - HEADER_HEIGHT - STATUS_HEIGHT
 
@@ -95,7 +97,7 @@ HAND_POS = {
         "vertical"),
 }
 
-# Pozície kariet v štyche (stred)
+# Pozície kariet v štiche (stred)
 TRICK_OFFSET = 80
 TRICK_POS = {
     0: (TABLE_CENTER_X, TABLE_CENTER_Y + TRICK_OFFSET),
@@ -139,7 +141,7 @@ class TesterScreen:
     """
     Pygame GUI pre tester.
 
-    Vykreslí 4 ruky odkryté + aktuálny štych + log panel.
+    Vykreslí 4 ruky odkryté + aktuálny štich + log panel.
     Tlačidlo "Next" odohrá ďalší ťah AI.
     """
 
@@ -250,7 +252,8 @@ class TesterScreen:
                     self._on_random_clicked()
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:
-                    self._handle_click(event.pos)
+                    if not self._handle_setup_bar_click(event.pos):
+                        self._handle_click(event.pos)
 
     def _tick_autoplay(self):
         """Ak je autoplay aktívny a uplynul čas, zahraj ďalší ťah."""
@@ -276,7 +279,7 @@ class TesterScreen:
 
         # Rozhodni či pokračovať
         if self.autoplay_mode == "trick":
-            # Štych mód — končí po dokončení štichu
+            # štich mód — končí po dokončení štichu
             if self.last_step.trick_completed:
                 self.autoplay_mode = None
                 return
@@ -391,7 +394,7 @@ class TesterScreen:
 
         # === Stav kola ===
         lines.append("--- STAV ---")
-        lines.append(f"Štych: {state.trick_number + 1}/8")
+        lines.append(f"štich: {state.trick_number + 1}/8")
         if state.is_complete:
             lines.append("Kolo: DOKONČENÉ")
         else:
@@ -433,8 +436,8 @@ class TesterScreen:
             lines.append(f"  AI_{i} ({len(cards)}): {cards_str}{current_marker}")
         lines.append("")
 
-        # === Aktuálny štych ===
-        lines.append("--- AKTUÁLNY ŠTYCH ---")
+        # === Aktuálny štich ===
+        lines.append("--- AKTUÁLNY štich ---")
         if state.current_trick_cards:
             # Lead suit z prvej karty
             lead_suit = state.current_trick_cards[0][1].suit
@@ -448,7 +451,7 @@ class TesterScreen:
         # === História odohratých štichov ===
         lines.append("--- HISTÓRIA ŠTICHOV (chronologicky) ---")
         if not state.completed_tricks:
-            lines.append("  (žiadne štychy ešte odohrané)")
+            lines.append("  (žiadne štichy ešte odohrané)")
         else:
             for i, th in enumerate(state.completed_tricks, start=1):
                 cards_str = "  ".join(
@@ -470,7 +473,7 @@ class TesterScreen:
             lines.append(f"Zahraná karta: {self.last_step.card_played}")
             if self.last_step.trick_completed:
                 lines.append(
-                    f"Štych dokončený, vyhral AI_{self.last_step.trick_winner} "
+                    f"štich dokončený, vyhral AI_{self.last_step.trick_winner} "
                     f"(+{self.last_step.trick_points}b)"
                 )
             if self.last_step.round_completed:
@@ -541,7 +544,7 @@ class TesterScreen:
             return
         if self.engine.is_complete():
             return
-        # Ak je čakajúci nový štych, spusti ho aby existoval current_trick
+        # Ak je čakajúci nový štich, spusti ho aby existoval current_trick
         self.engine.prepare_for_override()
         self.override_mode = True
 
@@ -614,6 +617,7 @@ class TesterScreen:
         self.screen.fill(T_BG)
 
         self._draw_header()
+        self._draw_setup_bar()
         self._draw_table_bg()
         self._draw_hands()
         self._draw_trick()
@@ -651,10 +655,10 @@ class TesterScreen:
                  (HEADER_HEIGHT - mode_surf.get_height()) // 2),
             )
 
-        # Tlačidlá vpravo (sprava doľava: Quit, Reset, Next, Kolo, Štych | Random)
+        # Tlačidlá vpravo (sprava doľava: Quit, Reset, Next, Kolo, štich | Random)
         self._draw_button(self._random_button_rect(), "Random", T_BUTTON_PRIMARY)
         self._draw_button(self._export_button_rect(), "Export", T_BUTTON_BG)
-        self._draw_button(self._trick_button_rect(), "Štych", T_BUTTON_BG)
+        self._draw_button(self._trick_button_rect(), "štich", T_BUTTON_BG)
         self._draw_button(self._round_button_rect(), "Kolo", T_BUTTON_BG)
         # Override tlačidlo má aktívnu farbu keď je v override móde
         override_color = T_HIGHLIGHT if self.override_mode else T_BUTTON_BG
@@ -667,6 +671,136 @@ class TesterScreen:
         self._draw_button(self._next_button_rect(), "Next →", T_BUTTON_PRIMARY)
         self._draw_button(self._reset_button_rect(), "Reset", T_BUTTON_BG)
         self._draw_button(self._quit_button_rect(), "Quit", T_BUTTON_BG)
+
+    def _draw_setup_bar(self):
+        """Nakreslí setup bar — first player a vysvietenie."""
+        state = self.engine.current_state()
+        bar_y = HEADER_HEIGHT
+        cy = bar_y + SETUP_BAR_HEIGHT // 2
+
+        pygame.draw.rect(
+            self.screen, T_HEADER_BG,
+            (0, bar_y, WIN_WIDTH, SETUP_BAR_HEIGHT)
+        )
+        pygame.draw.line(
+            self.screen, T_BORDER,
+            (0, bar_y + SETUP_BAR_HEIGHT),
+            (WIN_WIDTH, bar_y + SETUP_BAR_HEIGHT), 1
+        )
+
+        x = 15
+
+        # First player
+        lbl = self.font_small.render("First:", True, T_TEXT_DIM)
+        self.screen.blit(lbl, (x, cy - lbl.get_height() // 2))
+        x += lbl.get_width() + 6
+        for i in range(NUM_PLAYERS):
+            active = self.engine.scenario.first_player_index == i
+            r = pygame.Rect(x, bar_y + 4, 42, SETUP_BAR_HEIGHT - 8)
+            self._draw_button(r, f"AI_{i}", T_HIGHLIGHT if active else T_BUTTON_BG)
+            x += 46
+        x += 16
+
+        # Leaf
+        lbl = self.font_small.render("Q♠:", True, T_TEXT_DIM)
+        self.screen.blit(lbl, (x, cy - lbl.get_height() // 2))
+        x += lbl.get_width() + 6
+        current_leaf = state.illuminations.get("leaf")
+        # Leaf
+        for val in [None, 0, 1, 2, 3]:
+            active = current_leaf == val
+            # Ak val je hráč — skontroluj či má Q♠
+            if val is not None:
+                hand = self.engine.players[val].hand.cards
+                has_it = any(c.is_leaf_over for c in hand)
+                color = T_HIGHLIGHT if active else (T_BUTTON_BG if has_it else T_TEXT_DIM)
+            else:
+                color = T_HIGHLIGHT if active else T_BUTTON_BG
+            label = "–" if val is None else f"AI_{val}"
+            r = pygame.Rect(x, bar_y + 4, 42, SETUP_BAR_HEIGHT - 8)
+            self._draw_button(r, label, color)
+            x += 46
+        x += 16
+
+        # Acorn
+        lbl = self.font_small.render("Q♣:", True, T_TEXT_DIM)
+        self.screen.blit(lbl, (x, cy - lbl.get_height() // 2))
+        x += lbl.get_width() + 6
+        current_acorn = state.illuminations.get("acorn")
+        for val in [None, 0, 1, 2, 3]:
+            active = current_acorn == val  # ← bolo current_leaf
+            if val is not None:
+                hand = self.engine.players[val].hand.cards
+                has_it = any(c.is_acorn_over for c in hand)  # ← bolo is_leaf_over
+                color = T_HIGHLIGHT if active else (T_BUTTON_BG if has_it else T_TEXT_DIM)
+            else:
+                color = T_HIGHLIGHT if active else T_BUTTON_BG
+            label = "–" if val is None else f"AI_{val}"
+            r = pygame.Rect(x, bar_y + 4, 42, SETUP_BAR_HEIGHT - 8)
+            self._draw_button(r, label, color)
+            x += 46
+
+    def _handle_setup_bar_click(self, pos) -> bool:
+        """
+        Spracuje klik na setup bar. Zmena = reset so zmeneným scenárom.
+        Vracia True ak klik patril setup baru.
+        """
+        bar_y = HEADER_HEIGHT
+        if not (bar_y <= pos[1] <= bar_y + SETUP_BAR_HEIGHT):
+            return False
+
+        import copy
+        x = 15
+
+        # First player
+        lbl_w = self.font_small.size("First:")[0]
+        x += lbl_w + 6
+        for i in range(NUM_PLAYERS):
+            r = pygame.Rect(x, bar_y + 4, 42, SETUP_BAR_HEIGHT - 8)
+            if r.collidepoint(pos):
+                new_sc = copy.copy(self.engine.scenario)
+                new_sc.first_player_index = i
+                self.engine = TesterEngine(new_sc)
+                return True
+            x += 46
+        x += 16
+
+        # Leaf
+        lbl_w = self.font_small.size("Q♠:")[0]
+        x += lbl_w + 6
+        for val in [None, 0, 1, 2, 3]:
+            r = pygame.Rect(x, bar_y + 4, 42, SETUP_BAR_HEIGHT - 8)
+            if r.collidepoint(pos):
+                # Ignoruj klik ak hráč nemá Q♠
+                if val is not None:
+                    hand = self.engine.players[val].hand.cards
+                    if not any(c.is_leaf_over for c in hand):
+                        return True  # klik absorbujeme ale nič nerobíme
+                new_sc = copy.copy(self.engine.scenario)
+                new_sc.illuminations = {**new_sc.illuminations, "leaf": val}
+                self.engine = TesterEngine(new_sc)
+                return True
+            x += 46
+        x += 16
+
+        # Acorn
+        lbl_w = self.font_small.size("Q♣:")[0]
+        x += lbl_w + 6
+        for val in [None, 0, 1, 2, 3]:
+            r = pygame.Rect(x, bar_y + 4, 42, SETUP_BAR_HEIGHT - 8)
+            if r.collidepoint(pos):
+                # Ignoruj klik ak hráč nemá Q♣
+                if val is not None:
+                    hand = self.engine.players[val].hand.cards
+                    if not any(c.is_acorn_over for c in hand):
+                        return True  # klik absorbujeme ale nič nerobíme
+                new_sc = copy.copy(self.engine.scenario)
+                new_sc.illuminations = {**new_sc.illuminations, "acorn": val}
+                self.engine = TesterEngine(new_sc)
+                return True
+            x += 46
+
+        return False
 
     @staticmethod
     def _next_button_rect() -> pygame.Rect:
@@ -736,8 +870,8 @@ class TesterScreen:
         # Vertikálny separator medzi stolom a logom
         pygame.draw.line(
             self.screen, T_BORDER,
-            (LOG_X, HEADER_HEIGHT),
-            (LOG_X, HEADER_HEIGHT + TABLE_HEIGHT),
+            (LOG_X, TABLE_Y),
+            (LOG_X, TABLE_Y + TABLE_HEIGHT),
             1,
         )
 
@@ -822,7 +956,7 @@ class TesterScreen:
         self.screen.blit(text, text.get_rect(center=rect.center))
 
     # ------------------------------------------------------------------
-    # Aktuálny štych
+    # Aktuálny štich
     # ------------------------------------------------------------------
 
     def _draw_trick(self):
@@ -908,7 +1042,7 @@ class TesterScreen:
 
             if self.last_step.trick_completed:
                 trick_text = (
-                    f"→ Štych vyhral AI_{self.last_step.trick_winner} "
+                    f"→ štich vyhral AI_{self.last_step.trick_winner} "
                     f"(+{self.last_step.trick_points}b)"
                 )
                 trick_surf = self.font_medium.render(
@@ -1027,7 +1161,7 @@ class TesterScreen:
             status_text = "Kolo dokončené"
         else:
             status_text = (
-                f"Štych {state.trick_number + 1}/8  |  "
+                f"štich {state.trick_number + 1}/8  |  "
                 f"Na ťahu: AI_{state.current_player_index}"
             )
 

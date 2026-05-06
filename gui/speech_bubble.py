@@ -6,15 +6,15 @@ from config import (
     TABLE_CENTER_X,
     COLOR_WHITE, COLOR_GOLD, COLOR_YELLOW, COLOR_GREEN, COLOR_RED,
     FONT_SIZE_LARGE, FONT_SIZE_MEDIUM,
-    SUIT_ICONS_PATH, SCREEN_WIDTH, SCREEN_HEIGHT
+    SUIT_ICONS_PATH, SCREEN_WIDTH, SCREEN_HEIGHT, get_font
 )
 
 
 class SpeechBubble:
     def __init__(self, screen: pygame.Surface):
         self.screen = screen
-        self.font_large = pygame.font.SysFont(None, FONT_SIZE_LARGE +16)
-        self.font_medium = pygame.font.SysFont(None, FONT_SIZE_MEDIUM +8)
+        self.font_large = get_font( FONT_SIZE_LARGE +16)
+        self.font_medium = get_font( FONT_SIZE_MEDIUM +8)
         self._icon_cache: dict[str, pygame.Surface] = {}
 
         # Aktívne bubliny [{player_index, text, suit, timer, color}]

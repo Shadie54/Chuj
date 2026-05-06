@@ -17,6 +17,7 @@ class SuitProfile:
     my_cards: list[Card]              # moje karty v tejto farbe
     trap_cards: list[Card]            # karty bez coverage (zoberú štich)
     escape_cards: list[Card]          # karty s coverage (môžem podliezť)
+    safe_cards: list[Card]            # garantovane bezpečné — všetci vonku sú vyšší
     coverage: list[Card]              # vyššie karty vonku (+ current trick)
     has_special: bool                 # mám horníka tejto farby
     special_reserves: int             # počet kariet okrem horníka (rezervy)
@@ -149,6 +150,7 @@ class AIMemory:
                 my_cards=[],
                 trap_cards=[],
                 escape_cards=[],
+                safe_cards=[],
                 coverage=[],
                 has_special=False,
                 special_reserves=0
@@ -168,6 +170,15 @@ class AIMemory:
             else:
                 trap_cards.append(card)     # nikto vyšší → zoberiem štich
 
+        # Safe cards — všetky karty v coverage sú vyššie než moja karta
+        safe_cards = [
+            c for c in my_cards
+            if coverage and all(
+                opponent.rank_order > c.rank_order
+                for opponent in coverage
+            )
+        ]
+
         has_special = any(c.is_special for c in my_cards)
         special_reserves = len(my_cards) - (1 if has_special else 0)
 
@@ -178,6 +189,7 @@ class AIMemory:
             my_cards=my_cards,
             trap_cards=trap_cards,
             escape_cards=escape_cards,
+            safe_cards=safe_cards,
             coverage=coverage,
             has_special=has_special,
             special_reserves=special_reserves

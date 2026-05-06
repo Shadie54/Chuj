@@ -5,7 +5,7 @@ Scenár: random_seed_54418
 Popis: Náhodné rozdanie (seed=54418)
 
 --- STAV ---
-Štych: 7/8
+štich: 7/8
 Na ťahu: AI_2
 Override mode: nie
 First player kola: AI_2
@@ -22,7 +22,7 @@ First player kola: AI_2
   AI_2 (2): 7♥ A♣ ← NA ŤAHU
   AI_3 (2): 8♠ J♣
 
---- AKTUÁLNY ŠTYCH ---
+--- AKTUÁLNY štich ---
 Lead suit: heart
   AI_1: 9♥
 
@@ -41,7 +41,7 @@ Zahraná karta: 9♥
 --- REASONING CHAIN POSLEDNÉHO ŤAHU ---
   [AI_1] SWEEP_GATE1_DEBUG: hand_penalty=2, remaining=1, my_taken=7, already_taken=0
   [AI_1] SWEEP_STATE: COMMITTED_FULL → IDLE
-  [SWEEP AI_1] štych 7: NIE | stav=IDLE | P(sweep)=0.00 | EV=0.0
+  [SWEEP AI_1] štich 7: NIE | stav=IDLE | P(sweep)=0.00 | EV=0.0
     → L1: hearts-driven
     → L2: strength=STRONG, profile=HORNIK_BAIT
     → L3: passed=True, lead_order=['heart', 'bell', 'leaf', 'acorn'], critical_events=0

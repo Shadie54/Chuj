@@ -5,16 +5,16 @@ from config import (
     COLOR_WHITE, COLOR_GRAY, COLOR_GOLD,
     COLOR_GREEN, COLOR_RED, COLOR_YELLOW,
     ROUND_STATUS_X, ROUND_STATUS_Y, ROUND_STATUS_W, ROUND_STATUS_H,
-    NO_PENALTY_STREAK
+    NO_PENALTY_STREAK, get_font
 )
 
 
 class RoundStatus:
     def __init__(self, screen: pygame.Surface):
         self.screen = screen
-        self.font_small = pygame.font.SysFont(None, 24)  # bolo 20
-        self.font_medium = pygame.font.SysFont(None, 30)  # bolo 26
-        self.font_large = pygame.font.SysFont(None, 38)  # bolo 32
+        self.font_small = get_font( 24)  # bolo 20
+        self.font_medium = get_font( 30)  # bolo 26
+        self.font_large = get_font( 38)  # bolo 32
 
         # Rozmery
         self.x = ROUND_STATUS_X

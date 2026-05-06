@@ -6,7 +6,7 @@ from config import (
     SCREEN_WIDTH, SCREEN_HEIGHT,
     COLOR_WHITE, COLOR_GOLD, COLOR_GRAY, COLOR_RED, COLOR_GREEN,
     COLOR_BUTTON_SECONDARY, CARDS_MEDIUM_PATH, CARD_SIZE_MEDIUM,
-    COLOR_PENALTY, COLOR_BONUS, COLOR_ILLUMINATED
+    COLOR_PENALTY, COLOR_BONUS, COLOR_ILLUMINATED, get_font, SUIT_ICONS_PATH
 )
 
 
@@ -14,9 +14,9 @@ class InfoOverlay:
     def __init__(self, screen: pygame.Surface):
         self.screen = screen
         self.visible = False
-        self.font_small  = pygame.font.SysFont(None, 30)
-        self.font_medium = pygame.font.SysFont(None, 42)
-        self.font_large  = pygame.font.SysFont(None, 60)
+        self.font_small  = get_font( 30)
+        self.font_medium = get_font( 42)
+        self.font_large  = get_font( 60)
         self._card_cache: dict[str, pygame.Surface] = {}
 
         self.btn_close = pygame.Rect(SCREEN_WIDTH - 60, 20, 40, 40)
@@ -29,7 +29,9 @@ class InfoOverlay:
         self.tab_pravidla  = pygame.Rect(cx + 10,         75, tab_w, tab_h)
 
         self.content_y = 135
-
+        # ikonky farieb
+        self._suit_icons: dict[str, pygame.Surface] = {}
+        self._load_suit_icons()
     # ------------------------------------------------------------------
     # Viditeľnosť
     # ------------------------------------------------------------------
@@ -84,7 +86,7 @@ class InfoOverlay:
                          self.btn_close, border_radius=6)
         pygame.draw.rect(self.screen, COLOR_GOLD,
                          self.btn_close, width=2, border_radius=6)
-        x = self.font_medium.render("✕", True, COLOR_WHITE)
+        x = self.font_medium.render("X", True, COLOR_WHITE)
         self.screen.blit(x, x.get_rect(center=self.btn_close.center))
 
         self._draw_tabs()
@@ -200,13 +202,14 @@ class InfoOverlay:
         y += 38
 
         bonuses = [
-            (COLOR_BONUS,   "−10b",  "Chytím všetky trestné karty v kole  (Sweep)"),
-            (COLOR_BONUS,   "−10b",  "5 kôl za sebou bez trestného bodu"),
-            (COLOR_BONUS,   "−10b",  "Záväzok splnený: Nechytím nič"),
-            (COLOR_BONUS,   "−20b",  "Záväzok splnený: Beriem všetko"),
-            (COLOR_PENALTY, "+10b",  "Záväzok nesplnený → ostatní dostanú −10b"),
-            (COLOR_GRAY,    "Reset", "Presne 100b → skóre sa resetuje na 90b"),
-            (COLOR_GRAY,    "90b+",  "Nad 90b sa horníci počítajú len ako 1b"),
+            (COLOR_BONUS, "−10b", "Chytím všetky trestné karty v kole  (Sweep)"),
+            (COLOR_BONUS, "−10b", "5 kôl za sebou bez trestného bodu"),
+            (COLOR_BONUS, "−10b", "Záväzok splnený: Nechytím nič (0 štichov)"),
+            (COLOR_BONUS, "−20b", "Záväzok splnený: Beriem všetko (8 štichov)"),
+            (COLOR_PENALTY, "+20b", "Záväzok nesplnený: Beriem všetko → hráč +20b, ostatní nič"),
+            (COLOR_PENALTY, "−10b", "Záväzok nesplnený: Nechytím nič → ostatní −10b, hráč nič"),
+            (COLOR_GRAY, "Reset", "Presne 100b → skóre sa resetuje na 90b"),
+            (COLOR_GRAY, "90b+", "Nad 90b sa (Q♠) a (Q♣) nepočítajú — žiadne trestné body"),
         ]
 
         col1_x = SCREEN_WIDTH // 2 - 500
@@ -286,14 +289,16 @@ class InfoOverlay:
         cy += 34
         cy = self._text_block(col2_x, cy, col_w, [
             "Beriem všetko — hráč musí vyhrať všetkých 8 štichov.",
-            "  → Splnený: −20b pre hráča.",
-            "  → Nesplnený: +20b pre hráča, ostatní nič.",
+            "  → Splnený: −20b pre hráča, ostatní 0b.",
+            "  → Nesplnený: +20b pre hráča, ostatní 0b.",
             "",
-            "Nechytím nič — hráč nesmie chytiť žiadny trestný bod.",
-            "  → Splnený: −10b pre hráča.",
-            "  → Nesplnený: ostatní dostanú −10b.",
+            "Nechytím nič — hráč nesmie chytiť žiadny štich.",
+            "  → Splnený: −10b pre hráča, ostatní 0b.",
+            "  → Nesplnený: ostatní −10b, hráč 0b.",
             "",
-            "Záväzok musí vyhlásiť hráč ktorý začína štich.",
+            "Po vyhlásení záväzku začína hru hráč, ktorý ju vyhlásil.",
+            "Záväzok Beriem všetko má prednosť pred záväzkom Nechytím nič",
+
         ])
         cy += 16
 
@@ -334,7 +339,7 @@ class InfoOverlay:
             if not line:
                 y += 10
                 continue
-            surf = self.font_small.render(line, True, COLOR_WHITE)
+            surf = self._render_with_icons(line, self.font_small, COLOR_WHITE)
             self.screen.blit(surf, (x, y))
             y += 24
         return y
@@ -367,6 +372,67 @@ class InfoOverlay:
             except FileNotFoundError:
                 self._card_cache[key] = None
         return self._card_cache[key]
+
+    def _load_suit_icons(self):
+        """Načíta malé suit ikony a škáluje ich na výšku textu."""
+        from config import SUIT_ICONS_PATH  # treba pridať do config.py
+        icon_h = 22  # výška ikony = výška riadku font_small
+        suits = {
+            "♠": "leaf",
+            "♣": "acorn",
+            "♥": "heart",
+            "●": "bell",
+        }
+        for symbol, suit in suits.items():
+            path = os.path.join(SUIT_ICONS_PATH, f"{suit}-icon@small.png")
+            try:
+                img = pygame.image.load(path).convert_alpha()
+                # Zachovaj pomer strán, výška = icon_h
+                w, h = img.get_size()
+                new_w = int(w * icon_h / h)
+                self._suit_icons[symbol] = pygame.transform.scale(
+                    img, (new_w, icon_h)
+                )
+            except FileNotFoundError:
+                self._suit_icons[symbol] = None
+
+    def _render_with_icons(self, text: str, font: pygame.font.Font,
+                           color: tuple) -> pygame.Surface:
+        """
+        Vykreslí text kde suit symboly sú nahradené ikonkami.
+        Vracia Surface so zloženým výsledkom.
+        """
+        import re
+        # Rozdeľ text na časti — text a symboly
+        parts = re.split(r'([♠♣♥●])', text)
+
+        surfaces = []
+        total_w = 0
+        max_h = font.get_height()
+
+        for part in parts:
+            if part in self._suit_icons and self._suit_icons[part]:
+                surf = self._suit_icons[part]
+            elif part:
+                surf = font.render(part, True, color)
+            else:
+                continue
+            surfaces.append(surf)
+            total_w += surf.get_width()
+            max_h = max(max_h, surf.get_height())
+
+        if not surfaces:
+            return font.render(text, True, color)
+
+        result = pygame.Surface((total_w, max_h), pygame.SRCALPHA)
+        x = 0
+        for surf in surfaces:
+            # Vertikálne centrovanie
+            y = (max_h - surf.get_height()) // 2
+            result.blit(surf, (x, y))
+            x += surf.get_width()
+
+        return result
 
     def __repr__(self) -> str:
         return f"InfoOverlay(visible={self.visible})"

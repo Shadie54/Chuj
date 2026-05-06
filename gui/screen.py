@@ -22,7 +22,7 @@ from config import (
     BUTTON_INFO_X, BUTTON_INFO_Y, BUTTON_INFO_WIDTH, BUTTON_INFO_HEIGHT,
     BUTTON_MENU_X, BUTTON_MENU_Y, BUTTON_MENU_WIDTH, BUTTON_MENU_HEIGHT,
     COLOR_BUTTON_PRIMARY, COLOR_BUTTON_SECONDARY,
-    NUM_PLAYERS
+    NUM_PLAYERS, get_font
 )
 
 
@@ -55,9 +55,9 @@ class Screen:
         self.speech_bubble = SpeechBubble(self.screen)
         self.info_overlay = InfoOverlay(self.screen)
 
-        self.font_small = pygame.font.SysFont(None, FONT_SIZE_SMALL)
-        self.font_medium = pygame.font.SysFont(None, FONT_SIZE_MEDIUM)
-        self.font_large = pygame.font.SysFont(None, FONT_SIZE_LARGE)
+        self.font_small = get_font( FONT_SIZE_SMALL)
+        self.font_medium = get_font( FONT_SIZE_MEDIUM)
+        self.font_large = get_font( FONT_SIZE_LARGE)
 
         # štich stav
         self.trick_waiting: bool = False
@@ -102,7 +102,7 @@ class Screen:
         self.round_status = RoundStatus(self.screen)
 
         self.sort_ascending = False
-
+        self.declaration_failed_timer: int = 0
     # ------------------------------------------------------------------
     # Hlavná slučka
     # ------------------------------------------------------------------
@@ -612,8 +612,43 @@ class Screen:
 
     def _process_waiting_trick(self):
         """Spracuje štich po uplynutí zobrazovacieho času."""
+
+        # Declaration failed timer — ÚPLNE PRVÝ check
+        if self.declaration_failed_timer > 0:
+            if pygame.time.get_ticks() >= self.declaration_failed_timer:
+                self.declaration_failed_timer = 0
+
+                round_points_snapshot = {
+                    p.name: p.round_points for p in self.game_state.players
+                }
+                self.game_state.finish_round()
+                self.round_scores_history.append([
+                    p.total_score for p in self.game_state.players
+                ])
+                sweep_player = self.game_state.last_sweep_player
+                results = {}
+                for i, player in enumerate(self.game_state.players):
+                    results[player.name] = {
+                        "round_points": round_points_snapshot[player.name],
+                        "total_score": player.total_score,
+                        "bullet": player.bullets > 0,
+                        "sweep": sweep_player == i
+                    }
+                self.game_state.logger.log_round_result(results)
+                self.game_state.logger.save_round()
+
+                if self.game_state.phase == "game_over":
+                    self._show_message(
+                        f"{self.game_state.loser.name} prehral!", 5000
+                    )
+                    self.game_over_timer = pygame.time.get_ticks() + 3000
+                else:
+                    self.next_round_timer = pygame.time.get_ticks() + 2500
+            return  # čakáme alebo sme práve spustili nové kolo
+
         if not self.trick_waiting:
             return
+
 
         current_round = self.game_state.current_round
         if not current_round or not current_round.current_trick:
@@ -668,6 +703,22 @@ class Screen:
         winner_index = current_round.finish_trick()
         winner_name = self.game_state.players[winner_index].name
         self._show_message(f"{winner_name} vyhral štich!")
+
+        failed = current_round.check_declaration_failed()
+        print(
+            f"[DECL] type={current_round.declaration_type}, player={current_round.declaration_player}, failed={failed}, winner={winner_index}")
+
+        # Skontroluj zlyhanie záväzku
+        if current_round.check_declaration_failed():
+            decl_idx = current_round.declaration_player
+            if current_round.declaration_type == "none":
+                msg = "Nevyšlo! Chytil som trestný bod."
+            else:
+                msg = "Nevyšlo! Niekto mi zobral štich."
+            self.speech_bubble.show_bid(decl_idx, msg)
+            self.declaration_failed_timer = pygame.time.get_ticks() + 2000
+            current_round.phase = "scoring"  # ← zastav ďalšie štichy
+            return
 
         if current_round.phase == "scoring":
 
@@ -775,7 +826,7 @@ class Screen:
 
     def _draw_player_labels(self):
         """Nakreslí menovky hráčov."""
-        font = pygame.font.SysFont(None, 28)
+        font = get_font( 28)
 
         label_positions = {
             0: (TABLE_CENTER_X, SCREEN_HEIGHT - 30),
@@ -1069,6 +1120,29 @@ class Screen:
         self.message = text
         self.message_timer = pygame.time.get_ticks() + duration_ms
 
+    def _handle_declaration_failed(self):
+        """
+        Záväzok zlyhal — zobraz hlásenie a nastav timer na ukončenie kola.
+        """
+        current_round = self.game_state.current_round
+
+        if current_round.declaration_type == "none":
+            msg = "Nevyšlo! Chytil som trestný bod."
+        else:
+            msg = "Nevyšlo! Niekto mi zobral štich."
+        self.speech_bubble.show_bid(current_round.declaration_player, msg)
+
+        # Timer — po 2s ukončí kolo
+        self.declaration_failed_timer = pygame.time.get_ticks() + 2000
+
+        # Reset trick stavu
+        self.trick_waiting = False
+        self.trick_display_timer = 0
+        self._trick_anim_started = False
+        self.trick_animation.done = True
+        self.trick_animation.cards_in_flight = []
+        self.waiting_for_ai = False
+
     def _reset_trick_state(self):
         """Resetuje stav štichu pri odchode."""
         current_round = self.game_state.current_round
@@ -1084,6 +1158,12 @@ class Screen:
                         current_round.trick_number
                     )
             current_round.finish_trick()
+
+            # Skontroluj zlyhanie záväzku
+            if current_round.check_declaration_failed():
+                self._handle_declaration_failed()
+                return
+
             if current_round.phase == "scoring":
                 self.game_state.finish_round()
 

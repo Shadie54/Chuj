@@ -10,16 +10,16 @@ from config import (
      COLOR_GRAY, COLOR_GOLD,
     COLOR_PENALTY, COLOR_ILLUMINATED,
     WINNING_SCORE, SUIT_ICONS_PATH,
-    HIGH_SCORE_THRESHOLD
+    HIGH_SCORE_THRESHOLD, get_font
 )
 
 
 class Scoreboard:
     def __init__(self, screen: pygame.Surface):
         self.screen = screen
-        self.font_small = pygame.font.SysFont(None, 20)
-        self.font_medium = pygame.font.SysFont(None, 26)
-        self.font_large = pygame.font.SysFont(None, 34)
+        self.font_small = get_font( 20)
+        self.font_medium = get_font( 26)
+        self.font_large = get_font( 34)
         self._icon_cache: dict[str, pygame.Surface] = {}
 
         # Rozmery — horizontálny layout

@@ -8,7 +8,7 @@ from config import (
     CARDS_MEDIUM_PATH, CARDS_SMALL_PATH, CARD_BACK_IMAGE,
     CARD_SIZE_MEDIUM, CARD_SIZE_SMALL,
     COLOR_GREEN, COLOR_WHITE,
-    HAND_CONFIGS, TRICK_START_POSITIONS
+    HAND_CONFIGS, TRICK_START_POSITIONS, get_font
 )
 
 
@@ -36,7 +36,7 @@ class CardRenderer:
                 # Ak obrázok chýba — nakreslíme placeholder
                 surf = pygame.Surface(size, pygame.SRCALPHA)
                 surf.fill((200, 200, 200))
-                font = pygame.font.SysFont(None, 18)
+                font = get_font( 18)
                 text = font.render(filename[:10], True, (0, 0, 0))
                 surf.blit(text, (5, size[1] // 2 - 10))
                 self._cache[key] = surf
@@ -156,7 +156,7 @@ class CardRenderer:
 
             # V debug móde zobraz index hráča
             if self.debug:
-                font = pygame.font.SysFont(None, 20)
+                font = get_font( 20)
                 label = font.render(str(player_index), True, COLOR_WHITE)
                 self.screen.blit(label, (rect.x, rect.y - 15))
 

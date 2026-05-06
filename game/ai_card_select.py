@@ -83,6 +83,12 @@ class CardSelector:
                 if current_best and c.rank_order < current_best.rank_order
             ]
             if underplay:
+                # Horník má vždy prioritu — zbavíme sa bomby
+                specials_under = [c for c in underplay if c.is_special]
+                if specials_under:
+                    card = specials_under[0]
+                    self._log(Strategy.DUMP_SPECIAL, f"underplay horník: {card}")
+                    return card
                 card = max(underplay, key=lambda c: c.rank_order)
                 self._log(Strategy.UNDERPLAY, f"podliezam: {card}")
                 return card
@@ -145,23 +151,63 @@ class CardSelector:
 
     def _void_discard(self, playable: list[Card],
                       trick: Trick) -> Card:
+        """
+        Void discard — nemám lead suit, hádžem nebezpečnú kartu.
+
+        Priorita:
+        1. Horník (najviac bodov)
+        2. Trap A/K vo farbe živého horníka
+        3. Hearts (najvyššia)
+        4. Iné trap karty (najvyššia)
+        5. Nízka karta (najnižšia)
+        """
         players_after = self._get_players_after_me(trick)
         takes = self.memory.will_someone_else_take(
             trick.played_cards, players_after
         )
 
+        # 1. Horník — vyber toho s najviac bodmi
         specials = [c for c in playable if c.is_special]
         if specials:
-            card = max(specials, key=lambda c: 8 if c.is_leaf_over else 4)
+            def special_points(c: Card) -> int:
+                suit = "leaf" if c.is_leaf_over else "acorn"
+                illuminated = (
+                        self.memory.illuminated_by[suit] is not None
+                )
+                if c.is_leaf_over:
+                    return 16 if illuminated else 8
+                else:
+                    return 8 if illuminated else 4
+
+            card = max(specials, key=special_points)
             self._log(Strategy.DUMP_SPECIAL, f"{takes}: {card}")
             return card
 
+        # 2. Trap A/K vo farbe živého horníka
+        danger_trap = []
+        for suit in ("leaf", "acorn"):
+            if self.memory.is_special_gone(suit):
+                continue  # horník padol, farba nie je nebezpečná
+            danger_trap += [
+                c for c in playable
+                if c.suit == suit
+                   and not c.is_special
+                   and c.rank in ("ace", "king")
+                   and self._is_trap(c)
+            ]
+        if danger_trap:
+            card = max(danger_trap, key=lambda c: c.rank_order)
+            self._log(Strategy.DUMP_DANGEROUS, f"trap A/K živý horník: {card}")
+            return card
+
+        # 3. Hearts (najvyššia)
         hearts = [c for c in playable if c.suit == "heart"]
         if hearts:
             card = max(hearts, key=lambda c: c.rank_order)
             self._log(Strategy.DUMP_HEART, f"{takes}: {card}")
             return card
 
+        # 4. Iné trap karty (najvyššia)
         trap_playable = [
             c for c in playable
             if not c.is_special
@@ -173,8 +219,20 @@ class CardSelector:
             self._log(Strategy.DUMP_DANGEROUS, f"trap: {card}")
             return card
 
-        card = min(playable, key=lambda c: c.rank_order)
-        self._log(Strategy.WAIT, f"fallback: {card}")
+        # 5. Fallback — najvyššia bell, inak najvyššia non-special non-heart
+        bell_cards = [c for c in playable if c.suit == "bell"]
+        if bell_cards:
+            card = max(bell_cards, key=lambda c: c.rank_order)
+            self._log(Strategy.WAIT, f"fallback bell: {card}")
+            return card
+
+        non_special_non_heart = [
+            c for c in playable
+            if not c.is_special and c.suit != "heart"
+        ]
+        pool = non_special_non_heart if non_special_non_heart else playable
+        card = max(pool, key=lambda c: c.rank_order)
+        self._log(Strategy.WAIT, f"fallback high: {card}")
         return card
 
     def _open_play(self, playable: list[Card],
@@ -225,13 +283,25 @@ class CardSelector:
                 return card
 
         if not is_leader:
-            lead_cards = [c for c in playable if c.suit == trick.lead_suit]
-            non_special_lead = [c for c in lead_cards if not c.is_special]
-            pool = non_special_lead if non_special_lead else lead_cards
-            if pool:
-                card = min(pool, key=lambda c: c.rank_order)
-                self._log(Strategy.WAIT, f"wait: {card}")
-                return card
+            if not is_leader:
+                lead_cards = [c for c in playable if c.suit == trick.lead_suit]
+                non_special_lead = [c for c in lead_cards if not c.is_special]
+                pool = non_special_lead if non_special_lead else lead_cards
+                if pool:
+                    if not self._trick_has_penalty(trick):
+                        # Bezbodový štich — zhoď strednú kartu
+                        traps = [c for c in pool if self._is_trap(c)]
+                        if traps:
+                            card = min(traps, key=lambda c: c.rank_order)
+                            self._log(Strategy.WAIT, f"dump trap: {card}")
+                            return card
+                        card = max(pool, key=lambda c: c.rank_order)
+                        self._log(Strategy.WAIT, f"dump high: {card}")
+                        return card
+                    else:
+                        card = min(pool, key=lambda c: c.rank_order)
+                        self._log(Strategy.WAIT, f"wait: {card}")
+                        return card
 
         non_special = [
             c for c in playable
@@ -320,3 +390,9 @@ class CardSelector:
             i for i in order
             if i not in played_indices and i != self.player.index
         ]
+
+    @staticmethod
+    def _trick_has_penalty(trick: Trick) -> bool:
+        return trick.total_base_points > 0 or any(
+            c.is_special for _, c in trick.played_cards
+        )
