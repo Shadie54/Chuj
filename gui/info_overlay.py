@@ -14,9 +14,9 @@ class InfoOverlay:
     def __init__(self, screen: pygame.Surface):
         self.screen = screen
         self.visible = False
-        self.font_small  = get_font( 30)
-        self.font_medium = get_font( 42)
-        self.font_large  = get_font( 60)
+        self.font_small = get_font(22)
+        self.font_medium = get_font(30)
+        self.font_large = get_font(48)
         self._card_cache: dict[str, pygame.Surface] = {}
 
         self.btn_close = pygame.Rect(SCREEN_WIDTH - 60, 20, 40, 40)
@@ -119,203 +119,232 @@ class InfoOverlay:
     # ------------------------------------------------------------------
 
     def _draw_scoring(self):
-        y = self.content_y + 5
+        y = self.content_y + 10
 
-        # ── Nadpis sekcie ──────────────────────────────────────────────
-        self._section_title("HODNOTY KARIET", SCREEN_WIDTH // 2, y, center=True)
-        y += 38
+        def draw_section(x, cy, title, content_fn, col_w):
+            """Dynamická sekcia — content_fn(x, y, col_w) -> výška obsahu."""
+            # Zisti výšku obsahu
+            content_h = content_fn(x, cy, col_w, measure_only=True)
+            box_h = 36 + content_h + 20
 
-        # ── Červené karty (8 kusov) ────────────────────────────────────
-        ranks = ["ace", "king", "over", "under", "ten", "nine", "eight", "seven"]
-        card_w, card_h = 105, 170
-        gap = 14
-        total_w = len(ranks) * (card_w + gap) - gap
-        x0 = SCREEN_WIDTH // 2 - total_w // 2
+            box = pygame.Surface((col_w, box_h), pygame.SRCALPHA)
+            box.fill((20, 12, 5, 160))
+            self.screen.blit(box, (x, cy))
+            pygame.draw.rect(self.screen, COLOR_GOLD, (x, cy, 3, box_h))
 
-        for i, rank in enumerate(ranks):
-            cx = x0 + i * (card_w + gap)
-            img = self._load_card("heart", rank)
-            if img:
-                self.screen.blit(pygame.transform.scale(img, (card_w, card_h)),
-                                 (cx, y))
-            # Body
-            pts = self.font_medium.render("1b", True, COLOR_PENALTY)
-            self.screen.blit(pts, pts.get_rect(centerx=cx + card_w // 2,
-                                               top=y + card_h + 4))
+            title_surf = self.font_medium.render(title, True, COLOR_GOLD)
+            self.screen.blit(title_surf, (x + 14, cy + 10))
+            line_y = cy + 10 + title_surf.get_height() + 4
+            pygame.draw.line(self.screen, (80, 60, 20),
+                             (x + 14, line_y), (x + col_w - 14, line_y), 1)
 
-        y += card_h + 38
+            content_fn(x, line_y + 10, col_w, measure_only=False)
+            return cy + box_h + 14
 
-        # ── Oddeľovač ─────────────────────────────────────────────────
-        pygame.draw.line(self.screen, COLOR_GRAY,
-                         (100, y), (SCREEN_WIDTH - 100, y), 1)
-        y += 16
+        full_w = SCREEN_WIDTH - 120
+        col_x = 60
+        col_w2 = (full_w - 40) // 2
 
-        # ── Horníci ───────────────────────────────────────────────────
-        self._section_title("HORNÍCI", SCREEN_WIDTH // 2, y, center=True)
-        y += 38
+        # ── SEKCIA 1: HODNOTY KARIET (plná šírka) ──────────────────────────
+        def content_karty(x, y, w, measure_only):
+            ranks = ["ace", "king", "over", "under", "ten", "nine", "eight", "seven"]
+            card_w, card_h = 95, 153
+            gap = 12
+            total_w = len(ranks) * (card_w + gap) - gap
+            x0 = SCREEN_WIDTH // 2 - total_w // 2
+            if not measure_only:
+                for i, rank in enumerate(ranks):
+                    cx = x0 + i * (card_w + gap)
+                    img = self._load_card("heart", rank)
+                    if img:
+                        self.screen.blit(
+                            pygame.transform.scale(img, (card_w, card_h)), (cx, y))
+                    pts = self.font_small.render("1b", True, COLOR_PENALTY)
+                    self.screen.blit(pts, pts.get_rect(
+                        centerx=cx + card_w // 2, top=y + card_h + 4))
+            return card_h + 30
 
-        specials = [
-            ("leaf",  "over", "8b", "16b pri vysvietení"),
-            ("acorn", "over", "4b", "8b pri vysvietení"),
-        ]
+        y = draw_section(col_x, y, "HODNOTY KARIET", content_karty, full_w)
 
-        card_w2, card_h2 = 140, 226
-        block_w = card_w2 + 260
-        total_w2 = len(specials) * block_w
-        x0 = SCREEN_WIDTH // 2 - total_w2 // 2
+        # ── SEKCIA 2: HORNÍCI + BONUSY (2 stĺpce) ─────────────────────────
+        def content_hornici(x, y, w, measure_only):
+            specials = [
+                ("leaf", "over", "8b", "16b pri vysvietení", None),
+                ("acorn", "over", "4b", "8b pri vysvietení", "+ červené = 2b (ak obaja)"),
+            ]
+            card_w, card_h = 110, 177
+            if not measure_only:
+                block_w = w // 2
+                for i, (suit, rank, base, illum, note) in enumerate(specials):
+                    bx = x + i * block_w + 14
+                    img = self._load_card(suit, rank)
+                    if img:
+                        self.screen.blit(
+                            pygame.transform.scale(img, (card_w, card_h)), (bx, y))
+                    tx = bx + card_w + 14
+                    ty = y + 16
+                    s = self.font_medium.render(base, True, COLOR_PENALTY)
+                    self.screen.blit(s, (tx, ty));
+                    ty += 34
+                    s = self.font_small.render(illum, True, COLOR_ILLUMINATED)
+                    self.screen.blit(s, (tx, ty));
+                    ty += 26
+                    if note:
+                        s = self.font_small.render(note, True, COLOR_ILLUMINATED)
+                        self.screen.blit(s, (tx, ty))
+            return card_h + 10
 
-        for i, (suit, rank, base_pts, illum_pts) in enumerate(specials):
-            bx = x0 + i * block_w
-            img = self._load_card(suit, rank)
-            if img:
-                self.screen.blit(pygame.transform.scale(img, (card_w2, card_h2)),
-                                 (bx, y))
+        def content_bonusy(x, y, w, measure_only):
+            bonuses = [
+                (COLOR_BONUS, "−10b", "Sweep — všetky trestné karty v kole"),
+                (COLOR_BONUS, "−10b", "Séria — 5 kôl za sebou bez trestu"),
+                (COLOR_BONUS, "−10b", "Záväzok splnený: Nechytím nič"),
+                (COLOR_BONUS, "−20b", "Záväzok splnený: Beriem všetko"),
+                (COLOR_PENALTY, "+20b", "Nesplnený: Beriem všetko → hráč +20b"),
+                (COLOR_PENALTY, "−10b", "Nesplnený: Nechytím nič → ostatní −10b"),
+                (COLOR_GRAY, "Reset", "Presne 100b → resetuje sa na 90b"),
+                (COLOR_GRAY, "90b+", "Horníci sa nepočítajú nad 90b"),
+            ]
+            row_h = 30
+            if not measure_only:
+                for idx, (color, badge, text) in enumerate(bonuses):
+                    self._draw_badge_line(x + 14, y + idx * row_h, badge, text, color)
+            return len(bonuses) * row_h
 
-            tx = bx + card_w2 + 18
-            ty = y + 20
+        # Horníci a bonusy vedľa seba
+        cy_h = y
+        cy_b = y
 
-            # Základná hodnota
-            s = self.font_medium.render(base_pts, True, COLOR_PENALTY)
-            self.screen.blit(s, (tx, ty)); ty += 36
+        # Zisti výšky
+        h_hornici = content_hornici(col_x, y, col_w2, measure_only=True) + 36 + 20 + 14
+        h_bonusy = content_bonusy(col_x, y, col_w2, measure_only=True) + 36 + 20 + 14
 
-            # Vysvietená hodnota
-            s = self.font_small.render(illum_pts, True, COLOR_ILLUMINATED)
-            self.screen.blit(s, (tx, ty)); ty += 30
+        # Kresli ľavý box — horníci
+        box_h = content_hornici(col_x, y, col_w2, measure_only=True) + 36 + 20
+        box = pygame.Surface((col_w2, box_h), pygame.SRCALPHA)
+        box.fill((20, 12, 5, 160))
+        self.screen.blit(box, (col_x, y))
+        pygame.draw.rect(self.screen, COLOR_GOLD, (col_x, y, 3, box_h))
+        t = self.font_medium.render("HORNÍCI", True, COLOR_GOLD)
+        self.screen.blit(t, (col_x + 14, y + 10))
+        line_y = y + 10 + t.get_height() + 4
+        pygame.draw.line(self.screen, (80, 60, 20),
+                         (col_x + 14, line_y), (col_x + col_w2 - 14, line_y), 1)
+        content_hornici(col_x, line_y + 10, col_w2, measure_only=False)
 
-            # Dvojnásobok červenej
-            if suit == "acorn":
-                s = self.font_small.render("+ červené = 2b", True, COLOR_ILLUMINATED)
-                self.screen.blit(s, (tx, ty)); ty += 26
-                s = self.font_small.render("(ak obaja vysvietení)", True, COLOR_GRAY)
-                self.screen.blit(s, (tx, ty))
-
-        y += card_h2 + 20
-
-        # ── Oddeľovač ─────────────────────────────────────────────────
-        pygame.draw.line(self.screen, COLOR_GRAY,
-                         (100, y), (SCREEN_WIDTH - 100, y), 1)
-        y += 16
-
-        # ── Bonusy ────────────────────────────────────────────────────
-        self._section_title("BONUSY A ŠPECIÁLNE PRAVIDLÁ", SCREEN_WIDTH // 2,
-                            y, center=True)
-        y += 38
-
-        bonuses = [
-            (COLOR_BONUS, "−10b", "Chytím všetky trestné karty v kole  (Sweep)"),
-            (COLOR_BONUS, "−10b", "5 kôl za sebou bez trestného bodu"),
-            (COLOR_BONUS, "−10b", "Záväzok splnený: Nechytím nič (0 štichov)"),
-            (COLOR_BONUS, "−20b", "Záväzok splnený: Beriem všetko (8 štichov)"),
-            (COLOR_PENALTY, "+20b", "Záväzok nesplnený: Beriem všetko → hráč +20b, ostatní nič"),
-            (COLOR_PENALTY, "−10b", "Záväzok nesplnený: Nechytím nič → ostatní −10b, hráč nič"),
-            (COLOR_GRAY, "Reset", "Presne 100b → skóre sa resetuje na 90b"),
-            (COLOR_GRAY, "90b+", "Nad 90b sa (Q♠) a (Q♣) nepočítajú — žiadne trestné body"),
-        ]
-
-        col1_x = SCREEN_WIDTH // 2 - 500
-        col2_x = SCREEN_WIDTH // 2 + 40
-        half = len(bonuses) // 2 + len(bonuses) % 2
-
-        for idx, (color, badge, text) in enumerate(bonuses):
-            bx = col1_x if idx < half else col2_x
-            by = y + (idx if idx < half else idx - half) * 34
-            self._draw_badge_line(bx, by, badge, text, color)
+        # Kresli pravý box — bonusy
+        bx2 = col_x + col_w2 + 40
+        box_h2 = content_bonusy(bx2, y, col_w2, measure_only=True) + 36 + 20
+        box2 = pygame.Surface((col_w2, box_h2), pygame.SRCALPHA)
+        box2.fill((20, 12, 5, 160))
+        self.screen.blit(box2, (bx2, y))
+        pygame.draw.rect(self.screen, COLOR_GOLD, (bx2, y, 3, box_h2))
+        t2 = self.font_medium.render("BONUSY A PRAVIDLÁ", True, COLOR_GOLD)
+        self.screen.blit(t2, (bx2 + 14, y + 10))
+        line_y2 = y + 10 + t2.get_height() + 4
+        pygame.draw.line(self.screen, (80, 60, 20),
+                         (bx2 + 14, line_y2), (bx2 + col_w2 - 14, line_y2), 1)
+        content_bonusy(bx2, line_y2 + 10, col_w2, measure_only=False)
 
     # ------------------------------------------------------------------
     # Záložka: PRAVIDLÁ
     # ------------------------------------------------------------------
 
     def _draw_rules(self):
-        y = self.content_y + 5
-        col_w = (SCREEN_WIDTH - 140) // 2
-        col1_x = 70
-        col2_x = 70 + col_w + 40
+        y = self.content_y + 10
+        col_w = (SCREEN_WIDTH - 160) // 2
+        col1_x = 60
+        col2_x = col1_x + col_w + 40
 
-        # ══ STĹPEC 1 ══════════════════════════════════════════════════
+        def draw_section(x, cy, title, lines):
+            """Nakreslí sekciu s accent linkou a obsahom, vráti nové cy."""
+            # Obsah — zisti výšku najprv
+            content_lines = [l for l in lines if l != ""]
+            empty_lines = lines.count("")
+            content_h = len(content_lines) * 27 + empty_lines * 10 + 10
+            box_h = 36 + content_h + 14  # nadpis + obsah + padding
 
-        cy = y
-        self._section_title("CIEĽ HRY", col1_x, cy)
-        cy += 34
-        cy = self._text_block(col1_x, cy, col_w, [
-            "Hráč ktorý ako prvý prekročí 100 bodov prehráva a stáva sa Chujom.",
-            "Cieľom je nazbierať čo najmenej trestných bodov.",
+            # Karta — polopriesvitné pozadie
+            box = pygame.Surface((col_w, box_h), pygame.SRCALPHA)
+            box.fill((20, 12, 5, 160))
+            self.screen.blit(box, (x, cy))
+
+            # Zlatá accent linka vľavo
+            pygame.draw.rect(self.screen, COLOR_GOLD, (x, cy, 3, box_h))
+
+            # Nadpis sekcie
+            title_surf = self.font_medium.render(title, True, COLOR_GOLD)
+            self.screen.blit(title_surf, (x + 14, cy + 10))
+
+            # Oddeľovač pod nadpisom
+            line_y = cy + 10 + title_surf.get_height() + 4
+            pygame.draw.line(self.screen, (80, 60, 20),
+                             (x + 14, line_y), (x + col_w - 14, line_y), 1)
+
+            # Obsah
+            text_y = line_y + 10
+            for line in lines:
+                if not line:
+                    text_y += 10
+                    continue
+                surf = self._render_with_icons(line, self.font_small, COLOR_WHITE)
+                self.screen.blit(surf, (x + 14, text_y))
+                text_y += 27
+
+            return cy + box_h + 14  # medzera medzi sekciami
+
+        # ══ STĹPEC 1 ══
+        cy1 = y
+        cy1 = draw_section(col1_x, cy1, "CIEĽ HRY", [
+            "Hráč ktorý ako prvý prekročí 100 bodov",
+            "prehráva a stáva sa Chujom.",
+            "Cieľom je nazbierať čo najmenej bodov.",
         ])
-        cy += 16
 
-        self._section_title("PRIEBEH KOLA", col1_x, cy)
-        cy += 34
-        steps = [
-            ("1.", "Rozdanie — každý hráč dostane 8 kariet"),
-            ("2.", "Vysvietenie — možnosť priznať horníka/ov"),
-            ("3.", "Záväzok — možnosť vyhlásiť Beriem všetko / Nechytím nič"),
-            ("4.", "8 štichov — hráči zahrajú všetky karty"),
-            ("5.", "Bodovanie — spočítajú sa trestné body"),
-        ]
-        for num, text in steps:
-            num_s = self.font_small.render(num, True, COLOR_GOLD)
-            txt_s = self.font_small.render(text, True, COLOR_WHITE)
-            self.screen.blit(num_s, (col1_x, cy))
-            self.screen.blit(txt_s, (col1_x + 28, cy))
-            cy += 26
-        cy += 16
+        cy1 = draw_section(col1_x, cy1, "PRIEBEH KOLA", [
+            "1.  Rozdanie — každý dostane 8 kariet",
+            "2.  Vysvietenie — možnosť priznať horníka",
+            "3.  Záväzok — Beriem všetko / Nechytím nič",
+            "4.  8 štichov — hráči zahrajú všetky karty",
+            "5.  Bodovanie — spočítajú sa trestné body",
+        ])
 
-        self._section_title("ŠTICHY", col1_x, cy)
-        cy += 34
-        cy = self._text_block(col1_x, cy, col_w, [
-            "Leader zahrá ľubovoľnú kartu a určí farbu štichu.",
-            "Ostatní MUSIA zahrať kartu rovnakej farby (priznať farbu).",
+        cy1 = draw_section(col1_x, cy1, "ŠTICHY", [
+            "Leader zahrá kartu a určí farbu štichu.",
+            "Ostatní MUSIA zahrať kartu rovnakej farby.",
             "Ak nemáš danú farbu — zahraj čokoľvek.",
-            "Najvyššia karta v hranej farbe vyhráva štich.",
+            "Najvyššia karta v hranej farbe vyhráva.",
             "Víťaz štichu začína nasledujúci štich.",
             "V prvom štichu sa nesmie hrať červeň.",
         ])
 
-        # ══ STĹPEC 2 ══════════════════════════════════════════════════
-
-        cy = y
-        self._section_title("VYSVIETENIE", col2_x, cy)
-        cy += 34
-        cy = self._text_block(col2_x, cy, col_w, [
-            "Pred prvým štichom môžeš priznať zeleného horníka (Q♠),",
-            "žaluďového horníka (Q♣) alebo oboch.",
-            "Vysvietený horník je viditeľný — všetci vedia kde je.",
-            "Vysvietený zelený horník = 16b  (bežne 8b).",
-            "Vysvietený žaluďový horník = 8b  (bežne 4b).",
-            "Ak sú obaja vysvietení → červené karty = 2b (bežne 1b).",
+        # ══ STĹPEC 2 ══
+        cy2 = y
+        cy2 = draw_section(col2_x, cy2, "VYSVIETENIE", [
+            "Pred prvým štichom môžeš priznať Q♠, Q♣",
+            "alebo oboch horníkov.",
+            "Vysvietený horník je viditeľný všetkým.",
+            "Vysvietený Q♠ = 16b  (bežne 8b)",
+            "Vysvietený Q♣ = 8b   (bežne 4b)",
+            "Obaja vysvietení → červené = 2b (bežne 1b)",
         ])
-        cy += 16
 
-        self._section_title("ZÁVÄZOK", col2_x, cy)
-        cy += 34
-        cy = self._text_block(col2_x, cy, col_w, [
-            "Beriem všetko — hráč musí vyhrať všetkých 8 štichov.",
-            "  → Splnený: −20b pre hráča, ostatní 0b.",
-            "  → Nesplnený: +20b pre hráča, ostatní 0b.",
+        cy2 = draw_section(col2_x, cy2, "ZÁVÄZOK", [
+            "Beriem všetko — musíš vyhrať 8 štichov.",
+            "  Splnený: −20b pre teba, ostatní 0b",
+            "  Nesplnený: +20b pre teba, ostatní 0b",
             "",
-            "Nechytím nič — hráč nesmie chytiť žiadny štich.",
-            "  → Splnený: −10b pre hráča, ostatní 0b.",
-            "  → Nesplnený: ostatní −10b, hráč 0b.",
-            "",
-            "Po vyhlásení záväzku začína hru hráč, ktorý ju vyhlásil.",
-            "Záväzok Beriem všetko má prednosť pred záväzkom Nechytím nič",
-
+            "Nechytím nič — nesmieš chytiť štich.",
+            "  Splnený: −10b pre teba, ostatní 0b",
+            "  Nesplnený: ostatní −10b, ty 0b",
         ])
-        cy += 16
 
-        self._section_title("ŠPECIÁLNE PRAVIDLÁ", col2_x, cy)
-        cy += 34
-        specials = [
-            ("Sweep",   "Chytíš všetky trestné karty → −10b"),
-            ("Séria",   "5 kôl bez trestného bodu → −10b"),
-            ("Reset",   "Presne 100b → skóre sa resetuje na 90b"),
-            ("90b+",    "Nad 90b sa horníci nepočítajú (0b)"),
-        ]
-        for badge, text in specials:
-            b = self.font_small.render(f"[{badge}]", True, COLOR_GOLD)
-            t = self.font_small.render(text, True, COLOR_WHITE)
-            self.screen.blit(b, (col2_x, cy))
-            self.screen.blit(t, (col2_x + b.get_width() + 10, cy))
-            cy += 26
+        cy2 = draw_section(col2_x, cy2, "ŠPECIÁLNE PRAVIDLÁ", [
+            "Sweep  — všetky trestné karty → −10b",
+            "Séria  — 5 kôl bez trestného bodu → −10b",
+            "Reset  — presne 100b → resetuje sa na 90b",
+            "90b+   — horníci sa nepočítajú (0b)",
+        ])
 
     # ------------------------------------------------------------------
     # Pomocné

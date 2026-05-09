@@ -84,8 +84,6 @@ class Round:
                           illuminate_leaf: bool,
                           illuminate_acorn: bool):
         player = self.players[player_index]
-        print(
-            f"[process_revealing] player={player_index}, leaf={illuminate_leaf}, acorn={illuminate_acorn}, has_leaf={player.hand.has_leaf_over()}, has_acorn={player.hand.has_acorn_over()}")
         if illuminate_leaf and player.hand.has_leaf_over():
             player.illuminate_leaf()
             self.leaf_illuminated = True

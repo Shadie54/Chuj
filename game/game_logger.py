@@ -51,7 +51,8 @@ class GameLogger:
 
     def log_illumination_decision(self, player: str, suit: str,
                                   reserve_quality: str, risk_level: str,
-                                  compensation: int, result: bool):
+                                  compensation: int, comp_breakdown: dict,
+                                  reason: str, result: bool):
         """Zaznamená detailné rozhodnutie AI o vysvietení."""
         suit_name = "zelený" if suit == "leaf" else "žaluďový"
         decision = "ÁNO" if result else "NIE"

@@ -137,8 +137,6 @@ class GameState:
         ) % NUM_PLAYERS
 
     def _check_game_over(self) -> bool:
-        for player in self.players:
-            print(f"[GAME_OVER CHECK] {player.name}: {player.total_score}")
         return any(
             player.total_score > WINNING_SCORE
             for player in self.players

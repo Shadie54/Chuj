@@ -10,24 +10,25 @@ from game.ai_sweep import SweepResult
 
 @dataclass
 class LogEntry:
-    """
-    Jeden záznam zachytený TesterLoggerom.
-
-    kind = "strategy":  log_strategy() volanie
-        player, strategy, details
-    kind = "sweep":     log_sweep_pipeline() volanie
-        player, sweep_result, trick_number
-    """
-    kind: str                              # "strategy" | "sweep"
+    kind: str
     player: str
 
-    # Pre kind="strategy"
+    # strategy
     strategy: str = ""
     details: str = ""
 
-    # Pre kind="sweep"
+    # sweep
     sweep_result: SweepResult | None = None
     trick_number: int = 0
+
+    # illumination
+    suit: str = ""
+    reserve_quality: str = ""
+    risk_level: str = ""
+    compensation: int = 0
+    comp_breakdown: dict = field(default_factory=dict)
+    reason: str = ""
+    decision: bool = False
 
 
 # ------------------------------------------------------------------
@@ -121,8 +122,23 @@ class TesterLogger:
     def log_declaration(self, *args, **kwargs):
         pass
 
-    def log_illumination_decision(self, *args, **kwargs):
-        pass
+    def log_illumination_decision(self, player: str, suit: str,
+                                  reserve_quality: str, risk_level: str,
+                                  compensation: int, comp_breakdown: dict,
+                                  reason: str, decision: bool):
+        entry = LogEntry(
+            kind="illumination",
+            player=player,
+            suit=suit,
+            reserve_quality=reserve_quality,
+            risk_level=risk_level,
+            compensation=compensation,
+            comp_breakdown=comp_breakdown,
+            reason=reason,
+            decision=decision,
+        )
+        self.current_capture.append(entry)
+        self.full_history.append(entry)
 
     def log_illumination(self, *args, **kwargs):
         pass
@@ -187,5 +203,35 @@ class TesterLogger:
                 lines.append(f"  → {step}")
             for plan in r.escape_plan:
                 lines.append(f"  ↩ escape: {plan}")
+
+        elif entry.kind == "illumination":
+            suit_sym = "Q♠" if entry.suit == "leaf" else "Q♣"
+            result = "ÁNO" if entry.decision else "NIE"
+            lines.append(
+                f"[{entry.player}] {suit_sym} svietiť? {result} "
+                f"| rezerva={entry.reserve_quality} "
+                f"| riziko={entry.risk_level} "
+                f"| kompenz.={entry.compensation}"
+            )
+            # Dôvod
+            reason_map = {
+                "no_special": "nemám horníka",
+                "no_reserves": "žiadne rezervy",
+                "bad_reserves": "zlé rezervy",
+                "leader_borderline": "líder — borderline rezerva",
+                "high_score_veto": "90+ veto",
+                "high_score_unprotected_hearts": "90+ nekrytý vysoký červeň",
+                "high_score_naked_high": "90+ plonkový vysoký v inej farbe",
+                "decision_yes": "rozhodnutie: svietiť",
+                "decision_no": "rozhodnutie: nesvietiť",
+            }
+            reason_text = reason_map.get(entry.reason, entry.reason)
+            lines.append(f"  → dôvod: {reason_text}")
+            bd = entry.comp_breakdown
+            if bd.get("void"):
+                suits_str = ", ".join(bd["void"])
+                lines.append(f"  → void farby: {suits_str} (+{len(bd['void'])})")
+            if bd.get("position"):
+                lines.append(f"  → posledný hráč (+1)")
 
         return lines

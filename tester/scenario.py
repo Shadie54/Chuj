@@ -196,6 +196,7 @@ class Scenario:
     )
     history: list[TrickHistory] = field(default_factory=list)
     start_after_trick: int | None = None
+    scores: dict[int, int] = field(default_factory=dict)
 
 
 # ------------------------------------------------------------------

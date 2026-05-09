@@ -166,7 +166,7 @@ class SettingsScreen:
             buttons = self.ai_buttons[name]
 
             # Label — nad tlačidlami
-            label_y = buttons[0]["rect"].top - 35
+            label_y = buttons[0]["rect"].top -25
             label_surf = self.font_large.render(name, True, COLOR_WHITE)
             label_rect = label_surf.get_rect(
                 center=(SCREEN_WIDTH // 2, label_y)

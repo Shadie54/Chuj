@@ -170,7 +170,7 @@ class Menu:
             font_title = get_font( 120)
             shadow = font_title.render("CHUJ", True, (0, 0, 0))
             title = font_title.render("CHUJ", True, COLOR_GOLD)
-            rect = title.get_rect(center=(SCREEN_WIDTH // 2, 150))
+            rect = title.get_rect(center=(SCREEN_WIDTH // 2, 300))
             self.screen.blit(shadow, (rect.x + 3, rect.y + 3))
             self.screen.blit(title, rect)
 

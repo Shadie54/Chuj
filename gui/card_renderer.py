@@ -91,9 +91,9 @@ class CardRenderer:
                         y -= 20  # PC0 — hore (hráč)
                 else:
                     if player_index == 1:
-                        x += 20  # PC1 — doprava
+                        x -= 20  # PC1 — doprava
                     else:
-                        x -= 20  # PC3 — doľava
+                        x += 20  # PC3 — doľava
 
             if show_faces:
                 img = self._get_card_image(card)

@@ -4,7 +4,7 @@ from game.card import Card
 from game.trick import Trick
 from game.player import Player
 from game.ai_memory import AIMemory
-from game.ai_hand_eval import HandEval
+from game.ai_hand_eval import HandEval, GameContext
 from game.ai_strategies_const import Situation, Mode
 from config import NUM_PLAYERS, SUITS
 
@@ -19,10 +19,11 @@ class SituationDetector:
 
     def determine(self, hand_eval: HandEval,
                   playable: list[Card],
-                  trick: Trick) -> str:
+                  trick: Trick,
+                  ctx: GameContext | None = None) -> str:
         is_leader = len(trick.played_cards) == 0
         if is_leader:
-            return self._leader(hand_eval, playable)
+            return self._leader(hand_eval, playable, ctx)
         else:
             return self._follower(playable, trick)
 
@@ -45,24 +46,26 @@ class SituationDetector:
         return mode
 
     def _leader(self, hand_eval: HandEval,
-                playable: list[Card]) -> str:
+                playable: list[Card],
+                ctx: GameContext | None = None) -> str:
         if self.difficulty == "hard":
-            for suit in SUITS:
-                if self.memory.is_special_gone(suit):
-                    continue
-                holders = self.memory.who_has_special(suit)
-                if not holders:
-                    continue
-                if self.player.index in holders:
-                    continue
-                suit_cards = [
-                    c for c in playable
-                    if c.suit == suit
-                       and not c.is_special
-                       and c.rank not in ("ace", "king")
-                ]
-                if suit_cards:
-                    return Situation.LEADER_AGGRESSIVE
+            # 90+ — agresivita nemá zmysel, horníci nám nerobia body
+                for suit in SUITS:
+                    if self.memory.is_special_gone(suit):
+                        continue
+                    holders = self.memory.who_has_special(suit)
+                    if not holders:
+                        continue
+                    if self.player.index in holders:
+                        continue
+                    suit_cards = [
+                        c for c in playable
+                        if c.suit == suit
+                           and not c.is_special
+                           and c.rank not in ("ace", "king")
+                    ]
+                    if suit_cards:
+                        return Situation.LEADER_AGGRESSIVE
 
         non_heart_escape = [
             c for c in hand_eval.escape_cards

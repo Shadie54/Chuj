@@ -4,8 +4,7 @@ from dataclasses import dataclass
 from game.card import Card
 from game.trick import Trick
 from game.ai_memory import AIMemory
-from config import NUM_PLAYERS, SUITS
-
+from config import NUM_PLAYERS, HIGH_SCORE_THRESHOLD
 
 # ------------------------------------------------------------------
 # HandEval — snapshot ruky pred každým ťahom
@@ -20,6 +19,27 @@ class HandEval:
     tricks_remaining: int
     i_will_be_leader: bool
 
+@dataclass
+class GameContext:
+    my_score: int
+    all_scores: list[int]
+    is_high_score: bool      # my_score >= 90
+    score_rank: int          # 1 = vediem, 4 = posledný
+    gap_to_leader: int       # o koľko zaostávam za lídrom (0 ak som líder)
+    gap_to_last: int         # o koľko som pred posledným (0 ak som posledný)
+
+    @staticmethod
+    def build(my_index: int, all_scores: list[int]) -> "GameContext":
+        my_score = all_scores[my_index]
+        rank = sorted(all_scores, reverse=True).index(my_score) + 1
+        return GameContext(
+            my_score=my_score,
+            all_scores=all_scores,
+            is_high_score=my_score >= HIGH_SCORE_THRESHOLD,
+            score_rank=rank,
+            gap_to_leader=max(all_scores) - my_score,
+            gap_to_last=my_score - min(all_scores),
+        )
 
 # ------------------------------------------------------------------
 # HandEvaluator

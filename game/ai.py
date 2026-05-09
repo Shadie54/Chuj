@@ -5,17 +5,18 @@ from game.player import Player
 from game.card import Card
 from game.trick import Trick
 from game.ai_memory import AIMemory
-from game.ai_hand_eval import HandEvaluator
+from game.ai_hand_eval import HandEvaluator, GameContext
 from game.ai_situation import SituationDetector
 from game.ai_card_select import CardSelector
 from game.ai_sweep import SweepPipeline, SweepDecision
 from game.ai_declaration import DeclarationAdvisor
-from config import NUM_PLAYERS
+
 
 
 class AI:
     def __init__(self, player: Player, difficulty: str = "hard",
                  logger=None):
+
         self.player = player
         self.difficulty = difficulty
         self.logger = logger
@@ -37,6 +38,9 @@ class AI:
         self.declaration_advisor = DeclarationAdvisor(
             player, self.memory, difficulty, logger
         )
+        # Sweep
+        self.sweep_confidence = None
+        self.sweep_attempt = None
 
     def _log(self, strategy: str, details: str = ""):
         if self.logger:
@@ -49,10 +53,10 @@ class AI:
     def decide_declaration(self) -> str | None:
         return self.declaration_advisor.decide_declaration()
 
-    def decide_illumination(self,
-                             first_player_index: int) -> tuple[bool, bool]:
+    def decide_illumination(self, first_player_index: int,
+                            all_scores: list[int] | None = None) -> tuple[bool, bool]:
         return self.declaration_advisor.decide_illumination(
-            first_player_index
+            first_player_index, all_scores
         )
 
     # ------------------------------------------------------------------
@@ -61,14 +65,21 @@ class AI:
 
     def decide_card(self, playable: list[Card],
                     current_trick: Trick,
-                    trick_number: int) -> Card:
+                    trick_number: int,
+                    all_scores: list[int] | None = None) -> Card:
         if self.difficulty == "easy":
             return random.choice(playable)
 
         hand = self.player.hand.cards
         tricks_remaining = 8 - trick_number
         trick_cards = [c for _, c in current_trick.played_cards]
-        is_leader = len(current_trick.played_cards) == 0
+
+        # skóre?
+        ctx = GameContext.build(
+            self.player.index,
+            all_scores if all_scores is not None
+            else [self.player.total_score] * 4
+        )
 
         # --- KROK 1: HAND_EVAL ---
         hand_eval = self.evaluator.evaluate(
@@ -106,7 +117,7 @@ class AI:
         # WATCHING → default logika pokračuje
 
         # --- KROK 2: SITUATION ---
-        situation = self.situator.determine(hand_eval, playable, current_trick)
+        situation = self.situator.determine(hand_eval, playable, current_trick, ctx)
 
         # --- KROK 3: MODE ---
         mode = self.situator.to_mode(situation, current_trick)

@@ -95,7 +95,7 @@ class TesterEngine:
         # História štichov ktoré sa odohrali — vrátane úvodnej z scenára
         # Engine ich tu zhromažďuje pre GUI ('completed_tricks')
         self.completed_tricks: list[TrickHistory] = []
-
+        self.illumination_logs: list[LogEntry] = []
         # Snapshoty pre Back — uložené pred každým next_step()
         # Každá entry je tuple: (engine_state_dict, last_step)
         self._snapshots: list = []
@@ -135,7 +135,8 @@ class TesterEngine:
         # 4. Rozdaj karty manuálne (obíď deal())
         for i in range(NUM_PLAYERS):
             self.players[i].receive_cards(list(sc.hands[i]))
-
+        for i, score in sc.scores.items():
+            self.players[i].total_score = score
         # 5. Manuálne nastav fázu (deal() to inak robí na konci)
         self.round.phase = "preparation"
 
@@ -161,9 +162,24 @@ class TesterEngine:
         # AI rozhodnutia
         decisions: dict[int, tuple[bool, bool]] = {}
         for player_idx in range(NUM_PLAYERS):
+            self.logger.start_capture()
+            scores = [self.players[i].total_score for i in range(NUM_PLAYERS)]
             leaf, acorn = self.ais[player_idx].decide_illumination(
-                sc.first_player_index
+                sc.first_player_index, scores
             )
+            captured = self.logger.get_capture()
+            hand = self.players[player_idx].hand.cards
+            has_leaf = any(c.is_leaf_over for c in hand)
+            has_acorn = any(c.is_acorn_over for c in hand)
+            for entry in captured:
+                if entry.kind != "illumination":
+                    self.illumination_logs.append(entry)
+                    continue
+                if entry.suit == "leaf" and not has_leaf:
+                    continue
+                if entry.suit == "acorn" and not has_acorn:
+                    continue
+                self.illumination_logs.append(entry)
             decisions[player_idx] = (leaf, acorn)
 
         # Aplikuj override zo scenára

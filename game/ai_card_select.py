@@ -59,6 +59,11 @@ class CardSelector:
                 if not c.is_special
                    and (c.suit not in protected
                         or self._can_exhaust_suit(c.suit))
+                   and not (
+                        c.suit in ("leaf", "acorn")
+                        and not self.memory.is_special_gone(c.suit)
+                        and self.player.index not in self.memory.who_has_special(c.suit)
+                )
             ]
             if exhaust_cards:
                 card = min(exhaust_cards, key=lambda c: c.rank_order)
@@ -183,18 +188,53 @@ class CardSelector:
             self._log(Strategy.DUMP_SPECIAL, f"{takes}: {card}")
             return card
 
-        # 2. Trap A/K vo farbe živého horníka
+        # 2. Trap A/K vo farbe živého horníka — len ak nemám escape pod každú remaining kartu
         danger_trap = []
         for suit in ("leaf", "acorn"):
             if self.memory.is_special_gone(suit):
-                continue  # horník padol, farba nie je nebezpečná
-            danger_trap += [
-                c for c in playable
-                if c.suit == suit
-                   and not c.is_special
-                   and c.rank in ("ace", "king")
-                   and self._is_trap(c)
+                continue
+            suit_cards = [c for c in playable if c.suit == suit and not c.is_special]
+            if not suit_cards:
+                continue
+
+            # Remaining karty v tej farbe okrem horníka
+            remaining_non_special = [
+                c for c in self.memory.remaining[suit]
+                if not c.is_special
             ]
+
+            # Moje non-A/K karty ako potenciálne escape
+            my_non_special = [
+                c for c in suit_cards
+                if c.rank not in ("ace", "king")
+            ]
+
+            # Greedy párovanie — každá remaining potrebuje vlastný escape
+            remaining_sorted = sorted(
+                remaining_non_special, key=lambda c: c.rank_order, reverse=True
+            )
+            available = sorted(
+                my_non_special, key=lambda c: c.rank_order, reverse=True
+            )
+            all_covered = True
+            for their in remaining_sorted:
+                match = next(
+                    (c for c in available if c.rank_order < their.rank_order),
+                    None
+                )
+                if match is None:
+                    all_covered = False
+                    break
+                available.remove(match)
+
+            if all_covered:
+                continue  # bezpečný trap — preskočíme
+
+            danger_trap += [
+                c for c in suit_cards
+                if c.rank in ("ace", "king") and self._is_trap(c)
+            ]
+
         if danger_trap:
             card = max(danger_trap, key=lambda c: c.rank_order)
             self._log(Strategy.DUMP_DANGEROUS, f"trap A/K živý horník: {card}")
@@ -343,6 +383,8 @@ class CardSelector:
         for suit in ("leaf", "acorn"):
             if not self._i_illuminated(suit):
                 continue
+            if self.memory.is_special_gone(suit):
+                continue  # horník už padol — ochrana nie je potrebná
             hand = self.player.hand.cards
             reserves = [
                 c for c in hand

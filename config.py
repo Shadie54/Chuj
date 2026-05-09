@@ -229,7 +229,7 @@ CARD_BACK_IMAGE = "card-back.png"
 # ------------------------------------------------------------------
 def get_font(size: int) -> pygame.font.Font:
     """Vráti font s podporou Unicode znakov (♥ ● ♠ ♣)."""
-    for font_name in ("opensans", ):
+    for font_name in ("tahoma", "arial", ):
         try:
             font = pygame.font.SysFont(font_name, size)
             return font

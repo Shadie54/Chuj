@@ -4,7 +4,7 @@ from game.card import Card
 from game.player import Player
 from game.ai_memory import AIMemory
 from game.ai_strategies_const import Strategy
-from config import SUITS, NUM_PLAYERS
+from config import SUITS, NUM_PLAYERS, HIGH_SCORE_THRESHOLD
 
 
 class DeclarationAdvisor:
@@ -62,8 +62,8 @@ class DeclarationAdvisor:
     # Vysvietenie
     # ------------------------------------------------------------------
 
-    def decide_illumination(self,
-                             first_player_index: int) -> tuple[bool, bool]:
+    def decide_illumination(self, first_player_index: int,
+                            all_scores: list[int] | None = None) -> tuple[bool, bool]:
         if self.difficulty == "easy":
             return False, False
 
@@ -71,48 +71,60 @@ class DeclarationAdvisor:
         illuminate_leaf = False
         illuminate_acorn = False
 
+        is_leader = False
+        if all_scores is not None:
+            my_score = self.player.total_score
+            max_score = max(all_scores)
+            is_leader = my_score == max_score and max_score > 0
+
         if self.difficulty in ("medium", "hard"):
             position = (self.player.index - first_player_index) % NUM_PLAYERS
             illuminate_leaf, leaf_debug = self._should_illuminate(
-                hand, "leaf", position
+                hand, "leaf", position, is_leader
             )
             illuminate_acorn, acorn_debug = self._should_illuminate(
-                hand, "acorn", position
+                hand, "acorn", position, is_leader
             )
             if self.logger:
+                rq, rl, reason, comp, cbd, _ = leaf_debug
                 self.logger.log_illumination_decision(
-                    self.player.name, "leaf", *leaf_debug, illuminate_leaf
+                    self.player.name, "leaf", rq, rl, comp, cbd, reason, illuminate_leaf
                 )
+                rq, rl, reason, comp, cbd, _ = acorn_debug
                 self.logger.log_illumination_decision(
-                    self.player.name, "acorn", *acorn_debug, illuminate_acorn
+                    self.player.name, "acorn", rq, rl, comp, cbd, reason, illuminate_acorn
                 )
 
         return illuminate_leaf, illuminate_acorn
 
-    def _should_illuminate(self, hand: list[Card], suit: str,
-                            position: int) -> tuple[bool, tuple]:
-        special = next(
-            (c for c in hand if c.is_special and c.suit == suit), None
-        )
+    def _should_illuminate(self, hand, suit, position, is_leader=False):
+        special = next((c for c in hand if c.is_special and c.suit == suit), None)
         if special is None:
-            return False, ("none", "none", 0)
+            return False, ("none", "n/a", "n/a", 0, {}, "no_special")
 
         reserves = [c for c in hand if c.suit == suit and not c.is_special]
-
         reserve_quality = self._reserve_quality(reserves) if reserves else "plonk"
         risk_level = self._hand_risk_level(hand, suit)
-        compensation = self._compensation_count(hand, position)
+        compensation, comp_breakdown = self._compensation_count(hand, position)
+
+        if self.player.total_score >= HIGH_SCORE_THRESHOLD:
+            veto = self._is_safe_to_illuminate_at_high_score(hand)
+            if veto:
+                return False, (reserve_quality, risk_level, veto, compensation, comp_breakdown, veto)
 
         if len(reserves) == 0:
-            return False, (reserve_quality, risk_level, compensation)
+            return False, (reserve_quality, risk_level, "no_reserves", compensation, comp_breakdown, "no_reserves")
 
         if reserve_quality == "bad":
-            return False, (reserve_quality, risk_level, compensation)
+            return False, (reserve_quality, risk_level, "bad_reserves", compensation, comp_breakdown, "bad_reserves")
 
-        result = self._illumination_decision(
-            reserve_quality, risk_level, compensation
-        )
-        return result, (reserve_quality, risk_level, compensation)
+        if is_leader and reserve_quality == "borderline":
+            return False, (reserve_quality, risk_level, "leader_borderline", compensation, comp_breakdown,
+                           "leader_borderline")
+
+        result = self._illumination_decision(reserve_quality, risk_level, compensation)
+        reason = "decision_yes" if result else "decision_no"
+        return result, (reserve_quality, risk_level, reason, compensation, comp_breakdown, reason)
 
     def _reserve_quality(self, reserves: list[Card]) -> str:
         if len(reserves) >= 3:
@@ -139,49 +151,62 @@ class DeclarationAdvisor:
         return "good"
 
     def _hand_risk_level(self, hand: list[Card], special_suit: str) -> str:
-        worst = "low"
-        for suit in SUITS:
-            if suit == "bell":
-                continue
-            suit_cards = [
-                c for c in hand
-                if c.suit == suit and not c.is_special
-            ]
-            high_cards = [
-                c for c in suit_cards
-                if c.rank in ("ace", "king", "queen")
-            ]
-            if not high_cards:
-                continue
-            low_cards = [
-                c for c in suit_cards
-                if c.rank in ("nine", "eight", "seven")
-            ]
-            mid_cards = [
-                c for c in suit_cards
-                if c.rank in ("under", "ten")
-            ]
-            buffers = len(low_cards) + len(mid_cards)
-            for _ in high_cards:
-                if buffers == 0:
-                    return "critical"
-                elif buffers == 1 and worst == "low":
-                    worst = "medium"
-                buffers = max(0, buffers - 1)
-        return worst
+        hearts = [c for c in hand if c.suit == "heart"]
+        high_hearts = [c for c in hearts if c.rank in ("ace", "king")]
+        low_hearts = [c for c in hearts if c.rank in ("seven", "eight", "nine")]
+        uncovered_hearts = max(0, len(high_hearts) - len(low_hearts))
+        expected_penalty = uncovered_hearts * 4
 
-    def _compensation_count(self, hand: list[Card],
-                             position: int) -> int:
-        count = 0
+        for suit in ("leaf", "acorn"):
+            suit_cards = [c for c in hand if c.suit == suit and not c.is_special]
+            high = [c for c in suit_cards if c.rank in ("ace", "king")]
+            low = [c for c in suit_cards if c.rank in ("seven", "eight", "nine")]
+            mid = [c for c in suit_cards if c.rank in ("under", "ten")]
+            buffers = len(low) + len(mid)
+            uncovered = max(0, len(high) - buffers)
+            expected_penalty += uncovered * 2
+
+        if expected_penalty == 0:
+            return "low"
+        elif expected_penalty <= 4:
+            return "medium"
+        else:
+            return "critical"
+
+    def _compensation_count(self, hand: list[Card], position: int) -> tuple[int, dict]:
+        breakdown = {}
+        void_suits = []
         for suit in SUITS:
-            suit_count = sum(1 for c in hand if c.suit == suit)
-            if suit_count <= 1:
-                count += 1
-        if position > 0:
-            count += 1
+            suit_cards = [c for c in hand if c.suit == suit]
+            if len(suit_cards) == 0:
+                void_suits.append(suit)
+            elif len(suit_cards) == 1:
+                # 1 karta — len ak je nízka (nie A/K/Q)
+                if suit_cards[0].rank not in ("ace", "king", "over"):
+                    void_suits.append(suit)
+        if void_suits:
+            breakdown["void"] = void_suits
         if position == 3:
-            count += 1
-        return count
+            breakdown["position"] = True
+        count = len(void_suits) + (1 if position == 3 else 0)
+        return count, breakdown
+
+    def _is_safe_to_illuminate_at_high_score(self, hand: list[Card]) -> str | None:
+        """Vráti None ak je bezpečné, inak dôvod veta."""
+        hearts = [c for c in hand if c.suit == "heart"]
+        high_hearts = [c for c in hearts if c.rank in ("ace", "king")]
+        low_hearts = [c for c in hearts if c.rank in ("seven", "eight", "nine")]
+        if len(low_hearts) < len(high_hearts):
+            return "high_score_unprotected_hearts"
+
+        for suit in ("bell",):
+            suit_cards = [c for c in hand if c.suit == suit and not c.is_special]
+            high = [c for c in suit_cards if c.rank in ("ace", "king")]
+            low = [c for c in suit_cards if c.rank in ("seven", "eight", "nine")]
+            if high and not low:
+                return "high_score_naked_high"
+
+        return None
 
     @staticmethod
     def _illumination_decision(reserve_quality: str,
