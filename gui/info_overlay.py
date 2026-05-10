@@ -119,7 +119,7 @@ class InfoOverlay:
     # ------------------------------------------------------------------
 
     def _draw_scoring(self):
-        y = self.content_y + 10
+        y = self.content_y + 20
 
         def draw_section(x, cy, title, content_fn, col_w):
             """Dynamická sekcia — content_fn(x, y, col_w) -> výška obsahu."""
@@ -172,7 +172,7 @@ class InfoOverlay:
                 ("leaf", "over", "8b", "16b pri vysvietení", None),
                 ("acorn", "over", "4b", "8b pri vysvietení", "+ červené = 2b (ak obaja)"),
             ]
-            card_w, card_h = 110, 177
+            card_w, card_h = 130, 210
             if not measure_only:
                 block_w = w // 2
                 for i, (suit, rank, base, illum, note) in enumerate(specials):
@@ -181,18 +181,18 @@ class InfoOverlay:
                     if img:
                         self.screen.blit(
                             pygame.transform.scale(img, (card_w, card_h)), (bx, y))
-                    tx = bx + card_w + 14
-                    ty = y + 16
+                    tx = bx + card_w + 20
+                    ty = y + 30
                     s = self.font_medium.render(base, True, COLOR_PENALTY)
                     self.screen.blit(s, (tx, ty));
-                    ty += 34
+                    ty += 38
                     s = self.font_small.render(illum, True, COLOR_ILLUMINATED)
                     self.screen.blit(s, (tx, ty));
-                    ty += 26
+                    ty += 28
                     if note:
                         s = self.font_small.render(note, True, COLOR_ILLUMINATED)
                         self.screen.blit(s, (tx, ty))
-            return card_h + 10
+            return card_h + 20
 
         def content_bonusy(x, y, w, measure_only):
             bonuses = [

@@ -18,10 +18,10 @@ class TrickAnimation:
 
         # Cieľové pozície pre každého hráča (stred ruky)
         self.target_positions = {
-            0: (SCREEN_WIDTH // 2, SCREEN_HEIGHT - 50),  # človek — dole
-            1: (SCREEN_WIDTH - 50, SCREEN_HEIGHT // 2),  # PC1 — vpravo
-            2: (SCREEN_WIDTH // 2, 50),  # PC2 — hore
-            3: (50, SCREEN_HEIGHT // 2),  # PC3 — vľavo
+            0: (SCREEN_WIDTH // 2, 930),  # hráč dole — stred ruky (y=860 + trochu)
+            1: (1620, 410),  # PC1 vpravo — x=1600+, stred y ruky (150 + 4*65/2)
+            2: (SCREEN_WIDTH // 2, 20),  # PC2 hore — stred ruky (y=-50, viditeľný okraj)
+            3: (50, 410),  # PC3 vľavo — x=30+, stred y ruky
         }
 
     def start(self, played_cards: list[tuple[int, object]],

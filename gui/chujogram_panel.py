@@ -5,18 +5,17 @@ from config import (
     SCREEN_HEIGHT,
     COLOR_WHITE, COLOR_GRAY, COLOR_GOLD,
     BULLET_RADIUS, BULLET_COLOR,
-    NUM_PLAYERS, get_font
+    NUM_PLAYERS, get_font, ROUND_STATUS_H
 )
-
 
 class ChujogramPanel:
     def __init__(self, screen: pygame.Surface, player_names: list[str]):
         self.screen = screen
         self.player_names = player_names  # fixné poradie od začiatku hry
 
-        self.font_small = get_font( 28)
-        self.font_medium = get_font( 36)
-        self.font_large = get_font( 48)
+        self.font_small = get_font(22)  # bolo 28
+        self.font_medium = get_font(28)  # bolo 36
+        self.font_large = get_font(36)  # bolo 48
 
         # Rozmery panelu
         self.panel_w = 480
@@ -32,7 +31,7 @@ class ChujogramPanel:
 
         # Tlačidlo CH
         self.btn_w = 40
-        self.btn_h = 180
+        self.btn_h = ROUND_STATUS_H
         self.btn_x = 0                     # bude sa meniť s panelom
         self.btn_y = SCREEN_HEIGHT - self.btn_h - 20
 
@@ -41,9 +40,9 @@ class ChujogramPanel:
         self.scroll_speed = 20
 
         # Layout
-        self.header_h = 80
+        self.header_h = 95
         self.col_w = (self.panel_w - 20) // NUM_PLAYERS
-        self.row_h = 45
+        self.row_h = 34  # bolo 45
         self.content_x = 10
 
     # ------------------------------------------------------------------
@@ -150,43 +149,34 @@ class ChujogramPanel:
         title = self.font_large.render("CHUJOGRAM", True, COLOR_GOLD)
         title_rect = title.get_rect(
             centerx=self.panel_x + self.panel_w // 2,
-            top=10
+            top=8  # bolo 10, ok
         )
         self.screen.blit(title, title_rect)
 
         # Oddeľovacia čiara
-        pygame.draw.line(
-            self.screen, COLOR_GOLD,
-            (self.panel_x + 5, 40),
-            (self.panel_x + self.panel_w - 5, 40),
-            width=1
-        )
+        pygame.draw.line(self.screen, COLOR_GOLD,
+                         (self.panel_x + 5, self.header_h),
+                         (self.panel_x + self.panel_w - 5, self.header_h), width=1)
 
         # Mená hráčov — skrátené
         for i, name in enumerate(self.player_names):
             x = self.panel_x + self.content_x + i * self.col_w + self.col_w // 2
             short_name = name[:10]
             surf = self.font_small.render(short_name, True, COLOR_WHITE)
-            rect = surf.get_rect(centerx=x, top=45)
+            rect = surf.get_rect(centerx=x, top=57)
             self.screen.blit(surf, rect)
 
             # Vertikálna čiara medzi stĺpcami
             if i > 0:
-                pygame.draw.line(
-                    self.screen, COLOR_GRAY,
-                    (self.panel_x + self.content_x + i * self.col_w, 42),
-                    (self.panel_x + self.content_x + i * self.col_w,
-                     self.panel_h - 5),
-                    width=1
-                )
+                pygame.draw.line(self.screen, COLOR_GRAY,
+                                 (self.panel_x + self.content_x + i * self.col_w, 54),  # bolo 42
+                                 (self.panel_x + self.content_x + i * self.col_w, self.panel_h - 5),
+                                 width=1)
 
         # Čiara pod hlavičkou
-        pygame.draw.line(
-            self.screen, COLOR_GOLD,
-            (self.panel_x + 5, self.header_h),
-            (self.panel_x + self.panel_w - 5, self.header_h),
-            width=1
-        )
+        pygame.draw.line(self.screen, COLOR_GOLD,
+                         (self.panel_x + 5, self.header_h),
+                         (self.panel_x + self.panel_w - 5, self.header_h), width=1)
 
     def _draw_content(self, bullet_history, round_scores):
         if not bullet_history:
@@ -240,7 +230,7 @@ class ChujogramPanel:
                     player_idx < len(round_bullets) else 0
 
                 if has_bullet:
-                    bullet_y = y + 20
+                    bullet_y = y + 30
                     pygame.draw.circle(
                         self.screen, BULLET_COLOR,
                         (x, bullet_y), BULLET_RADIUS
@@ -288,40 +278,32 @@ class ChujogramPanel:
                     )
 
     def _draw_btn(self):
-        """Nakreslí tlačidlo CHUJOGRAM."""
         btn_rect = self._btn_rect()
+        text = "CHUJOGRAM"
+        char_spacing = (btn_rect.height - 16) // len(text)  # dynamicky podľa výšky
 
-        # Pozadie
-        btn_surf = pygame.Surface(
-            (self.btn_w, self.btn_h), pygame.SRCALPHA
-        )
+        btn_surf = pygame.Surface((self.btn_w, btn_rect.height), pygame.SRCALPHA)
         btn_surf.fill((15, 8, 3, 220))
         self.screen.blit(btn_surf, (btn_rect.x, btn_rect.y))
 
-        # Okraj
         color = COLOR_GOLD if self.visible else COLOR_GRAY
-        pygame.draw.rect(
-            self.screen, color,
-            btn_rect, width=2,
-            border_radius=5
-        )
+        pygame.draw.rect(self.screen, color, btn_rect, width=2, border_radius=5)
 
-        # Text vertikálne — CHUJOGRAM
-        for i, char in enumerate("CHUJOGRAM"):
+        for i, char in enumerate(text):
             surf = self.font_small.render(char, True, COLOR_GOLD)
             rect = surf.get_rect(
                 centerx=btn_rect.centerx,
-                top=btn_rect.top + 8 + i * 18
+                top=btn_rect.top + 8 + i * char_spacing
             )
             self.screen.blit(surf, rect)
 
     def _btn_rect(self) -> pygame.Rect:
-        from config import BUTTON_SORT_X, BUTTON_SORT_Y, BUTTON_SORT_WIDTH
+        from config import ROUND_STATUS_X, ROUND_STATUS_Y, ROUND_STATUS_H
         return pygame.Rect(
-            BUTTON_SORT_X + BUTTON_SORT_WIDTH + 20,
-            BUTTON_SORT_Y,
-            40,  # ← pevná úzka šírka namiesto BUTTON_SORT_WIDTH
-            self.btn_h
+            ROUND_STATUS_X - 50,  # tesne naľavo od tabuľky KOLO
+            ROUND_STATUS_Y,  # rovnaké Y
+            40,  # šírka tlačidla
+            ROUND_STATUS_H  # rovnaká výška ako tabuľka KOLO
         )
 
     def __repr__(self) -> str:

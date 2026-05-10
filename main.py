@@ -37,9 +37,10 @@ def _create_game(settings: dict) -> tuple:
 
 
 def _run_game(window, game_state, ai_players,
-              new_game: bool = True) -> tuple:
+              new_game: bool = True, settings: dict = None) -> tuple:
     screen = Screen(game_state, ai_players,
-                    debug=DEBUG_MODE, new_game=new_game)
+                    debug=DEBUG_MODE, new_game=new_game,
+                    settings=settings or {})
     result = screen.run()
     return result, game_state, ai_players
 
@@ -64,6 +65,7 @@ def main():
         "ai1_difficulty": "hard",
         "ai2_difficulty": "hard",
         "ai3_difficulty": "hard",
+        "table_bg": "table.jpg",
     }
 
     active_game_state = None
@@ -77,15 +79,22 @@ def main():
             pygame.quit()
             sys.exit()
 
+
         elif action == "settings":
             settings_screen = SettingsScreen(window, settings)
             settings = settings_screen.run()
+            # Aktualizuj obtiažnosť ak beží hra
+            if active_ai_players is not None:
+                for i, ai in enumerate(active_ai_players):
+                    if ai is not None:
+                        ai.difficulty = settings.get(f"ai{i}_difficulty", "hard")
 
         elif action == "continue" and active_game_state is not None:
             result, active_game_state, active_ai_players = _run_game(
                 window, active_game_state, active_ai_players,
-                new_game=False
+                new_game=False, settings=settings
             )
+
             if result == "game_over" and active_game_state.loser is not None:
                 game_over = GameOverScreen(
                     window,
@@ -99,10 +108,13 @@ def main():
                 if next_action == "new_game":
                     active_game_state, active_ai_players = _create_game(settings)
 
+
         elif action == "new_game":
             active_game_state, active_ai_players = _create_game(settings)
             result, active_game_state, active_ai_players = _run_game(
-                window, active_game_state, active_ai_players
+                window, active_game_state, active_ai_players,
+                settings=settings  # ← chýba
+
             )
 
             if result == "game_over" and active_game_state.loser is not None:
@@ -121,7 +133,8 @@ def main():
                         # Rovno spusti novú hru bez menu
                         active_game_state, active_ai_players = _create_game(settings)
                         result, active_game_state, active_ai_players = _run_game(
-                            window, active_game_state, active_ai_players
+                            window, active_game_state, active_ai_players,
+                            settings=settings
                         )
                         if result != "game_over" or active_game_state.loser is None:
                             break

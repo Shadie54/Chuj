@@ -21,6 +21,7 @@ class GameState:
         self.round_number: int = 0
         self.current_round: Round | None = None
         self.round_history: list[dict] = []
+        self.round_scores_history: list[list[int]] = []
         self.phase: str = "setup"           # setup → playing → game_over
 
         # Kto začína prvý štich
@@ -73,7 +74,9 @@ class GameState:
         self.last_sweep_player = self.current_round._check_sweep()  # ← pridaj
         self._record_round_history()
         self._update_chujogram()
+        self.round_scores_history.append([p.total_score for p in self.players])
         self._advance_first_player()
+        print(f"DEBUG round_scores_history: {self.round_scores_history}")
         if self._check_game_over():
             self.phase = "game_over"
 

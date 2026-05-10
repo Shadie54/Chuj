@@ -26,9 +26,9 @@ class GameOverScreen:
         self.round_number = round_number
         self.clock = pygame.time.Clock()
 
-        self.font_title = get_font( 120)
-        self.font_large = get_font( FONT_SIZE_LARGE + 16)
-        self.font_medium = get_font( FONT_SIZE_MEDIUM)
+        self.font_title = get_font(90)  # bolo 120
+        self.font_large = get_font(FONT_SIZE_LARGE + 8)  # bolo +16
+        self.font_medium = get_font(FONT_SIZE_MEDIUM + 2)  # bolo FONT_SIZE_MEDIUM
 
         try:
             self.bg = pygame.image.load("assets/graphics/table.jpg").convert()
@@ -39,7 +39,7 @@ class GameOverScreen:
         btn_w = 220
         btn_h = 60
         center_x = SCREEN_WIDTH // 2
-        btn_y = SCREEN_HEIGHT - 160
+        btn_y = SCREEN_HEIGHT - 180  # bolo -200
 
         self.btn_new_game = pygame.Rect(
             center_x - btn_w - 20, btn_y, btn_w, btn_h
@@ -111,26 +111,27 @@ class GameOverScreen:
             title_color = COLOR_GOLD
 
         title = self.font_title.render(title_text, True, title_color)
-        title_rect = title.get_rect(center=(SCREEN_WIDTH // 2, 130))
+        title_rect = title.get_rect(center=(SCREEN_WIDTH // 2, 110))  # bolo 130
+
         self.screen.blit(title, title_rect)
 
         # Meno porazeného
         loser_text = f"{self.loser.name} prehral s {self.loser.total_score} bodmi!"
         loser_surf = self.font_large.render(loser_text, True, COLOR_WHITE)
-        loser_rect = loser_surf.get_rect(center=(SCREEN_WIDTH // 2, 220))
+        loser_rect = loser_surf.get_rect(center=(SCREEN_WIDTH // 2, 195))  # bolo 220
         self.screen.blit(loser_surf, loser_rect)
 
         pygame.draw.line(
             self.screen, COLOR_GOLD,
-            (SCREEN_WIDTH // 2 - 400, 260),
-            (SCREEN_WIDTH // 2 + 400, 260),
+            (SCREEN_WIDTH // 2 - 400, 235),
+            (SCREEN_WIDTH // 2 + 400, 235),
             width=2
         )
 
     def _draw_scores(self):
         """Nakreslí finálne skóre."""
         title = self.font_medium.render("FINÁLNE SKÓRE", True, COLOR_GOLD)
-        title_rect = title.get_rect(center=(SCREEN_WIDTH // 2, 300))
+        title_rect = title.get_rect(center=(SCREEN_WIDTH // 2, 265))
         self.screen.blit(title, title_rect)
 
         # Zoraď hráčov podľa skóre (najmenej = najlepší)
@@ -138,13 +139,13 @@ class GameOverScreen:
             self.players, key=lambda p: p.total_score
         )
 
-        panel_w = 600
-        panel_h = 55
+        panel_w = 650  # bolo 600
+        panel_h = 60  # bolo 55
         panel_x = SCREEN_WIDTH // 2 - panel_w // 2
-        start_y = 340
+        start_y = 380     # bolo 300
 
         for i, player in enumerate(sorted_players):
-            y = start_y + i * 70
+            y = start_y + i * 80         # bolo i * 75
             is_loser = player == self.loser
 
             overlay = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
@@ -165,12 +166,13 @@ class GameOverScreen:
             rank_text = f"#{i + 1}"
             rank_color = COLOR_GOLD if i == 0 else COLOR_GRAY
             rank_surf = self.font_large.render(rank_text, True, rank_color)
-            self.screen.blit(rank_surf, (panel_x + 15, y + 10))
+            rank_rect = rank_surf.get_rect(right=panel_x + 65, top=y + 12)  # zarovnaný vpravo
+            self.screen.blit(rank_surf, rank_rect)
 
             # Meno
             name_color = COLOR_RED if is_loser else COLOR_WHITE
             name_surf = self.font_large.render(player.name, True, name_color)
-            self.screen.blit(name_surf, (panel_x + 70, y + 10))
+            self.screen.blit(name_surf, (panel_x + 75, y + 12))   # bolo +70, +10
 
             # Skóre
             score_surf = self.font_large.render(
@@ -198,7 +200,7 @@ class GameOverScreen:
         info_text = f"Hra trvala {self.round_number} kôl"
         info_surf = self.font_medium.render(info_text, True, COLOR_GRAY)
         info_rect = info_surf.get_rect(
-            center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 200)
+            center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 240)  # bolo -200
         )
         self.screen.blit(info_surf, info_rect)
 

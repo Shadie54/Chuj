@@ -23,14 +23,17 @@ from config import (
 
 class Screen:
     def __init__(self, game_state: GameState, ai_players: list,
-                 debug: bool = DEBUG_MODE, new_game: bool = True):
+                 debug: bool = DEBUG_MODE, new_game: bool = True, settings=None):
         pygame.init()
+
         self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
         pygame.display.set_caption("Chuj")
 
+        self.settings = settings or {}
+        bg_file = self.settings.get("table_bg", "table.jpg")
         try:
             self.table_bg = pygame.image.load(
-                "assets/graphics/table.jpg"
+                f"assets/graphics/{bg_file}"
             ).convert()
             self.table_bg = pygame.transform.scale(
                 self.table_bg, (SCREEN_WIDTH, SCREEN_HEIGHT)
@@ -94,8 +97,6 @@ class Screen:
             self.screen,
             [p.name for p in game_state.players]
         )
-        # História bodov pre chujogram
-        self.round_scores_history: list[list[int]] = []
 
         self.round_status = RoundStatus(self.screen)
 
@@ -356,9 +357,6 @@ class Screen:
                     p.name: p.round_points for p in self.game_state.players
                 }
                 self.game_state.finish_round()
-                self.round_scores_history.append([
-                    p.total_score for p in self.game_state.players
-                ])
                 sweep_player = self.game_state.last_sweep_player
                 results = {}
                 for i, player in enumerate(self.game_state.players):
@@ -459,11 +457,6 @@ class Screen:
 
             self.game_state.finish_round()
 
-            # Ulož CELKOVÉ skóre pre chujogram
-            self.round_scores_history.append([
-                p.total_score for p in self.game_state.players
-            ])
-
             # Log s uloženými hodnotami
             sweep_player = self.game_state.last_sweep_player
             results = {}
@@ -500,7 +493,7 @@ class Screen:
             self._draw_current_trick()
         self.trick_animation.draw()
         self.phase_renderer.draw_player_labels()
-        self.chujogram.draw(self.game_state.bullet_history,self.round_scores_history)
+        self.chujogram.draw(self.game_state.bullet_history,self.game_state.round_scores_history)
         self.round_status.draw(self.game_state.players,self.game_state.current_round)
         self.phase_renderer.draw_buttons()
         self.phase_renderer.draw_phase_overlay()

@@ -51,37 +51,35 @@ class RoundStatus:
             width=2, border_radius=10
         )
 
-    def _draw_title(self, round_number: int | None = None,
-                    deal_seed: int | None = None):
-        """Nakreslí nadpis."""
-        # Zostav text "KOLO X (seed: Y)"
+    def _draw_title(self, round_number, deal_seed):
         if round_number is not None:
-            if deal_seed is not None:
-                round_text = f"KOLO {round_number} ({deal_seed})"
-            else:
-                round_text = f"KOLO {round_number}"
+            round_text = f"KOLO {round_number}"
         else:
             round_text = "KOLO"
 
         title = self.font_medium.render(round_text, True, COLOR_GOLD)
         title_rect = title.get_rect(
-            centerx=self.x + self.w // 2,
+            left=self.x + 30,  # bolo centerx
             top=self.y + 8
         )
         self.screen.blit(title, title_rect)
 
-        # Oddeľovacia čiara
-        pygame.draw.line(
-            self.screen, COLOR_GOLD,
-            (self.x + 10, self.y + 30),
-            (self.x + self.w - 10, self.y + 30),
-            width=1
-        )
+        if deal_seed is not None:
+            seed = self.font_small.render(f" ({deal_seed})", True, COLOR_GRAY)  # pridaj medzeru
+            seed_rect = seed.get_rect(
+                right=self.x + self.w - 8,
+                centery=title_rect.centery  # rovnaká výška ako KOLO
+            )
+            self.screen.blit(seed, seed_rect)
+
+        pygame.draw.line(self.screen, COLOR_GOLD,
+                         (self.x + 10, self.y + 43),
+                         (self.x + self.w - 10, self.y + 43), width=1)
 
     def _draw_players(self, players: list, current_round=None):
         """Nakreslí riadok pre každého hráča."""
-        y_start = self.y + 38
-        row_h = (self.h - 45) // len(players)
+        y_start = self.y + 48
+        row_h = (self.h - 68) // len(players)
 
         for i, player in enumerate(players):
             y = y_start + i * row_h
@@ -118,7 +116,7 @@ class RoundStatus:
 
             # Zelené guličky — séria bez trestných bodov
             streak = player.no_penalty_streak
-            self._draw_streak(x=self.x + 10, y=y + 22, streak=streak)  # bolo y + 16
+            self._draw_streak(x=self.x + 10, y=y + 35, streak=streak)  # bolo y + 22
 
     def _draw_streak(self, x: int, y: int, streak: int):
         """Nakreslí 5 guličiek — zelené pre sériu, sivé prázdne."""
