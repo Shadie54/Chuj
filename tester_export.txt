@@ -1,64 +1,63 @@
 ======================================================================
 TESTER EXPORT
 ======================================================================
-Scenár: random_seed_54418
-Popis: Náhodné rozdanie (seed=54418)
+Scenár: random_seed_668239
+Popis: Náhodné rozdanie (seed=668239)
 
 --- STAV ---
-štich: 7/8
-Na ťahu: AI_2
-Override mode: nie
-First player kola: AI_2
+Štich: 7/8
+Na ťahu: AI_3
+First player: AI_0
 
---- SKÓRE KOLA (round_points) ---
-  AI_0: 0b
-  AI_1: 17b
-  AI_2: 0b
-  AI_3: 0b
+--- VYSVIETENIE ---
+  acorn-over: AI_2
+
+--- SKÓRE ---
+  AI_0: 0b (celkovo: 0b)
+  AI_1: 0b (celkovo: 0b)
+  AI_2: 13b (celkovo: 0b)
+  AI_3: 0b (celkovo: 0b)
 
 --- RUKY ---
-  AI_0 (2): J♠ 9♠
-  AI_1 (1): K♥
-  AI_2 (2): 7♥ A♣ ← NA ŤAHU
-  AI_3 (2): 8♠ J♣
+  AI_0 (2): K● 8♠
+  AI_1 (2): A♥ Q♥
+  AI_2 (1): Q♣
+  AI_3 (2): 9♠ 10♥ ← NA ŤAHU
 
---- AKTUÁLNY štich ---
-Lead suit: heart
-  AI_1: 9♥
+--- AKTUÁLNY ŠTICH ---
+Lead: bell
+  AI_2: Q●
 
---- HISTÓRIA ŠTICHOV (chronologicky) ---
-  T1: leader=AI_2 | AI_2: 8●  AI_3: A♠  AI_0: 7●  AI_1: A● → AI_1
-  T2: leader=AI_1 | AI_1: 7♣  AI_2: 10♣  AI_3: 9♣  AI_0: K♣ → AI_0
-  T3: leader=AI_0 | AI_0: 7♠  AI_1: Q♠  AI_2: Q♣  AI_3: 10♠ → AI_1
-  T4: leader=AI_1 | AI_1: K●  AI_2: J●  AI_3: Q♥  AI_0: 10● → AI_1
-  T5: leader=AI_1 | AI_1: Q●  AI_2: 9●  AI_3: 8♥  AI_0: 10♥ → AI_1
-  T6: leader=AI_1 | AI_1: A♥  AI_2: J♥  AI_3: 8♣  AI_0: K♠ → AI_1
+--- HISTÓRIA ---
+  T1: leader=AI_0 | AI_0: 8♣  AI_1: 9♣  AI_2: 7♣  AI_3: K♣ → AI_3
+  T2: leader=AI_3 | AI_3: J♣  AI_0: J♥  AI_1: 10♣  AI_2: A♣ → AI_2
+  T3: leader=AI_2 | AI_2: 9♥  AI_3: 8♥  AI_0: A●  AI_1: 7♥ → AI_2
+  T4: leader=AI_2 | AI_2: 9●  AI_3: 7●  AI_0: 8●  AI_1: A♠ → AI_2
+  T5: leader=AI_2 | AI_2: J●  AI_3: K♥  AI_0: 10●  AI_1: K♠ → AI_2
+  T6: leader=AI_2 | AI_2: Q♠  AI_3: J♠  AI_0: 10♠  AI_1: 7♠ → AI_2
 
 --- POSLEDNÝ ŤAH ---
-Hráč: AI_1 (AI_1)
-Zahraná karta: 9♥
+Hráč: AI_2
+Karta: Q●
 
---- REASONING CHAIN POSLEDNÉHO ŤAHU ---
-  [AI_1] SWEEP_GATE1_DEBUG: hand_penalty=2, remaining=1, my_taken=7, already_taken=0
-  [AI_1] SWEEP_STATE: COMMITTED_FULL → IDLE
-  [SWEEP AI_1] štich 7: NIE | stav=IDLE | P(sweep)=0.00 | EV=0.0
-    → L1: hearts-driven
-    → L2: strength=STRONG, profile=HORNIK_BAIT
-    → L3: passed=True, lead_order=['heart', 'bell', 'leaf', 'acorn'], critical_events=0
-    → L4: passed=False, critical_events=[]
-  [AI_1] L-FORCED/OPEN: 9♥
+--- REASONING ---
+  [AI_2] SWEEP_GATE1_DEBUG: hand_penalty=1, remaining=3, my_taken=6, already_taken=0
+  [AI_2] SWEEP_STATE: COMMITTED_FULL → IDLE
+  [SWEEP AI_2] štich 7: NIE | stav=IDLE | P(sweep)=0.00 | EV=0.0
+    → L1: control-driven
+    → L2: strength=WEAK, profile=CONTROL_DRIVEN
+  [AI_2] L1-SAFE_LEAD: escape: Q●
+  [AI_2] L-SAFE/SAFE: Q●
 
---- AIMemory (AI_2) ---
-  Tricks taken: {0: 1, 1: 5, 2: 0, 3: 0}
-  Specials gone: {'leaf': True, 'acorn': True}
-  Illuminated by: {'leaf': None, 'acorn': None}
-  Void suits:
-    AI_0: ['bell', 'heart']
-    AI_2: ['leaf']
-    AI_3: ['bell', 'heart']
-  Remaining (u súperov):
-    heart: K♥ 9♥
-    leaf: J♠ 9♠ 8♠
-    acorn: J♣
-    bell: (žiadne)
+--- AIMemory (AI_3) ---
+  Tricks taken: {0: 0, 1: 0, 2: 5, 3: 1}
+  Specials gone: {'leaf': True, 'acorn': False}
+  Illuminated by: {'leaf': None, 'acorn': 2}
+  Void AI_0: ['acorn', 'heart']
+  Void AI_1: ['bell']
+  Void AI_3: ['bell']
+  Remaining heart: A♥ Q♥
+  Remaining leaf: 8♠
+  Remaining acorn: Q♣
+  Remaining bell: K● Q●
   Sweep state: IDLE

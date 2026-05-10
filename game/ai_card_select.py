@@ -126,6 +126,12 @@ class CardSelector:
                               f"vytiahni horníka {suit}: {card}")
                     return card
 
+        if situation == Situation.FOLLOWER_CONTROLLED:
+            return self._controlled_take(playable, trick)
+
+        if situation == Situation.FOLLOWER_FREE_TAKE:
+            return self._free_take(playable, trick)
+
         lead_suit = trick.lead_suit
         lead_cards = [c for c in playable if c.suit == lead_suit]
         non_special_lead = [c for c in lead_cards if not c.is_special]
@@ -137,6 +143,67 @@ class CardSelector:
 
         if lead_cards:
             return max(lead_cards, key=lambda c: c.rank_order)
+
+        return max(playable, key=lambda c: c.rank_order)
+
+    def _controlled_take(self, playable: list[Card],
+                         trick: Trick) -> Card:
+        lead_suit = trick.lead_suit
+        lead_cards = [c for c in playable if c.suit == lead_suit]
+
+        # Horník má vždy prioritu — zbavíme sa bomby
+        specials = [c for c in lead_cards if c.is_special]
+        if specials:
+            card = specials[0]
+            self._log(Strategy.DUMP_SPECIAL, f"dump horník: {card}")
+            return card
+
+        # Dump trap A/K v lead suit
+        danger = [
+            c for c in lead_cards
+            if c.rank in ("ace", "king") and self._is_trap(c, trick)
+        ]
+        if danger:
+            card = max(danger, key=lambda c: c.rank_order)
+            self._log(Strategy.LAST_TAKE, f"dump trap A/K: {card}")
+            return card
+
+        # Najvyššia lead karta
+        non_special_lead = [c for c in lead_cards if not c.is_special]
+        pool = non_special_lead if non_special_lead else lead_cards
+        if pool:
+            card = max(pool, key=lambda c: c.rank_order)
+            self._log(Strategy.LAST_TAKE, f"najvyššia lead: {card}")
+            return card
+
+        return max(playable, key=lambda c: c.rank_order)
+
+    def _free_take(self, playable: list[Card],
+                   trick: Trick) -> Card:
+        """
+        Vysvietený horník u skoršieho hráča zahral nehorníka — príležitosť
+        zbaviť sa A/K v lead suit zadarmo.
+        """
+        lead_suit = trick.lead_suit
+        lead_cards = [c for c in playable if c.suit == lead_suit]
+
+        # Dump A/K v lead suit
+        high = [
+            c for c in lead_cards
+            if c.rank in ("ace", "king") and not c.is_special
+        ]
+        if high:
+            card = max(high, key=lambda c: c.rank_order)
+            self._log(Strategy.DUMP_FREE, f"dump A/K free: {card}")
+            return card
+
+        # Fallback — najvyššia non-special lead
+        non_special_lead = [c for c in lead_cards if not c.is_special]
+        pool = non_special_lead if non_special_lead else lead_cards
+        if pool:
+            card = max(pool, key=lambda c: c.rank_order)
+            self._log(Strategy.LAST_TAKE, f"fallback najvyššia: {card}")
+            return card
 
         return max(playable, key=lambda c: c.rank_order)
 
@@ -232,7 +299,7 @@ class CardSelector:
 
             danger_trap += [
                 c for c in suit_cards
-                if c.rank in ("ace", "king") and self._is_trap(c)
+                if c.rank in ("ace", "king") and self._is_trap(c, trick)
             ]
 
         if danger_trap:
@@ -252,7 +319,7 @@ class CardSelector:
             c for c in playable
             if not c.is_special
                and c.suit != "heart"
-               and self._is_trap(c)
+               and self._is_trap(c, trick)
         ]
         if trap_playable:
             card = max(trap_playable, key=lambda c: c.rank_order)
@@ -323,25 +390,38 @@ class CardSelector:
                 return card
 
         if not is_leader:
-            if not is_leader:
-                lead_cards = [c for c in playable if c.suit == trick.lead_suit]
-                non_special_lead = [c for c in lead_cards if not c.is_special]
-                pool = non_special_lead if non_special_lead else lead_cards
-                if pool:
+            lead_cards = [c for c in playable if c.suit == trick.lead_suit]
+            non_special_lead = [c for c in lead_cards if not c.is_special]
+            pool = non_special_lead if non_special_lead else lead_cards
+            if pool:
+                if not self._trick_has_penalty(trick):
+                    # Bezbodový štich — zbavíme sa nebezpečnej karty
                     if not self._trick_has_penalty(trick):
-                        # Bezbodový štich — zhoď strednú kartu
-                        traps = [c for c in pool if self._is_trap(c)]
+                        specials = [c for c in pool if c.is_special]
+                        if specials:
+                            card = specials[0]
+                            if len(pool) == 1:
+                                self._log(Strategy.FORCED_TAKE, f"donútený horník: {card}")
+                            else:
+                                self._log(Strategy.DUMP_SPECIAL, f"dump horník: {card}")
+                            return card
+                        traps = [c for c in pool if self._is_trap(c, trick)]
                         if traps:
                             card = min(traps, key=lambda c: c.rank_order)
-                            self._log(Strategy.WAIT, f"dump trap: {card}")
+                            # Ak nemám inú možnosť — som donútený
+                            if len(pool) == 1:
+                                self._log(Strategy.FORCED_TAKE, f"donútený trap: {card}")
+                            else:
+                                self._log(Strategy.DUMP_DANGEROUS, f"dump trap: {card}")
                             return card
                         card = max(pool, key=lambda c: c.rank_order)
-                        self._log(Strategy.WAIT, f"dump high: {card}")
+                        self._log(Strategy.DUMP_DANGEROUS, f"dump high: {card}")
                         return card
-                    else:
-                        card = min(pool, key=lambda c: c.rank_order)
-                        self._log(Strategy.WAIT, f"wait: {card}")
-                        return card
+                else:
+                    # Bodový štich — čakám, niekto iný berie
+                    card = min(pool, key=lambda c: c.rank_order)
+                    self._log(Strategy.WAIT, f"wait: {card}")
+                    return card
 
         non_special = [
             c for c in playable
@@ -354,11 +434,19 @@ class CardSelector:
     # Pomocné
     # ------------------------------------------------------------------
 
-    def _is_trap(self, card: Card) -> bool:
+    def _is_trap(self, card: Card, trick: Trick | None = None) -> bool:
         higher_opponents = [
             c for c in self.memory.remaining[card.suit]
             if c.rank_order > card.rank_order
         ]
+        # Karty v aktuálnom štichu tiež počítajú
+        if trick:
+            higher_in_trick = [
+                c for _, c in trick.played_cards
+                if c.suit == card.suit and c.rank_order > card.rank_order
+            ]
+            higher_opponents += higher_in_trick
+
         higher_own = [
             c for c in self.player.hand.cards
             if c.suit == card.suit

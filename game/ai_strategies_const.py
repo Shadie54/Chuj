@@ -10,9 +10,9 @@ class Situation:
     # Follower situácie
     FOLLOWER_SAFE       = "F-SAFE"
     FOLLOWER_VOID       = "F-VOID"
-    FOLLOWER_FORCED     = "F-FORCED"
-    FOLLOWER_CONTROLLED = "F-CONTROLLED"
-    FOLLOWER_FREE_TAKE  = "F-FREE_TAKE"
+    FOLLOWER_FORCED     = "F-FORCED"  # nemôžem podliezť + penalty → musím brať
+    FOLLOWER_CONTROLLED = "F-CONTROLLED"  # posledný + čistý štich → volím čo zahrám
+    FOLLOWER_FREE_TAKE  = "F-FREE_TAKE"  # príležitosť dumpu A/K (horník scenár)
     FOLLOWER_WAIT       = "F-WAIT"
 
 
@@ -30,13 +30,14 @@ class Strategy:
     DUMP_SETUP      = "L3-DUMP_SETUP"
 
     # Follower
-    UNDERPLAY       = "F1-UNDERPLAY"
-    FORCED_TAKE     = "F2-FORCED_TAKE"
-    LAST_TAKE       = "F3-LAST_TAKE"
-    WAIT            = "F4-WAIT"
-    DUMP_SPECIAL    = "F5-DUMP_SPECIAL"
-    DUMP_HEART      = "F6-DUMP_HEART"
-    DUMP_DANGEROUS  = "F7-DUMP_DANGEROUS"
+    UNDERPLAY       = "F1-UNDERPLAY"  # podliezam
+    FORCED_TAKE     = "F2-FORCED_TAKE"  # musím brať (penalty štich, trap)
+    LAST_TAKE       = "F3-LAST_TAKE"  # posledný, čistý štich, beriem vedome
+    DUMP_FREE       = "F4-DUMP_FREE"  # dump A/K cez FREE_TAKE príležitosť
+    WAIT            = "F5-WAIT"  # niekto iný berie
+    DUMP_SPECIAL    = "F6-DUMP_SPECIAL"
+    DUMP_HEART      = "F7-DUMP_HEART"
+    DUMP_DANGEROUS  = "F8-DUMP_DANGEROUS"
 
     # Proti záväzku
     BREAK_ALL       = "A1-BREAK_ALL"

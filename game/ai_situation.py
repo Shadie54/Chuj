@@ -37,7 +37,7 @@ class SituationDetector:
             Situation.FOLLOWER_FORCED: Mode.TAKE,
             Situation.FOLLOWER_WAIT: Mode.OPEN,
             Situation.FOLLOWER_FREE_TAKE: Mode.TAKE,
-            Situation.FOLLOWER_CONTROLLED: None,
+            Situation.FOLLOWER_CONTROLLED: Mode.TAKE,
         }
         mode = mapping.get(situation)
         if mode is None:
@@ -87,6 +87,11 @@ class SituationDetector:
         if self._trick_is_free_to_take(playable, trick):
             return Situation.FOLLOWER_FREE_TAKE
 
+        is_last = len(trick.played_cards) == NUM_PLAYERS - 1
+        trick_has_penalty = self._trick_has_penalty(trick) or any(
+            c.is_special for c in lead_cards
+        )
+
         current_best = self._get_current_best(trick)
         can_underplay = any(
             c.rank_order < current_best.rank_order
@@ -96,23 +101,38 @@ class SituationDetector:
         if can_underplay:
             return Situation.FOLLOWER_SAFE
 
-        trick_has_penalty = self._trick_has_penalty(trick)
-        is_last = len(trick.played_cards) == NUM_PLAYERS - 1
+        players_after = self._get_players_after_me(trick)
+        trick_cards = [c for _, c in trick.played_cards]
+        my_lowest = min(lead_cards, key=lambda c: c.rank_order)
+        can_be_beaten = self.memory.can_anyone_beat(
+            my_lowest, players_after, trick_cards)
+
+        i_will_likely_win = (
+                len(lead_cards) == 1
+                and not any(
+            c.rank_order > lead_cards[0].rank_order
+            for c in self.memory.remaining[lead_cards[0].suit]
+        )
+                and not any(
+            c.suit == lead_cards[0].suit
+            and c.rank_order > lead_cards[0].rank_order
+            for _, c in trick.played_cards
+        )
+        )
 
         if not trick_has_penalty:
-            if is_last:
+            if is_last and not can_underplay:
                 return Situation.FOLLOWER_CONTROLLED
             else:
-                return Situation.FOLLOWER_WAIT
+                if can_be_beaten and not i_will_likely_win:
+                    return Situation.FOLLOWER_WAIT
+                else:
+                    return Situation.FOLLOWER_FORCED
         else:
             if is_last:
                 return Situation.FOLLOWER_FORCED
             else:
-                players_after = self._get_players_after_me(trick)
-                trick_cards = [c for _, c in trick.played_cards]
-                my_lowest = min(lead_cards, key=lambda c: c.rank_order)
-                if self.memory.can_anyone_beat(
-                        my_lowest, players_after, trick_cards):
+                if can_be_beaten and not i_will_likely_win:
                     return Situation.FOLLOWER_WAIT
                 else:
                     return Situation.FOLLOWER_FORCED
@@ -145,6 +165,10 @@ class SituationDetector:
             return False
 
         if lead_suit not in ("leaf", "acorn"):
+            return False
+
+        # Horník tejto farby už padol — FREE_TAKE scenár nedáva zmysel
+        if self.memory.is_special_gone(lead_suit):
             return False
 
         illuminator = self.memory.illuminated_by[lead_suit]
