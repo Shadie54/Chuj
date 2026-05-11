@@ -17,7 +17,7 @@ from config import (
     SCREEN_WIDTH, SCREEN_HEIGHT, FPS, DEBUG_MODE,
     COLOR_BG,
     FONT_SIZE_MEDIUM, FONT_SIZE_LARGE, FONT_SIZE_SMALL,
-    get_font
+    get_font, CARD_SIZE_MEDIUM, COLOR_GOLD, COLOR_GRAY, COLOR_WHITE
 )
 
 
@@ -102,6 +102,7 @@ class Screen:
 
         self.sort_ascending = False
         self.declaration_failed_timer: int = 0
+        self.show_last_trick = False
     # ------------------------------------------------------------------
     # Hlavná slučka
     # ------------------------------------------------------------------
@@ -202,8 +203,9 @@ class Screen:
                     self.debug = not self.debug
                     self.card_renderer.debug = self.debug
                 if event.key == pygame.K_ESCAPE:
-                    self._reset_trick_state()
-                    self.running = False
+                    if self.show_last_trick:
+                        self.show_last_trick = False
+                        continue
 
             if self.dealing and self.deal_animation:
                 self.deal_animation.handle_event(event)
@@ -223,6 +225,15 @@ class Screen:
     def _handle_click(self, pos: tuple[int, int]):
         """Spracuje klik myši."""
         # Vždy dostupné tlačidlá
+        if self.show_last_trick:
+            self.show_last_trick = False
+            return
+
+        if (self.phase_renderer._button_last_trick_rect().collidepoint(pos) and
+                self.game_state.current_round and
+                self.game_state.current_round.trick_number > 0):
+            self.show_last_trick = not self.show_last_trick
+            return
 
         if self.phase_renderer._button_sort_rect().collidepoint(pos):
             self.sort_ascending = not self.sort_ascending
@@ -500,6 +511,8 @@ class Screen:
         self.speech_bubble.draw()
         self.phase_renderer.draw_message()
         self.info_overlay.draw()
+        if self.show_last_trick:
+            self._draw_last_trick_overlay()
 
     def _draw_table(self):
         """Nakreslí stôl."""
@@ -553,6 +566,73 @@ class Screen:
         current_round = self.game_state.current_round
         if current_round and current_round.current_trick:
             self.card_renderer.draw_trick(current_round.current_trick)
+
+    def _draw_last_trick_overlay(self):
+        """Nakreslí overlay s posledným štichom."""
+        import os
+        from config import CARDS_MEDIUM_PATH, CARD_SIZE_MEDIUM
+
+        tricks = self.game_state.current_round.tricks
+        if not tricks:
+            self.show_last_trick = False
+            return
+
+        # Tmavé pozadie
+        dark = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        dark.fill((0, 0, 0, 200))
+        self.screen.blit(dark, (0, 0))
+
+        last_trick = tricks[-1]
+        winner_index = last_trick.get_winner_index()
+        played = last_trick.played_cards  # [(player_idx, card), ...]
+
+        card_w, card_h = CARD_SIZE_MEDIUM
+        gap = 30
+        total_w = len(played) * (card_w + gap) - gap
+        x0 = SCREEN_WIDTH // 2 - total_w // 2
+        y0 = SCREEN_HEIGHT // 2 - card_h // 2 - 40
+
+        # Nadpis
+        title = self.font_large.render("POSLEDNÝ ŠTICH", True, COLOR_GOLD)
+        self.screen.blit(title, title.get_rect(
+            centerx=SCREEN_WIDTH // 2, top=y0 - 60
+        ))
+
+        for player_idx, card in played:
+            i = [p for p, _ in played].index(player_idx)
+            cx = x0 + i * (card_w + gap)
+            is_winner = (player_idx == winner_index)
+
+            # Karta
+            path = os.path.join(CARDS_MEDIUM_PATH, f"{card.suit}-{card.rank}.png")
+            try:
+                img = pygame.image.load(path).convert_alpha()
+                img = pygame.transform.scale(img, CARD_SIZE_MEDIUM)
+                self.screen.blit(img, (cx, y0))
+            except FileNotFoundError:
+                pass
+
+            # Border
+            border_color = COLOR_GOLD if is_winner else COLOR_GRAY
+            border_width = 3 if is_winner else 1
+            pygame.draw.rect(self.screen, border_color,
+                             (cx, y0, card_w, card_h),
+                             width=border_width, border_radius=6)
+
+            # Meno hráča
+            name = self.game_state.players[player_idx].name
+            name_surf = self.font_small.render(
+                name, True, COLOR_GOLD if is_winner else COLOR_WHITE
+            )
+            self.screen.blit(name_surf, name_surf.get_rect(
+                centerx=cx + card_w // 2, top=y0 + card_h + 8
+            ))
+
+        # Hint
+        hint = self.font_small.render("Klikni pre zavretie", True, COLOR_GRAY)
+        self.screen.blit(hint, hint.get_rect(
+            centerx=SCREEN_WIDTH // 2, top=y0 + card_h + 50
+        ))
 
     # ------------------------------------------------------------------
     # Pomocné metódy

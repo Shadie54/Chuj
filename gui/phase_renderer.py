@@ -8,6 +8,7 @@ from config import (
     BUTTON_SORT_X, BUTTON_SORT_Y, BUTTON_SORT_WIDTH, BUTTON_SORT_HEIGHT,
     BUTTON_INFO_X, BUTTON_INFO_Y, BUTTON_INFO_WIDTH, BUTTON_INFO_HEIGHT,
     BUTTON_MENU_X, BUTTON_MENU_Y, BUTTON_MENU_WIDTH, BUTTON_MENU_HEIGHT,
+    BUTTON_LAST_TRICK_X, BUTTON_LAST_TRICK_Y,BUTTON_LAST_TRICK_WIDTH, BUTTON_LAST_TRICK_HEIGHT,
     COLOR_BUTTON_PRIMARY, COLOR_BUTTON_SECONDARY,
     get_font
 )
@@ -50,6 +51,13 @@ class PhaseRenderer:
 
     def draw_buttons(self):
         """Nakreslí vždy viditeľné tlačidlá + preparation tlačidlá."""
+        # Zobraziť len ak bol odohraný aspoň 1 štich
+        if (self.s.game_state.current_round and
+                self.s.game_state.current_round.trick_number > 0):
+            self.draw_button(
+                self._button_last_trick_rect(), "Posledný štich",
+                COLOR_BUTTON_SECONDARY
+            )
         self.draw_button(self._button_sort_rect(), "Zoradiť", COLOR_BUTTON_SECONDARY)
         self.draw_button(self._button_info_rect(), "Pravidlá", COLOR_BUTTON_SECONDARY)
         self.draw_button(self._button_menu_rect(), "Menu", COLOR_BUTTON_SECONDARY)
@@ -213,6 +221,10 @@ class PhaseRenderer:
     # ------------------------------------------------------------------
     # Button rects
     # ------------------------------------------------------------------
+    @staticmethod
+    def _button_last_trick_rect() -> pygame.Rect:
+        return pygame.Rect(BUTTON_LAST_TRICK_X, BUTTON_LAST_TRICK_Y,
+                           BUTTON_LAST_TRICK_WIDTH, BUTTON_LAST_TRICK_HEIGHT)
 
     @staticmethod
     def _button_sort_rect() -> pygame.Rect:

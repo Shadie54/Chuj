@@ -1,5 +1,6 @@
 # game/ai_situation.py
 
+import traceback
 from game.card import Card
 from game.trick import Trick
 from game.player import Player
@@ -32,6 +33,7 @@ class SituationDetector:
             Situation.LEADER_SAFE: Mode.SAFE,
             Situation.LEADER_FORCED: Mode.OPEN,
             Situation.LEADER_AGGRESSIVE: Mode.TAKE,
+            Situation.LEADER_HIGH_SCORE: Mode.SAFE,
             Situation.FOLLOWER_SAFE: Mode.SAFE,
             Situation.FOLLOWER_VOID: Mode.OPEN,
             Situation.FOLLOWER_FORCED: Mode.TAKE,
@@ -48,25 +50,63 @@ class SituationDetector:
     def _leader(self, hand_eval: HandEval,
                 playable: list[Card],
                 ctx: GameContext | None = None) -> str:
-        if self.difficulty == "hard":
-            # 90+ — agresivita nemá zmysel, horníci nám nerobia body
-                for suit in SUITS:
-                    if self.memory.is_special_gone(suit):
-                        continue
-                    holders = self.memory.who_has_special(suit)
-                    if not holders:
-                        continue
-                    if self.player.index in holders:
-                        continue
-                    suit_cards = [
-                        c for c in playable
-                        if c.suit == suit
-                           and not c.is_special
-                           and c.rank not in ("ace", "king")
-                    ]
-                    if suit_cards:
-                        return Situation.LEADER_AGGRESSIVE
 
+        if self.difficulty == "hard":
+            for suit in SUITS:
+                if self.memory.is_special_gone(suit):
+                    continue
+                holders = self.memory.who_has_special(suit)
+                if not holders:
+                    continue
+                if self.player.index in holders:
+                    continue
+                suit_cards = [
+                    c for c in playable
+                    if c.suit == suit
+                       and not c.is_special
+                       and c.rank not in ("ace", "king")
+                ]
+                if suit_cards:
+                    return Situation.LEADER_AGGRESSIVE
+
+        # 90+ — špeciálna logika
+        if ctx and ctx.is_high_score:
+            return self._leader_high_score(playable, hand_eval)
+
+        non_heart_escape = [
+            c for c in hand_eval.escape_cards
+            if c.suit != "heart" and c in playable
+        ]
+        if non_heart_escape:
+            return Situation.LEADER_SAFE
+
+        return Situation.LEADER_FORCED
+
+    def _leader_high_score(self, playable: list[Card],
+                           hand_eval: HandEval) -> str:
+        """
+        90+ logika pre leadera:
+        - Veď nízkou červeňou ak mám prebytočné buffery
+        - Inak escape non-heart → LEADER_SAFE
+        - Inak LEADER_FORCED
+        """
+        hand = self.player.hand.cards
+        hearts = [c for c in hand if c.suit == "heart"]
+        high_hearts = [c for c in hearts if c.rank in ("ace", "king")]
+        low_hearts = [c for c in hearts if c.rank in ("seven", "eight", "nine")]
+
+        # Prebytočné buffery — môžem zahodiť nízku červeň
+        surplus_low = len(low_hearts) - len(high_hearts)
+        if surplus_low > 0:
+            low_heart_playable = [
+                c for c in playable
+                if c.suit == "heart"
+                   and c.rank in ("seven", "eight", "nine")
+            ]
+            if low_heart_playable:
+                return Situation.LEADER_HIGH_SCORE
+
+        # Escape non-heart — štandardná safe logika bez červeňov
         non_heart_escape = [
             c for c in hand_eval.escape_cards
             if c.suit != "heart" and c in playable

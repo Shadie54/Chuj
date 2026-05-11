@@ -124,7 +124,7 @@ class AI:
 
         # --- KROK 4: CARD ---
         card = self.selector.select(
-            mode, situation, hand_eval, playable, current_trick
+            mode, situation, hand_eval, playable, current_trick, ctx
         )
 
         self._log(f"{situation}/{mode}", str(card))

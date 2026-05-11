@@ -344,10 +344,12 @@ class TesterEngine:
 
         # Zachyt logy z tohto rozhodovania
         self.logger.start_capture()
+        all_scores = [p.total_score for p in self.players]
         card = ai.decide_card(
             playable,
             self.round.current_trick,
             self.round.trick_number,
+            all_scores,
         )
         captured = self.logger.get_capture()
 
@@ -423,10 +425,12 @@ class TesterEngine:
 
         # Zachyť reasoning AI (vyhodnoť ale výsledok ignoruj)
         self.logger.start_capture()
+        all_scores = [p.total_score for p in self.players]
         ai_card = ai.decide_card(
             playable,
             self.round.current_trick,
             self.round.trick_number,
+            all_scores,
         )
         captured = self.logger.get_capture()
 

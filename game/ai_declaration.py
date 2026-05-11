@@ -26,13 +26,12 @@ class DeclarationAdvisor:
     def decide_declaration(self) -> str | None:
         if self.difficulty == "easy":
             return None
-        hand = self.player.hand.cards
-        if self._can_take_none(hand):
+        # TODO: "all" logika nie je hotová
+        # if self.difficulty == "hard" and self._can_take_all(hand):
+        #     return "all"
+        if self._can_take_none(self.player.hand.cards):
             self._log(Strategy.DECLARATION_NONE, "žiadne trestné karty")
             return "none"
-        if self.difficulty == "hard" and self._can_take_all(hand):
-            self._log(Strategy.DECLARATION_ALL, "dominancia")
-            return "all"
         return None
 
     @staticmethod

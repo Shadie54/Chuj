@@ -4,7 +4,7 @@ from game.card import Card
 from game.trick import Trick
 from game.player import Player
 from game.ai_memory import AIMemory
-from game.ai_hand_eval import HandEval
+from game.ai_hand_eval import HandEval, GameContext
 from game.ai_strategies_const import Strategy, Situation, Mode
 from config import NUM_PLAYERS, SUITS
 
@@ -22,14 +22,16 @@ class CardSelector:
     def select(self, mode: str, situation: str,
                hand_eval: HandEval,
                playable: list[Card],
-               trick: Trick) -> Card:
+               trick: Trick,
+               ctx: GameContext | None = None) -> Card:
         is_leader = len(trick.played_cards) == 0
+        # v select()
         if mode == Mode.SAFE:
-            return self._play_safe(playable, trick, is_leader, hand_eval)
+            return self._play_safe(playable, trick, is_leader, hand_eval, situation)
         elif mode == Mode.TAKE:
             return self._play_take(playable, trick, situation)
         elif mode == Mode.OPEN:
-            return self._play_open(playable, trick, situation, hand_eval)
+            return self._play_open(playable, trick, situation, hand_eval, ctx)
         return min(playable, key=lambda c: c.rank_order)
 
     # ------------------------------------------------------------------
@@ -38,8 +40,31 @@ class CardSelector:
 
     def _play_safe(self, playable: list[Card],
                    trick: Trick, is_leader: bool,
-                   hand_eval: HandEval) -> Card:
+                   hand_eval: HandEval,
+                   situation: str = "") -> Card:
         if is_leader:
+            # 90+ — veď nízkou prebytočnou červeňou
+            if situation == Situation.LEADER_HIGH_SCORE:
+                hand = self.player.hand.cards
+                hearts = [c for c in hand if c.suit == "heart"]
+                high_hearts = [c for c in hearts if c.rank in ("ace", "king")]
+                low_hearts = [c for c in hearts if c.rank in ("seven", "eight", "nine")]
+                surplus_low = len(low_hearts) - len(high_hearts)
+                low_heart_playable = [
+                    c for c in playable
+                    if c.suit == "heart"
+                       and c.rank in ("seven", "eight", "nine")
+                ]
+                # Zahraj najvyššiu prebytočnú nízku červeň
+                # (nechaj si tie ktoré sú buffery)
+                candidates = sorted(
+                    low_heart_playable, key=lambda c: c.rank_order, reverse=True
+                )
+                if candidates and surplus_low > 0:
+                    card = candidates[0]
+                    self._log(Strategy.HIGH_SCORE_LEAD, f"prebytočná nízka červeň: {card}")
+                    return card
+
             protected = self._protected_suits()
 
             escape_playable = [
@@ -132,13 +157,18 @@ class CardSelector:
         if situation == Situation.FOLLOWER_FREE_TAKE:
             return self._free_take(playable, trick)
 
+        is_last = len(trick.played_cards) == NUM_PLAYERS - 1
         lead_suit = trick.lead_suit
         lead_cards = [c for c in playable if c.suit == lead_suit]
         non_special_lead = [c for c in lead_cards if not c.is_special]
 
         if non_special_lead:
-            card = max(non_special_lead, key=lambda c: c.rank_order)
-            self._log(Strategy.FORCED_TAKE, f"najvyššia lead: {card}")
+            if is_last:
+                card = max(non_special_lead, key=lambda c: c.rank_order)
+                self._log(Strategy.FORCED_TAKE, f"najvyššia lead (posledný): {card}")
+            else:
+                card = min(non_special_lead, key=lambda c: c.rank_order)
+                self._log(Strategy.FORCED_TAKE, f"najnižšia lead: {card}")
             return card
 
         if lead_cards:
@@ -213,15 +243,96 @@ class CardSelector:
 
     def _play_open(self, playable: list[Card],
                    trick: Trick, situation: str,
-                   hand_eval: HandEval) -> Card:
+                   hand_eval: HandEval,
+                   ctx: GameContext | None = None) -> Card:
         if situation == Situation.FOLLOWER_VOID:
-            return self._void_discard(playable, trick)
+            return self._void_discard(playable, trick, ctx)
         if situation in (Situation.LEADER_FORCED,
                           Situation.FOLLOWER_WAIT):
             return self._open_play(playable, hand_eval, trick)
         return min(playable, key=lambda c: c.rank_order)
 
     def _void_discard(self, playable: list[Card],
+                      trick: Trick,
+                      ctx: GameContext | None = None) -> Card:
+        if ctx and ctx.is_high_score:
+            return self._void_discard_high_score(playable, trick, ctx)
+        return self._void_discard_standard(playable, trick)
+
+    def _void_discard_high_score(self, playable: list[Card],
+                                 trick: Trick,
+                                 ctx: GameContext) -> Card:
+        """
+        90+ void discard:
+        - Trap červeň má prednosť pred horníkom ak hrozí prehra
+        - Inak horník → trap červeň → non-safe červeň → štandardná logika
+        """
+        # Očakávaná škoda od trap červeňov
+        both_illuminated = (
+                self.memory.illuminated_by["leaf"] is not None
+                and self.memory.illuminated_by["acorn"] is not None
+        )
+        heart_multiplier = 2 if both_illuminated else 1
+
+        trap_hearts_playable = [
+            c for c in playable
+            if c.suit == "heart"
+               and self._is_trap(c, trick)
+        ]
+        expected_damage = len(trap_hearts_playable) * heart_multiplier
+
+        near_loss = ctx.my_score + expected_damage >= 95
+
+        # Trap červeň má prednosť ak hrozí prehra
+        if near_loss and trap_hearts_playable:
+            card = max(trap_hearts_playable, key=lambda c: c.rank_order)
+            self._log(Strategy.DUMP_HEART, f"90+ near loss trap heart: {card}")
+            return card
+
+        # Horník — štandardná logika
+        specials = [c for c in playable if c.is_special]
+        if specials:
+            def special_points(c: Card) -> int:
+                suit = "leaf" if c.is_leaf_over else "acorn"
+                illuminated = self.memory.illuminated_by[suit] is not None
+                if c.is_leaf_over:
+                    return 16 if illuminated else 8
+                else:
+                    return 8 if illuminated else 4
+
+            card = max(specials, key=special_points)
+            self._log(Strategy.DUMP_SPECIAL, f"90+ dump horník: {card}")
+            return card
+
+        # Trap červeň
+        if trap_hearts_playable:
+            card = max(trap_hearts_playable, key=lambda c: c.rank_order)
+            self._log(Strategy.DUMP_HEART, f"90+ trap heart: {card}")
+            return card
+
+        # Non-safe červeň (najvyššia)
+        non_safe_hearts = [
+            c for c in playable
+            if c.suit == "heart"
+               and not self._is_safe_heart(c)
+        ]
+        if non_safe_hearts:
+            card = max(non_safe_hearts, key=lambda c: c.rank_order)
+            self._log(Strategy.DUMP_HEART, f"90+ non-safe heart: {card}")
+            return card
+
+        # Fallback — štandardná logika
+        return self._void_discard_standard(playable, trick)
+
+    def _is_safe_heart(self, card: Card) -> bool:
+        """Najnižšia červeň v hre — garantovane neprehráme štich."""
+        remaining_lower = [
+            c for c in self.memory.remaining["heart"]
+            if c.rank_order < card.rank_order
+        ]
+        return len(remaining_lower) == 0
+
+    def _void_discard_standard(self, playable: list[Card],
                       trick: Trick) -> Card:
         """
         Void discard — nemám lead suit, hádžem nebezpečnú kartu.

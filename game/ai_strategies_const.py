@@ -6,6 +6,7 @@ class Situation:
     LEADER_SAFE         = "L-SAFE"
     LEADER_FORCED       = "L-FORCED"
     LEADER_AGGRESSIVE   = "L-AGGRESSIVE"
+    LEADER_HIGH_SCORE   = "L-HIGH_SCORE"  # ← pridaj
 
     # Follower situácie
     FOLLOWER_SAFE       = "F-SAFE"
@@ -28,6 +29,7 @@ class Strategy:
     SAFE_LEAD       = "L1-SAFE_LEAD"
     FORCE_SPECIAL   = "L2-FORCE_SPECIAL"
     DUMP_SETUP      = "L3-DUMP_SETUP"
+    HIGH_SCORE_LEAD = "L4-HIGH_SCORE_LEAD"  # ← nové
 
     # Follower
     UNDERPLAY       = "F1-UNDERPLAY"  # podliezam
