@@ -26,21 +26,73 @@ class DeclarationAdvisor:
     def decide_declaration(self) -> str | None:
         if self.difficulty == "easy":
             return None
-        # TODO: "all" logika nie je hotová
-        # if self.difficulty == "hard" and self._can_take_all(hand):
-        #     return "all"
-        if self._can_take_none(self.player.hand.cards):
-            self._log(Strategy.DECLARATION_NONE, "žiadne trestné karty")
+        hand = self.player.hand.cards
+        can_none, reason = self._can_take_none(hand)
+        if self.logger and hasattr(self.logger, 'log_declaration_decision'):
+            self.logger.log_declaration_decision(
+                self.player.name,
+                "none" if can_none else None,
+                reason
+            )
+        if can_none:
+            self._log(Strategy.DECLARATION_NONE, reason)
             return "none"
         return None
 
-    @staticmethod
-    def _can_take_none(hand: list[Card]) -> bool:
-        has_penalty = any(card.is_penalty_card for card in hand)
-        has_special = any(card.is_special for card in hand)
-        if has_penalty or has_special:
-            return False
-        return not any(c.rank in ("ace", "king") for c in hand)
+    def _can_take_none(self, hand: list[Card]) -> tuple[bool, str]:
+        total_risk = 0
+        breakdown = []
+
+        for suit in SUITS:
+            suit_cards = [c for c in hand if c.suit == suit]
+
+            if not suit_cards:
+                total_risk -= 4
+                breakdown.append(f"{suit}=void(-4)")
+                continue
+
+            if any(c.is_special for c in suit_cards):
+                return False, "veto_hornik"
+
+            low = [c for c in suit_cards if c.rank in ("seven", "eight", "nine")]
+            suit_risk = 0
+
+            for c in suit_cards:
+                if c.rank in ("ace", "king", "over", "under") and len(suit_cards) == 1:
+                    return False, f"veto_osamely_{c}"
+
+            for c in [x for x in suit_cards if x.rank in ("ace", "king", "over")]:
+                if len(low) >= 2:
+                    suit_risk += 1
+                elif len(low) == 1:
+                    suit_risk += 3
+                else:
+                    return False, f"veto_bez_buffera_{c}"
+
+            for c in [x for x in suit_cards if x.rank == "under"]:
+                if len(low) >= 2:
+                    suit_risk += 1
+                elif len(low) == 1:
+                    suit_risk += 2
+                else:
+                    return False, f"veto_bez_buffera_{c}"
+
+            for c in [x for x in suit_cards if x.rank == "ten"]:
+                if not low:
+                    suit_risk += 4
+                elif len(low) == 1:
+                    suit_risk += 1
+
+            breakdown.append(f"{suit}={suit_risk:+d}")
+            total_risk += suit_risk
+
+        summary = f"total={total_risk}({', '.join(breakdown)})"
+
+        if total_risk <= 0:
+            return True, f"safe {summary}"
+        if total_risk <= 4 and self.difficulty == "hard":
+            return True, f"risk {summary}"
+        return False, f"too_risky {summary}"
 
     def _can_take_all(self, hand: list[Card]) -> bool:
         for suit in SUITS:

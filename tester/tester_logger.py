@@ -30,6 +30,10 @@ class LogEntry:
     reason: str = ""
     decision: bool = False
 
+    # declaration
+    declaration_result: bool = False
+    declaration_risk: str = ""
+
 
 # ------------------------------------------------------------------
 # TesterLogger
@@ -140,6 +144,17 @@ class TesterLogger:
         self.current_capture.append(entry)
         self.full_history.append(entry)
 
+    def log_declaration_decision(self, player: str, declaration: str | None,
+                                 reason: str):
+        entry = LogEntry(
+            kind="declaration",
+            player=player,
+            strategy=declaration or "žiadny",
+            details=reason,
+        )
+        self.current_capture.append(entry)
+        self.full_history.append(entry)
+
     def log_illumination(self, *args, **kwargs):
         pass
 
@@ -234,4 +249,14 @@ class TesterLogger:
             if bd.get("position"):
                 lines.append(f"  → posledný hráč (+1)")
 
+        elif entry.kind == "declaration":
+            declaration_map = {
+                "all": "Beriem všetko",
+                "none": "Nechytím nič",
+                "žiadny": "žiadny záväzok",
+            }
+            declaration_text = declaration_map.get(entry.strategy, entry.strategy)
+            lines.append(
+                f"[{entry.player}] záväzok: {declaration_text} | {entry.details}"
+            )
         return lines

@@ -145,8 +145,9 @@ class PreparationHandler:
     # ------------------------------------------------------------------
 
     def _process_ai_preparation(self):
-        """Spracuje záväzky a vysvietenie všetkých AI hráčov."""
         current_round = self.s.game_state.current_round
+        # Ak človek už vyhlásil záväzok, AI nemôžu vyhlásiť
+        declaration_made = current_round.declaration_type is not None
 
         for i, player in enumerate(self.s.game_state.players):
             if player.is_human:
@@ -155,20 +156,28 @@ class PreparationHandler:
             if ai is None:
                 continue
 
-            # Záväzok
             declaration = ai.decide_declaration()
+
+            if declaration and declaration_made:
+                declaration = None
+                self.s.speech_bubble.show_bid(i, "Ja som chcel tiež! #%*@!!")
+
             current_round.process_declaration(i, declaration)
 
             for other_ai in self.s.ai_players:
                 if other_ai is not None:
                     other_ai.record_declaration(i, declaration)
 
-            if declaration:
+            if declaration and not declaration_made:
+                declaration_made = True
                 text = "Beriem všetko!" if declaration == "all" else "Nechytím nič!"
+                self.s.speech_bubble.show_bid(i, text)
+            elif declaration and declaration_made:
+                text = "Ja som chcel tiež! #%*@!!"
                 self.s.speech_bubble.show_bid(i, text)
             self.s.game_state.logger.log_declaration(player.name, declaration)
 
-            # Vysvietenie
+            # Vysvietenie — ostáva nezmenené
             scores = [p.total_score for p in self.s.game_state.players]
             illuminate_leaf, illuminate_acorn = ai.decide_illumination(
                 current_round.first_player_index, scores

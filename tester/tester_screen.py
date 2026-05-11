@@ -821,6 +821,16 @@ class TesterScreen:
                 y = self._draw_log_entries(
                     self.engine.illumination_logs, x, y, max_w
                 )
+            if self.engine.declaration_logs:
+                y += 8
+                d_header = self.font_medium.render(
+                    "Záväzky — rozhodnutia:", True, T_HIGHLIGHT
+                )
+                self.screen.blit(d_header, (x, y))
+                y += d_header.get_height() + 4
+                y = self._draw_log_entries(
+                    self.engine.declaration_logs, x, y, max_w
+                )
 
             y += 8
             info = self.font_medium.render(

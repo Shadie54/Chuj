@@ -96,6 +96,7 @@ class TesterEngine:
         # Engine ich tu zhromažďuje pre GUI ('completed_tricks')
         self.completed_tricks: list[TrickHistory] = []
         self.illumination_logs: list[LogEntry] = []
+        self.declaration_logs: list[LogEntry] = []
         # Snapshoty pre Back — uložené pred každým next_step()
         # Každá entry je tuple: (engine_state_dict, last_step)
         self._snapshots: list = []
@@ -222,13 +223,37 @@ class TesterEngine:
                 ai.record_illumination(player_idx, leaf, acorn)
 
     def _apply_declarations(self):
-        """Aplikuje záväzky zo scenára."""
         sc = self.scenario
+        declaration_made = False
 
-        for player_idx, decl in sc.declarations.items():
-            self.round.process_declaration(player_idx, decl)
-            for ai in self.ais.values():
-                ai.record_declaration(player_idx, decl)
+        order = [(sc.first_player_index + i) % NUM_PLAYERS
+                 for i in range(NUM_PLAYERS)]
+
+        for player_idx in order:
+            self.logger.start_capture()
+
+            if player_idx not in sc.declarations or sc.declarations[player_idx] is None:
+                decl = self.ais[player_idx].decide_declaration()
+            else:
+                decl = sc.declarations[player_idx]
+
+            captured = self.logger.get_capture()
+            for entry in captured:
+                self.declaration_logs.append(entry)
+
+            if decl and not declaration_made:
+                self.round.process_declaration(player_idx, decl)
+                for ai in self.ais.values():
+                    ai.record_declaration(player_idx, decl)
+                declaration_made = True
+            elif decl and declaration_made:
+                entry_ignored = LogEntry(
+                    kind="declaration",
+                    player=self.players[player_idx].name,
+                    strategy="žiadny",
+                    details="ignorovaný — záväzok už vyhlásený",
+                )
+                self.declaration_logs.append(entry_ignored)
 
     def _replay_history(self):
         """

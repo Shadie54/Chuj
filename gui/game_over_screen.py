@@ -104,7 +104,7 @@ class GameOverScreen:
         is_human_loser = self.loser.is_human
 
         if is_human_loser:
-            title_text = "SI CHUJ! 😄"
+            title_text = "SI CHUJ! :D"
             title_color = COLOR_RED
         else:
             title_text = "VÍŤAZSTVO!"

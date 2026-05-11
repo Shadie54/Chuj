@@ -76,7 +76,6 @@ class GameState:
         self._update_chujogram()
         self.round_scores_history.append([p.total_score for p in self.players])
         self._advance_first_player()
-        print(f"DEBUG round_scores_history: {self.round_scores_history}")
         if self._check_game_over():
             self.phase = "game_over"
 
