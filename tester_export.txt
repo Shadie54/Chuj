@@ -1,37 +1,61 @@
 ======================================================================
 TESTER EXPORT
 ======================================================================
-Scenár: random_seed_893307
-Popis: Náhodné rozdanie (seed=893307)
+Scenár: random_seed_249262
+Popis: Náhodné rozdanie (seed=249262)
 
 --- STAV ---
-Štich: 1/8
-Na ťahu: AI_0
-First player: AI_1
+Štich: 7/8
+Na ťahu: AI_3
+First player: AI_2
+
+--- VYSVIETENIE ---
+  leaf-over: AI_3
+  acorn-over: AI_2
 
 --- SKÓRE ---
   AI_0: 0b (celkovo: 0b)
   AI_1: 0b (celkovo: 0b)
-  AI_2: 0b (celkovo: 0b)
+  AI_2: 28b (celkovo: 0b)
   AI_3: 0b (celkovo: 0b)
 
 --- RUKY ---
-  AI_0 (8): J♠ Q♥ 9♥ 7♥ 7● 8♠ 10● 10♠ ← NA ŤAHU
-  AI_1 (8): 10♥ K♣ J● K♠ J♥ K● 7♠ 8●
-  AI_2 (8): Q♣ 9● A♥ J♣ A♣ 8♥ A♠ 9♠
-  AI_3 (8): Q♠ 9♣ 8♣ A● Q● K♥ 10♣ 7♣
+  AI_0 (2): A♣ J♣
+  AI_1 (2): J♥ 7●
+  AI_2 (1): Q♣
+  AI_3 (2): 10♥ 7♠ ← NA ŤAHU
 
 --- AKTUÁLNY ŠTICH ---
-  (prázdny)
+Lead: acorn
+  AI_2: K♣
 
 --- HISTÓRIA ---
+  T1: leader=AI_2 | AI_2: 10♠  AI_3: 8♠  AI_0: K♠  AI_1: 9♠ → AI_0
+  T2: leader=AI_0 | AI_0: J♠  AI_1: A♥  AI_2: A♠  AI_3: Q♠ → AI_2
+  T3: leader=AI_2 | AI_2: 9●  AI_3: J●  AI_0: A●  AI_1: 10● → AI_0
+  T4: leader=AI_0 | AI_0: 7♣  AI_1: 8♣  AI_2: 9♣  AI_3: 10♣ → AI_3
+  T5: leader=AI_3 | AI_3: 7♥  AI_0: 8♥  AI_1: 9♥  AI_2: Q♥ → AI_2
+  T6: leader=AI_2 | AI_2: K●  AI_3: Q●  AI_0: K♥  AI_1: 8● → AI_2
 
---- AIMemory (AI_0) ---
-  Tricks taken: {0: 0, 1: 0, 2: 0, 3: 0}
-  Specials gone: {'leaf': False, 'acorn': False}
-  Illuminated by: {'leaf': None, 'acorn': None}
-  Remaining heart: A♥ K♥ J♥ 10♥ 8♥
-  Remaining leaf: A♠ K♠ Q♠ 9♠ 7♠
-  Remaining acorn: A♣ K♣ Q♣ J♣ 10♣ 9♣ 8♣ 7♣
-  Remaining bell: A● K● Q● J● 9● 8●
+--- POSLEDNÝ ŤAH ---
+Hráč: AI_2
+Karta: K♣
+
+--- REASONING ---
+  [AI_2] SWEEP_GATE1_DEBUG: hand_penalty=1, remaining=2, my_taken=7, already_taken=0
+  [SWEEP AI_2] štich 7: NIE | stav=IDLE | P(sweep)=0.00 | EV=0.0
+    → L1: FAIL — gate2: žiadny scenár nesplnený
+  [AI_2] L1-SAFE_LEAD: last resort: K♣
+  [AI_2] L-SAFE/SAFE: K♣
+
+--- AIMemory (AI_3) ---
+  Tricks taken: {0: 2, 1: 0, 2: 3, 3: 1}
+  Specials gone: {'leaf': True, 'acorn': False}
+  Illuminated by: {'leaf': 3, 'acorn': 2}
+  Void AI_0: ['bell']
+  Void AI_1: ['leaf']
+  Remaining heart: J♥
+  Remaining leaf: (žiadne)
+  Remaining acorn: A♣ K♣ Q♣ J♣
+  Remaining bell: 7●
   Sweep state: IDLE

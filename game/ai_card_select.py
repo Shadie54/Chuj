@@ -91,6 +91,29 @@ class CardSelector:
                 )
             ]
             if exhaust_cards:
+                # Risk play check — ak exhaust karta je trap A/K v horník-farbe
+                for c in exhaust_cards:
+                    if c.suit not in ("leaf", "acorn"):
+                        continue
+                    if c.rank not in ("ace", "king"):
+                        continue
+                    if self.memory.is_special_gone(c.suit):
+                        continue
+                    special = next(
+                        (x for x in self.player.hand.cards
+                         if x.is_special and x.suit == c.suit), None
+                    )
+                    if special is None:
+                        continue
+                    if special not in playable:
+                        continue
+                    remaining_higher = [
+                        r for r in self.memory.remaining[c.suit]
+                        if r.rank_order > special.rank_order and not r.is_special
+                    ]
+                    if remaining_higher:
+                        self._log(Strategy.RISK_SPECIAL, f"risk horník: {special}")
+                        return special
                 card = min(exhaust_cards, key=lambda c: c.rank_order)
                 self._log(Strategy.SAFE_LEAD, f"exhaust fallback: {card}")
                 return card
@@ -247,14 +270,38 @@ class CardSelector:
                    ctx: GameContext | None = None) -> Card:
         if situation == Situation.FOLLOWER_VOID:
             return self._void_discard(playable, trick, ctx)
+        if situation == Situation.LEADER_RISK:
+            return self._risk_play(playable)
         if situation in (Situation.LEADER_FORCED,
-                          Situation.FOLLOWER_WAIT):
+                         Situation.FOLLOWER_WAIT):
             return self._open_play(playable, hand_eval, trick)
+        return min(playable, key=lambda c: c.rank_order)
+
+    def _risk_play(self, playable: list[Card]) -> Card:
+        """
+        Risk play — horník + trap A/K, vonku vyššia karta.
+        Zahráme horníka namiesto trapu — dáme súperom šancu prebiť.
+        """
+        for suit in ("leaf", "acorn"):
+            special = next(
+                (c for c in playable if c.is_special and c.suit == suit), None
+            )
+            if special is None:
+                continue
+            remaining_higher = [
+                c for c in self.memory.remaining[suit]
+                if c.rank_order > special.rank_order and not c.is_special
+            ]
+            if remaining_higher:
+                self._log(Strategy.RISK_SPECIAL, f"risk horník: {special}")
+                return special
         return min(playable, key=lambda c: c.rank_order)
 
     def _void_discard(self, playable: list[Card],
                       trick: Trick,
                       ctx: GameContext | None = None) -> Card:
+        if ctx and ctx.my_declaration == "none":
+            return self._void_discard_none(playable)
         if ctx and ctx.is_high_score:
             return self._void_discard_high_score(playable, trick, ctx)
         return self._void_discard_standard(playable, trick)
@@ -331,6 +378,17 @@ class CardSelector:
             if c.rank_order < card.rank_order
         ]
         return len(remaining_lower) == 0
+
+    def _void_discard_none(self, playable: list[Card]) -> Card:
+        """
+        'Nechytím nič' záväzok — pri voide zahadzuj najvyššiu kartu.
+        Cieľ: zbaviť sa bômb, nevyhrať žiadny štich.
+        """
+        non_special = [c for c in playable if not c.is_special]
+        pool = non_special if non_special else playable
+        card = max(pool, key=lambda c: c.rank_order)
+        self._log(Strategy.DUMP_DANGEROUS, f"none záväzok void: {card}")
+        return card
 
     def _void_discard_standard(self, playable: list[Card],
                       trick: Trick) -> Card:

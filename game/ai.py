@@ -78,7 +78,8 @@ class AI:
         ctx = GameContext.build(
             self.player.index,
             all_scores if all_scores is not None
-            else [self.player.total_score] * 4
+            else [self.player.total_score] * 4,
+            my_declaration=self.declaration_type  # ← nové
         )
 
         # --- KROK 1: HAND_EVAL ---

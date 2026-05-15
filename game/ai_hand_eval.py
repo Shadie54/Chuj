@@ -27,9 +27,11 @@ class GameContext:
     score_rank: int          # 1 = vediem, 4 = posledný
     gap_to_leader: int       # o koľko zaostávam za lídrom (0 ak som líder)
     gap_to_last: int         # o koľko som pred posledným (0 ak som posledný)
+    my_declaration: str | None = None  # ← nové
 
     @staticmethod
-    def build(my_index: int, all_scores: list[int]) -> "GameContext":
+    def build(my_index: int, all_scores: list[int],
+              my_declaration: str | None = None) -> "GameContext":
         my_score = all_scores[my_index]
         rank = sorted(all_scores, reverse=True).index(my_score) + 1
         return GameContext(
@@ -39,6 +41,7 @@ class GameContext:
             score_rank=rank,
             gap_to_leader=max(all_scores) - my_score,
             gap_to_last=my_score - min(all_scores),
+            my_declaration=my_declaration,
         )
 
 # ------------------------------------------------------------------

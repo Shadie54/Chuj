@@ -34,6 +34,7 @@ class SituationDetector:
             Situation.LEADER_FORCED: Mode.OPEN,
             Situation.LEADER_AGGRESSIVE: Mode.TAKE,
             Situation.LEADER_HIGH_SCORE: Mode.SAFE,
+            Situation.LEADER_RISK: Mode.OPEN,
             Situation.FOLLOWER_SAFE: Mode.SAFE,
             Situation.FOLLOWER_VOID: Mode.OPEN,
             Situation.FOLLOWER_FORCED: Mode.TAKE,
@@ -50,7 +51,6 @@ class SituationDetector:
     def _leader(self, hand_eval: HandEval,
                 playable: list[Card],
                 ctx: GameContext | None = None) -> str:
-
         if self.difficulty == "hard":
             for suit in SUITS:
                 if self.memory.is_special_gone(suit):
@@ -79,6 +79,31 @@ class SituationDetector:
         ]
         if non_heart_escape:
             return Situation.LEADER_SAFE
+
+        # Risk play — až keď nemám escape v inej farbe
+        for suit in ("leaf", "acorn"):
+            if self.memory.is_special_gone(suit):
+                continue
+            special = next(
+                (c for c in playable if c.is_special and c.suit == suit), None
+            )
+            if special is None:
+                continue
+            suit_cards = [c for c in playable if c.suit == suit and not c.is_special]
+            if not suit_cards:
+                continue
+            all_trap = all(
+                c.rank in ("ace", "king") and self._is_trap_situation(c)
+                for c in suit_cards
+            )
+            if not all_trap:
+                continue
+            remaining_higher = [
+                c for c in self.memory.remaining[suit]
+                if c.rank_order > special.rank_order and not c.is_special
+            ]
+            if remaining_higher:
+                return Situation.LEADER_RISK
 
         return Situation.LEADER_FORCED
 
@@ -238,6 +263,13 @@ class SituationDetector:
                     return False
 
         return True
+
+    def _is_trap_situation(self, card: Card) -> bool:
+        higher_opponents = [
+            c for c in self.memory.remaining[card.suit]
+            if c.rank_order > card.rank_order
+        ]
+        return not higher_opponents
 
     def evaluate_post_win_risk(self, trick: Trick) -> int:
         lead_suit = trick.lead_suit

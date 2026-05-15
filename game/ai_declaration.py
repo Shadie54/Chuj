@@ -63,9 +63,7 @@ class DeclarationAdvisor:
 
             for c in [x for x in suit_cards if x.rank in ("ace", "king", "over")]:
                 if len(low) >= 2:
-                    suit_risk += 1
-                elif len(low) == 1:
-                    suit_risk += 3
+                    total_risk += 1
                 else:
                     return False, f"veto_bez_buffera_{c}"
 
