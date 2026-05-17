@@ -65,8 +65,8 @@ class SettingsScreen:
             self.ai_buttons[name] = buttons
 
         # Miniatúry pozadia
-        self.bg_options    = ["table.jpg", "table1.jpg", "table2.jpg"]
-        self.bg_labels     = ["Stôl 1", "Stôl 2", "Makita"]
+        self.bg_options    = ["table.jpg", "table1.jpg", "table2.jpg","table3.jpg","table4.jpg", "table5.jpg"]
+        self.bg_labels     = ["Stôl ", "Stôl 1", "Stôl 2", "Stôl 3", "Stôl 4" ,"Makita",]
         self.bg_thumbnails = {}
         self._load_thumbnails()
 

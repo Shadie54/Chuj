@@ -1,6 +1,6 @@
 # main.py
 
-import ctypes
+import ctypes, json, os
 try:
     ctypes.windll.user32.SetProcessDPIAware()
 except Exception:
@@ -16,6 +16,29 @@ from gui.settings_screen import SettingsScreen
 from gui.game_over_screen import GameOverScreen
 from config import DEBUG_MODE
 
+SETTINGS_PATH = os.path.join(
+    os.path.expanduser("~"), "Documents", "Chuj", "settings.json"
+)
+
+def _load_settings() -> dict:
+    default = {
+        "ai1_difficulty": "hard",
+        "ai2_difficulty": "hard",
+        "ai3_difficulty": "hard",
+        "table_bg": "table.jpg",
+    }
+    try:
+        with open(SETTINGS_PATH, "r", encoding="utf-8") as f:
+            loaded = json.load(f)
+            default.update(loaded)
+            return default
+    except (FileNotFoundError, json.JSONDecodeError):
+        return default
+
+def _save_settings(settings: dict):
+    os.makedirs(os.path.dirname(SETTINGS_PATH), exist_ok=True)
+    with open(SETTINGS_PATH, "w", encoding="utf-8") as f:
+        json.dump(settings, f, ensure_ascii=False, indent=2)
 
 def _create_game(settings: dict) -> tuple:
     player_names = ["Hráč", "Počítač 1", "Počítač 2", "Počítač 3"]
@@ -61,12 +84,7 @@ def main():
     except FileNotFoundError:
         pass
 
-    settings = {
-        "ai1_difficulty": "hard",
-        "ai2_difficulty": "hard",
-        "ai3_difficulty": "hard",
-        "table_bg": "table.jpg",
-    }
+    settings = _load_settings()
 
     active_game_state = None
     active_ai_players = None
@@ -83,6 +101,7 @@ def main():
         elif action == "settings":
             settings_screen = SettingsScreen(window, settings)
             settings = settings_screen.run()
+            _save_settings(settings)
             # Aktualizuj obtiažnosť ak beží hra
             if active_ai_players is not None:
                 for i, ai in enumerate(active_ai_players):
@@ -100,7 +119,8 @@ def main():
                     window,
                     active_game_state.players,
                     active_game_state.loser,
-                    active_game_state.round_number
+                    active_game_state.round_number,
+                    active_game_state
                 )
                 next_action = game_over.run()
                 active_game_state = None
@@ -123,7 +143,8 @@ def main():
                         window,
                         active_game_state.players,
                         active_game_state.loser,
-                        active_game_state.round_number
+                        active_game_state.round_number,
+                        active_game_state
                     )
                     next_action = game_over.run()
                     active_game_state = None

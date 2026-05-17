@@ -3,6 +3,7 @@
 import pygame
 from game.game_state import GameState
 from game.ai import AI
+from game.ai_strategies_const import Strategy
 from gui.card_renderer import CardRenderer
 from gui.scoreboard import Scoreboard
 from gui.deal_animation import DealAnimation
@@ -345,6 +346,11 @@ class Screen:
             scores
         )
         current_round.play_card(player_index, card)
+
+        # Bublina pre risk
+        if ai.last_strategy in (Strategy.RISK_TRAP, Strategy.RISK_SPECIAL):
+            texts = ["Risknem!", "Skúsim...", "Má ho?"]
+            self.speech_bubble.show_bid(player_index, random.choice(texts), duration_ms=2000)
 
         if current_round.current_trick.is_complete:
             self.trick_waiting = True

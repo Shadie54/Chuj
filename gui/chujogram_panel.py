@@ -297,7 +297,8 @@ class ChujogramPanel:
             )
             self.screen.blit(surf, rect)
 
-    def _btn_rect(self) -> pygame.Rect:
+    @staticmethod
+    def _btn_rect() -> pygame.Rect:
         from config import ROUND_STATUS_X, ROUND_STATUS_Y, ROUND_STATUS_H
         return pygame.Rect(
             ROUND_STATUS_X - 50,  # tesne naľavo od tabuľky KOLO

@@ -221,7 +221,7 @@ ROUND_STATUS_Y = SCREEN_HEIGHT - ROUND_STATUS_H - 20    # vpravo dole
 # Chujogram
 # ------------------------------------------------------------------
 BULLET_RADIUS = 8
-BULLET_COLOR = (200, 60, 40)
+BULLET_COLOR = COLOR_GOLD
 CHUJOGRAM_X = 20
 CHUJOGRAM_Y = 20
 

@@ -84,6 +84,10 @@ DECLARATION_NONE_BONUS = -10
 DECLARATION_FAIL_PENALTY = 10
 NO_PENALTY_STREAK = 5
 NO_PENALTY_BONUS = -10
+
+# Nové situácie
+LEADER_HIGH_SCORE = "L-HIGH_SCORE"
+LEADER_RISK       = "L-RISK"
 ```
 
 ## GUI rozlíšenie
@@ -101,6 +105,7 @@ NO_PENALTY_BONUS = -10
 - `Documents/Chuj/logs/current_game.txt` — priebežný log
 - `Documents/Chuj/logs/game_YYYYMMDD_HHMMSS.txt` — finálny log
 - `DEBUG_MODE = False` v config.py — ak True, karty AI sú viditeľné
+- `Documents/Chuj/last_seed.txt` — posledný použitý seed testera
 
 ## Tester — funkcie
 - **Next** (Space/→): odohrá ďalší ťah AI
@@ -112,3 +117,5 @@ NO_PENALTY_BONUS = -10
 - **Export** (E): uloží stav do `tester_export.txt`
 - **Reset** (R): reštart aktuálneho scenára
 - **Setup bar**: override first playera a vysvietenia (klik na tlačidlá)
+- Bez argumentov: načíta posledný seed z Documents/Chuj/last_seed.txt
+Posledný seed sa ukladá automaticky pri každom random/seed spustení

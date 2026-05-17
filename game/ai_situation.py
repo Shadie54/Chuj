@@ -1,11 +1,11 @@
 # game/ai_situation.py
 
-import traceback
+import random
 from game.card import Card
 from game.trick import Trick
 from game.player import Player
 from game.ai_memory import AIMemory
-from game.ai_hand_eval import HandEval, GameContext
+from game.ai_hand_eval import HandEval, GameContext, DecisionContext
 from game.ai_strategies_const import Situation, Mode
 from config import NUM_PLAYERS, SUITS
 
@@ -18,17 +18,14 @@ class SituationDetector:
         self.memory = memory
         self.difficulty = difficulty
 
-    def determine(self, hand_eval: HandEval,
-                  playable: list[Card],
-                  trick: Trick,
-                  ctx: GameContext | None = None) -> str:
-        is_leader = len(trick.played_cards) == 0
-        if is_leader:
-            return self._leader(hand_eval, playable, ctx)
+    def determine(self, dctx: DecisionContext) -> str:
+        if dctx.is_leader:
+            return self._leader(dctx)
         else:
-            return self._follower(playable, trick)
+            return self._follower(dctx)
 
-    def to_mode(self, situation: str, trick: Trick) -> str:
+    @staticmethod
+    def to_mode(situation: str) -> str:
         mapping = {
             Situation.LEADER_SAFE: Mode.SAFE,
             Situation.LEADER_FORCED: Mode.OPEN,
@@ -37,25 +34,24 @@ class SituationDetector:
             Situation.LEADER_RISK: Mode.OPEN,
             Situation.FOLLOWER_SAFE: Mode.SAFE,
             Situation.FOLLOWER_VOID: Mode.OPEN,
-            Situation.FOLLOWER_FORCED: Mode.TAKE,
-            Situation.FOLLOWER_WAIT: Mode.OPEN,
+            Situation.FOLLOWER_FORCED_CLEAN: Mode.TAKE,
+            Situation.FOLLOWER_FORCED_POINTS: Mode.TAKE,
             Situation.FOLLOWER_FREE_TAKE: Mode.TAKE,
-            Situation.FOLLOWER_CONTROLLED: Mode.TAKE,
+            Situation.FOLLOWER_WAIT: Mode.OPEN,
+            Situation.FOLLOWER_RISK: Mode.RISK,
         }
-        mode = mapping.get(situation)
-        if mode is None:
-            worst = self.evaluate_post_win_risk(trick)
-            return Mode.TAKE if worst <= 4 else Mode.SAFE
-        return mode
+        return mapping.get(situation, Mode.OPEN)
 
-    def _leader(self, hand_eval: HandEval,
-                playable: list[Card],
-                ctx: GameContext | None = None) -> str:
+    def _leader(self, dctx: DecisionContext) -> str:
+        playable = dctx.playable
+        hand_eval = dctx.hand_eval
+        game_ctx = dctx.game_ctx
+
         if self.difficulty == "hard":
-            for suit in SUITS:
+            for suit in ("leaf", "acorn"):  # ← namiesto SUITS
                 if self.memory.is_special_gone(suit):
                     continue
-                holders = self.memory.who_has_special(suit)
+                holders = dctx.special_holders[suit]
                 if not holders:
                     continue
                 if self.player.index in holders:
@@ -67,20 +63,36 @@ class SituationDetector:
                        and c.rank not in ("ace", "king")
                 ]
                 if suit_cards:
+                    # Veto — ak je to posledná escape a ostanú len trap karty
+                    remaining_non_special = [
+                        c for c in playable
+                        if c.suit == suit
+                           and not c.is_special
+                           and c.rank not in ("ace", "king")
+                           and c != min(suit_cards, key=lambda c: c.rank_order)
+                    ]
+                    high_cards = [
+                        c for c in playable
+                        if c.suit == suit
+                           and not c.is_special
+                           and c.rank in ("ace", "king")
+                    ]
+                    if not remaining_non_special and high_cards:
+                        continue  # preskočíme — zahodíme jedinú escape
                     return Situation.LEADER_AGGRESSIVE
 
-        # 90+ — špeciálna logika
-        if ctx and ctx.is_high_score:
-            return self._leader_high_score(playable, hand_eval)
+        if game_ctx.is_high_score:
+            return self._leader_high_score(dctx)
 
         non_heart_escape = [
             c for c in hand_eval.escape_cards
-            if c.suit != "heart" and c in playable
+            if c.suit != "heart"
+               and c in playable
+               and not c.is_special
         ]
         if non_heart_escape:
             return Situation.LEADER_SAFE
 
-        # Risk play — až keď nemám escape v inej farbe
         for suit in ("leaf", "acorn"):
             if self.memory.is_special_gone(suit):
                 continue
@@ -92,11 +104,8 @@ class SituationDetector:
             suit_cards = [c for c in playable if c.suit == suit and not c.is_special]
             if not suit_cards:
                 continue
-            all_trap = all(
-                c.rank in ("ace", "king") and self._is_trap_situation(c)
-                for c in suit_cards
-            )
-            if not all_trap:
+            all_high = all(c.rank in ("ace", "king") for c in suit_cards)
+            if not all_high:
                 continue
             remaining_higher = [
                 c for c in self.memory.remaining[suit]
@@ -107,20 +116,15 @@ class SituationDetector:
 
         return Situation.LEADER_FORCED
 
-    def _leader_high_score(self, playable: list[Card],
-                           hand_eval: HandEval) -> str:
-        """
-        90+ logika pre leadera:
-        - Veď nízkou červeňou ak mám prebytočné buffery
-        - Inak escape non-heart → LEADER_SAFE
-        - Inak LEADER_FORCED
-        """
+    def _leader_high_score(self, dctx: DecisionContext) -> str:
+        playable = dctx.playable
+        hand_eval = dctx.hand_eval
         hand = self.player.hand.cards
+
         hearts = [c for c in hand if c.suit == "heart"]
         high_hearts = [c for c in hearts if c.rank in ("ace", "king")]
         low_hearts = [c for c in hearts if c.rank in ("seven", "eight", "nine")]
 
-        # Prebytočné buffery — môžem zahodiť nízku červeň
         surplus_low = len(low_hearts) - len(high_hearts)
         if surplus_low > 0:
             low_heart_playable = [
@@ -131,7 +135,6 @@ class SituationDetector:
             if low_heart_playable:
                 return Situation.LEADER_HIGH_SCORE
 
-        # Escape non-heart — štandardná safe logika bez červeňov
         non_heart_escape = [
             c for c in hand_eval.escape_cards
             if c.suit != "heart" and c in playable
@@ -141,36 +144,32 @@ class SituationDetector:
 
         return Situation.LEADER_FORCED
 
-    def _follower(self, playable: list[Card],
-                  trick: Trick) -> str:
-        lead_suit = trick.lead_suit
-        lead_cards = [c for c in playable if c.suit == lead_suit]
+    def _follower(self, dctx: DecisionContext) -> str:
+        playable = dctx.playable
+        lead_cards = dctx.lead_cards
 
         if not lead_cards:
             return Situation.FOLLOWER_VOID
 
-        if self._trick_is_free_to_take(playable, trick):
+        if self._trick_is_free_to_take(dctx):
             return Situation.FOLLOWER_FREE_TAKE
 
-        is_last = len(trick.played_cards) == NUM_PLAYERS - 1
-        trick_has_penalty = self._trick_has_penalty(trick) or any(
-            c.is_special for c in lead_cards
-        )
-
-        current_best = self._get_current_best(trick)
+        current_best = self._get_current_best(dctx.trick)
         can_underplay = any(
             c.rank_order < current_best.rank_order
             for c in lead_cards
         ) if current_best else False
 
+        # FOLLOWER_RISK — tretí v poradí, trap A/K + jedna escape, živý nevysvietený horník
+        if not dctx.is_last and len(dctx.players_after) == 1:
+            if not dctx.game_ctx.is_high_score:
+                if not (80 <= dctx.game_ctx.my_score <= 89):
+                    risk = self._should_risk_trap(dctx)
+                    if risk:
+                        return Situation.FOLLOWER_RISK
+
         if can_underplay:
             return Situation.FOLLOWER_SAFE
-
-        players_after = self._get_players_after_me(trick)
-        trick_cards = [c for _, c in trick.played_cards]
-        my_lowest = min(lead_cards, key=lambda c: c.rank_order)
-        can_be_beaten = self.memory.can_anyone_beat(
-            my_lowest, players_after, trick_cards)
 
         i_will_likely_win = (
                 len(lead_cards) == 1
@@ -181,47 +180,38 @@ class SituationDetector:
                 and not any(
             c.suit == lead_cards[0].suit
             and c.rank_order > lead_cards[0].rank_order
-            for _, c in trick.played_cards
+            for _, c in dctx.trick.played_cards
         )
         )
 
-        if not trick_has_penalty:
-            if is_last and not can_underplay:
-                return Situation.FOLLOWER_CONTROLLED
+        if not dctx.trick_has_penalty:
+            if dctx.is_last and not can_underplay:
+                return Situation.FOLLOWER_FORCED_CLEAN
             else:
-                if can_be_beaten and not i_will_likely_win:
+                if dctx.can_be_beaten and not i_will_likely_win:
                     return Situation.FOLLOWER_WAIT
                 else:
-                    return Situation.FOLLOWER_FORCED
+                    return Situation.FOLLOWER_FORCED_CLEAN
         else:
-            if is_last:
-                return Situation.FOLLOWER_FORCED
+            if dctx.is_last:
+                return Situation.FOLLOWER_FORCED_POINTS
             else:
-                if can_be_beaten and not i_will_likely_win:
+                if dctx.can_be_beaten and not i_will_likely_win:
                     return Situation.FOLLOWER_WAIT
                 else:
-                    return Situation.FOLLOWER_FORCED
+                    return Situation.FOLLOWER_FORCED_POINTS
 
-    def _trick_is_free_to_take(self, playable: list[Card],
-                               trick: Trick) -> bool:
-        """
-        štich je vhodný na bezpečné zbavenie sa A/K.
+    def _trick_is_free_to_take(self, dctx: DecisionContext) -> bool:
+        trick = dctx.trick
+        lead_suit = dctx.lead_suit
+        playable = dctx.playable
 
-        Spúšťač: vysvietený horník lead-suitu je u skoršieho hráča ktorý
-        v tomto štichu už zahral inú kartu (nie horníka)
-        → môj A/K v lead suit je trap, dumpnem ho zadarmo
-
-        Veto: niekto po mne je preukázane void na lead suit A môže mať
-        druhého horníka → riziko chytenia 4-16b
-        """
-        lead_suit = trick.lead_suit
         if lead_suit is None:
             return False
-
         if lead_suit == "heart":
             return False
 
-        lead_cards = [c for c in playable if c.suit == lead_suit]
+        lead_cards = dctx.lead_cards
         if not lead_cards:
             return False
 
@@ -232,7 +222,6 @@ class SituationDetector:
         if lead_suit not in ("leaf", "acorn"):
             return False
 
-        # Horník tejto farby už padol — FREE_TAKE scenár nedáva zmysel
         if self.memory.is_special_gone(lead_suit):
             return False
 
@@ -244,39 +233,22 @@ class SituationDetector:
         if illuminator not in played_indices:
             return False
 
-        hornik_played = any(
-            c.is_special and c.suit == lead_suit
-            for _, c in trick.played_cards
+        any_special_in_trick = any(
+            c.is_special for _, c in trick.played_cards
         )
-        if hornik_played:
+        if any_special_in_trick:
             return False
 
-        # Veto: druhý horník môže prísť od void hráča po mne
         other_suit = "acorn" if lead_suit == "leaf" else "leaf"
         if not self.memory.is_special_gone(other_suit):
-            players_after = self._get_players_after_me(trick)
-            other_holders = self.memory.who_has_special(other_suit)
-            for player_idx in players_after:
+            other_holders = dctx.special_holders[other_suit]
+            for player_idx in dctx.players_after:
                 is_void_lead = lead_suit in self.memory.void_suits[player_idx]
                 could_have_other = player_idx in other_holders
                 if is_void_lead and could_have_other:
                     return False
 
         return True
-
-    def _is_trap_situation(self, card: Card) -> bool:
-        higher_opponents = [
-            c for c in self.memory.remaining[card.suit]
-            if c.rank_order > card.rank_order
-        ]
-        return not higher_opponents
-
-    def evaluate_post_win_risk(self, trick: Trick) -> int:
-        lead_suit = trick.lead_suit
-        if not lead_suit:
-            return 0
-        players_after = self._get_players_after_me(trick)
-        return self.memory.worst_possible_discard(lead_suit, players_after)
 
     @staticmethod
     def _trick_has_penalty(trick: Trick) -> bool:
@@ -299,10 +271,49 @@ class SituationDetector:
         return [(trick.leader_index + i) % NUM_PLAYERS
                 for i in range(NUM_PLAYERS)]
 
-    def _get_players_after_me(self, trick: Trick) -> list[int]:
-        played_indices = {idx for idx, _ in trick.played_cards}
-        order = self._get_play_order(trick)
-        return [
-            i for i in order
-            if i not in played_indices and i != self.player.index
+    def _should_risk_trap(self, dctx: DecisionContext) -> bool:
+
+        # Veto — ak mám horníka sám, nie je čo riskovať
+        my_special = next(
+            (c for c in dctx.lead_cards if c.is_special), None
+        )
+        if my_special is not None:
+            return False
+
+        lead_suit = dctx.lead_suit
+        if lead_suit not in ("leaf", "acorn"):
+            return False
+        if self.memory.is_special_gone(lead_suit):
+            return False
+        # Veto — horník už v štichu
+        special_in_trick = any(
+            c.is_special and c.suit == lead_suit
+            for _, c in dctx.trick.played_cards
+        )
+        if special_in_trick:
+            return False
+        if self.memory.illuminated_by[lead_suit] is not None:
+            return False
+
+        lead_cards = dctx.lead_cards
+        trap_high = [
+            c for c in lead_cards
+            if c.rank in ("ace", "king") and not c.is_special
         ]
+        escape_low = [
+            c for c in lead_cards
+            if c.rank not in ("ace", "king") and not c.is_special
+        ]
+        if not trap_high or len(escape_low) != 1:
+            return False
+
+        # Randomness podľa skóre
+        rank = dctx.game_ctx.score_rank
+        if rank == 1:
+            risk_chance = 0.5
+        elif rank == 4:
+            risk_chance = 0.7
+        else:
+            risk_chance = 0.2
+
+        return random.random() < risk_chance

@@ -7,22 +7,23 @@ class Situation:
     LEADER_FORCED       = "L-FORCED"
     LEADER_AGGRESSIVE   = "L-AGGRESSIVE"
     LEADER_HIGH_SCORE   = "L-HIGH_SCORE"
-    LEADER_RISK = "L-RISK"
+    LEADER_RISK         = "L-RISK"
 
     # Follower situácie
-    FOLLOWER_SAFE       = "F-SAFE"
-    FOLLOWER_VOID       = "F-VOID"
-    FOLLOWER_FORCED     = "F-FORCED"  # nemôžem podliezť + penalty → musím brať
-    FOLLOWER_CONTROLLED = "F-CONTROLLED"  # posledný + čistý štich → volím čo zahrám
-    FOLLOWER_FREE_TAKE  = "F-FREE_TAKE"  # príležitosť dumpu A/K (horník scenár)
-    FOLLOWER_WAIT       = "F-WAIT"
-
+    FOLLOWER_SAFE          = "F-SAFE"
+    FOLLOWER_VOID          = "F-VOID"
+    FOLLOWER_FORCED_CLEAN  = "F-FORCED_CLEAN"   # posledný, čistý štich
+    FOLLOWER_FORCED_POINTS = "F-FORCED_POINTS"  # donútený, bodový štich
+    FOLLOWER_FREE_TAKE     = "F-FREE_TAKE"
+    FOLLOWER_WAIT          = "F-WAIT"
+    FOLLOWER_RISK          = "F-RISK"
 
 
 class Mode:
     SAFE  = "SAFE"
     TAKE  = "TAKE"
     OPEN  = "OPEN"
+    RISK  = "RISK"   # ← placeholder pre budúce riskové stratégie
 
 
 class Strategy:
@@ -31,7 +32,7 @@ class Strategy:
     FORCE_SPECIAL   = "L2-FORCE_SPECIAL"
     DUMP_SETUP      = "L3-DUMP_SETUP"
     HIGH_SCORE_LEAD = "L4-HIGH_SCORE_LEAD"  # ← nové
-    RISK_SPECIAL = "L5-RISK_SPECIAL"
+    RISK_SPECIAL    = "L5-RISK_SPECIAL"
 
     # Follower
     UNDERPLAY       = "F1-UNDERPLAY"  # podliezam
@@ -42,6 +43,7 @@ class Strategy:
     DUMP_SPECIAL    = "F6-DUMP_SPECIAL"
     DUMP_HEART      = "F7-DUMP_HEART"
     DUMP_DANGEROUS  = "F8-DUMP_DANGEROUS"
+    RISK_TRAP       = "F9-RISK_TRAP"
 
     # Proti záväzku
     BREAK_ALL       = "A1-BREAK_ALL"

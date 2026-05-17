@@ -1,4 +1,4 @@
-import pygame
+import pygame, os
 from config import (
     SCREEN_WIDTH, SCREEN_HEIGHT,
     COLOR_WHITE, COLOR_GOLD, COLOR_YELLOW,
@@ -24,6 +24,12 @@ class PhaseRenderer:
         self.font_medium = get_font(FONT_SIZE_MEDIUM)
         self.font_large = get_font(FONT_SIZE_LARGE)
 
+        chuj_path = os.path.join("assets", "graphics", "chuj.png")
+        try:
+            img = pygame.image.load(chuj_path).convert_alpha()
+            self._chuj_icon = pygame.transform.scale(img, (100, 100))
+        except FileNotFoundError:
+            self._chuj_icon = None
     # ------------------------------------------------------------------
     # Hlavné draw metódy (volané z Screen._draw)
     # ------------------------------------------------------------------
@@ -32,10 +38,10 @@ class PhaseRenderer:
         """Nakreslí menovky hráčov."""
         font = get_font(28)
         label_positions = {
-            0: (TABLE_CENTER_X, SCREEN_HEIGHT - 30),
-            1: (SCREEN_WIDTH - 120, TABLE_CENTER_Y),
+            0: (TABLE_CENTER_X, SCREEN_HEIGHT - 60),
+            1: (SCREEN_WIDTH - 170, TABLE_CENTER_Y),
             2: (TABLE_CENTER_X, 60),
-            3: (120, TABLE_CENTER_Y),
+            3: (170, TABLE_CENTER_Y),
         }
         for i, player in enumerate(self.s.game_state.players):
             pos = label_positions[i]
@@ -48,6 +54,18 @@ class PhaseRenderer:
             self.surface.blit(bg, bg_rect.topleft)
             pygame.draw.rect(self.surface, COLOR_GOLD, bg_rect, width=1, border_radius=6)
             self.surface.blit(surf, rect)
+
+            # Chuj ikonka — hráč s najvyšším skóre
+            if self._chuj_icon:
+                scores = [p.total_score for p in self.s.game_state.players]
+                max_score = max(scores)
+                if scores.count(max_score) < len(scores) and player.total_score == max_score:
+                    icon_rect = self._chuj_icon.get_rect()
+                    if i == 3:  # PC3 vľavo — ikonka naľavo od menovky
+                        icon_rect.midright = (bg_rect.left - 6, bg_rect.centery)
+                    else:  # ostatní — ikonka napravo od menovky
+                        icon_rect.midleft = (bg_rect.right + 6, bg_rect.centery)
+                    self.surface.blit(self._chuj_icon, icon_rect)
 
     def draw_buttons(self):
         """Nakreslí vždy viditeľné tlačidlá + preparation tlačidlá."""

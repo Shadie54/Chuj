@@ -1,3 +1,4 @@
+# gui/preparation_handler.py
 import pygame
 from config import NUM_PLAYERS
 

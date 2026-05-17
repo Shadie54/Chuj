@@ -2,10 +2,12 @@
 
 import random
 import time
+from pathlib import Path
+from config import NUM_PLAYERS, SUITS, RANKS
 from game.card import Card
 from tester.scenario import Scenario
-from config import NUM_PLAYERS, CARDS_PER_PLAYER, SUITS, RANKS
 
+LAST_SEED_FILE = Path.home() / "Documents" / "Chuj" / "last_seed.txt"
 
 def random_scenario(seed: int | None = None) -> Scenario:
     if seed is None:
@@ -37,3 +39,12 @@ def random_scenario(seed: int | None = None) -> Scenario:
         history=[],
         start_after_trick=None,
     )
+def save_last_seed(seed: int):
+    LAST_SEED_FILE.parent.mkdir(parents=True, exist_ok=True)
+    LAST_SEED_FILE.write_text(str(seed))
+
+def load_last_seed() -> int | None:
+    try:
+        return int(LAST_SEED_FILE.read_text().strip())
+    except Exception:
+        return None

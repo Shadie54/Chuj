@@ -12,11 +12,10 @@ from game.card import Card
 from tester.scenario import Scenario
 from tester.tester_engine import TesterEngine, StepResult
 from tester.tester_logger import TesterLogger, LogEntry
-from tester.random_scenario import random_scenario
+from tester.random_scenario import random_scenario, save_last_seed
 from config import (
     CARDS_SMALL_PATH, CARD_SIZE_SMALL, CARD_BACK_IMAGE,
     NUM_PLAYERS,
-    COLOR_BUTTON_PRIMARY,
     BUTTON_RADIUS,
 )
 
@@ -127,6 +126,8 @@ class TesterScreen:
         self.font_large = pygame.font.SysFont(font_name, 28)
         self.font_mono = pygame.font.SysFont(mono_name, 15)
 
+        self.seed_input: str = ""  # aktuálny text v inpute
+        self.seed_input_active: bool = False  # či je input aktívny
     # ------------------------------------------------------------------
     # Load assets
     # ------------------------------------------------------------------
@@ -169,22 +170,36 @@ class TesterScreen:
             if event.type == pygame.QUIT:
                 self.running = False
             elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE:
-                    self.running = False
-                elif event.key in (pygame.K_SPACE, pygame.K_RETURN, pygame.K_RIGHT):
-                    self._on_next_clicked()
-                elif event.key == pygame.K_o:
-                    self._on_override_clicked()
-                elif event.key == pygame.K_e:
-                    self._on_export_clicked()
-                elif event.key == pygame.K_LEFT:
-                    self._on_back_clicked()
-                elif event.key == pygame.K_r:
-                    self._on_reset_clicked()
-                elif event.key == pygame.K_t:
-                    self._on_trick_clicked()
-                elif event.key == pygame.K_g:
-                    self._on_random_clicked()
+                # Seed input má prednosť
+                if self.seed_input_active:
+                    if event.key == pygame.K_RETURN:
+                        self._on_seed_load_clicked()
+                    elif event.key == pygame.K_BACKSPACE:
+                        self.seed_input = self.seed_input[:-1]
+                    elif event.key == pygame.K_ESCAPE:
+                        self.seed_input_active = False
+                        self.seed_input = ""
+                    elif event.unicode.isdigit():
+                        self.seed_input += event.unicode
+                else:
+                    if event.key == pygame.K_ESCAPE:
+                        self.running = False
+                    elif event.key in (pygame.K_SPACE, pygame.K_RIGHT):
+                        self._on_next_clicked()
+                    elif event.key == pygame.K_RETURN:
+                        self._on_next_clicked()
+                    elif event.key == pygame.K_o:
+                        self._on_override_clicked()
+                    elif event.key == pygame.K_e:
+                        self._on_export_clicked()
+                    elif event.key == pygame.K_LEFT:
+                        self._on_back_clicked()
+                    elif event.key == pygame.K_r:
+                        self._on_reset_clicked()
+                    elif event.key == pygame.K_t:
+                        self._on_trick_clicked()
+                    elif event.key == pygame.K_g:
+                        self._on_random_clicked()
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 self._handle_click(event.pos)
 
@@ -234,6 +249,17 @@ class TesterScreen:
     def _handle_sidebar_click(self, pos: tuple[int, int]):
         rects = self._build_sidebar_rects()
 
+        # Seed input — spracuj pred ostatnými
+        if rects["seed_input"].collidepoint(pos):
+            self.seed_input_active = True
+            return
+        if rects["seed_load"].collidepoint(pos):
+            self._on_seed_load_clicked()
+            return
+
+        # Klik mimo seed input — deaktivuj
+        self.seed_input_active = False
+
         # Akcie
         if rects["next"].collidepoint(pos):
             self._on_next_clicked()
@@ -262,15 +288,13 @@ class TesterScreen:
 
         # Leaf
         for val in [None, 0, 1, 2, 3]:
-            key = f"leaf_{val}"
-            if rects[key].collidepoint(pos):
+            if rects[f"leaf_{val}"].collidepoint(pos):
                 self._set_illumination("leaf", val)
                 return
 
         # Acorn
         for val in [None, 0, 1, 2, 3]:
-            key = f"acorn_{val}"
-            if rects[key].collidepoint(pos):
+            if rects[f"acorn_{val}"].collidepoint(pos):
                 self._set_illumination("acorn", val)
                 return
 
@@ -320,7 +344,8 @@ class TesterScreen:
     # Sidebar — výpočet rectov
     # ------------------------------------------------------------------
 
-    def _build_sidebar_rects(self) -> dict[str, pygame.Rect]:
+    @staticmethod
+    def _build_sidebar_rects() -> dict[str, pygame.Rect]:
         rects = {}
         x = SB_PAD
         y = SB_PAD + 40  # 40px pre názov scenára
@@ -349,6 +374,11 @@ class TesterScreen:
         # Reset + Random vedľa seba
         rects["reset"] = pygame.Rect(x, y, half, SB_BTN_H)
         rects["random"] = pygame.Rect(x + half + SB_BTN_GAP, y, half, SB_BTN_H)
+        y += SB_BTN_H + SB_BTN_GAP
+        # Seed input + Load vedľa seba
+        input_w = SB_INNER_W - SB_BTN_GAP - 50
+        rects["seed_input"] = pygame.Rect(x, y, input_w, SB_BTN_H)
+        rects["seed_load"] = pygame.Rect(x + input_w + SB_BTN_GAP, y, 50, SB_BTN_H)
         y += SB_BTN_H + SB_BTN_GAP
         # Export + Quit vedľa seba
         rects["export"] = pygame.Rect(x, y, half, SB_BTN_H)
@@ -442,6 +472,8 @@ class TesterScreen:
     def _on_random_clicked(self):
         self.autoplay_mode = None
         new_scenario = random_scenario()
+        seed = int(new_scenario.name.split("_")[-1])
+        save_last_seed(seed)
         self._reload_engine(new_scenario)
 
     def _on_export_clicked(self):
@@ -452,6 +484,17 @@ class TesterScreen:
             print("[Export] Uložené do tester_export.txt")
         except Exception as e:
             print(f"[Export] CHYBA: {type(e).__name__}: {e}")
+
+    def _on_seed_load_clicked(self):
+        try:
+            seed = int(self.seed_input.strip())
+            self.seed_input = ""
+            self.seed_input_active = False
+            new_scenario = random_scenario(seed=seed)
+            save_last_seed(seed)
+            self._reload_engine(new_scenario)
+        except ValueError:
+            self.seed_input = ""  # neplatný vstup — vyčisti
 
     def _do_override(self, card: Card):
         try:
@@ -554,6 +597,18 @@ class TesterScreen:
         self._draw_sb_button(rects["round"], "Kolo", T_BUTTON_BG)
         self._draw_sb_button(rects["reset"], "Reset", T_BUTTON_BG)
         self._draw_sb_button(rects["random"], "Random", T_BUTTON_PRIMARY)
+
+        # Seed input
+        seed_rect = rects["seed_input"]
+        input_color = T_HIGHLIGHT if self.seed_input_active else T_BUTTON_BG
+        pygame.draw.rect(self.screen, input_color, seed_rect, border_radius=BUTTON_RADIUS)
+        pygame.draw.rect(self.screen, T_BORDER, seed_rect, width=1, border_radius=BUTTON_RADIUS)
+        display_text = self.seed_input if self.seed_input else "seed..."
+        text_color = T_TEXT if self.seed_input else T_TEXT_DIM
+        surf = self.font_small.render(display_text, True, text_color)
+        self.screen.blit(surf, surf.get_rect(center=seed_rect.center))
+        self._draw_sb_button(rects["seed_load"], "Load", T_BUTTON_PRIMARY)
+
         self._draw_sb_button(rects["export"], "Export", T_BUTTON_BG)
         self._draw_sb_button(rects["quit"], "Quit", T_BUTTON_BG)
 

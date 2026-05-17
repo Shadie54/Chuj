@@ -1,61 +1,57 @@
 ======================================================================
 TESTER EXPORT
 ======================================================================
-Scenár: random_seed_249262
-Popis: Náhodné rozdanie (seed=249262)
+Scenár: random_seed_499938
+Popis: Náhodné rozdanie (seed=499938)
 
 --- STAV ---
-Štich: 7/8
-Na ťahu: AI_3
-First player: AI_2
+Štich: 6/8
+Na ťahu: AI_2
+First player: AI_1
 
 --- VYSVIETENIE ---
-  leaf-over: AI_3
-  acorn-over: AI_2
+  acorn-over: AI_1
 
 --- SKÓRE ---
-  AI_0: 0b (celkovo: 0b)
+  AI_0: 8b (celkovo: 0b)
   AI_1: 0b (celkovo: 0b)
-  AI_2: 28b (celkovo: 0b)
-  AI_3: 0b (celkovo: 0b)
+  AI_2: 0b (celkovo: 0b)
+  AI_3: 4b (celkovo: 0b)
 
 --- RUKY ---
-  AI_0 (2): A♣ J♣
-  AI_1 (2): J♥ 7●
-  AI_2 (1): Q♣
-  AI_3 (2): 10♥ 7♠ ← NA ŤAHU
+  AI_0 (3): 7♥ A♥ K♥
+  AI_1 (2): Q♥ A♠
+  AI_2 (3): J♠ K♠ A● ← NA ŤAHU
+  AI_3 (3): 7● K● 9●
 
 --- AKTUÁLNY ŠTICH ---
-Lead: acorn
-  AI_2: K♣
+Lead: leaf
+  AI_1: Q♠
 
 --- HISTÓRIA ---
-  T1: leader=AI_2 | AI_2: 10♠  AI_3: 8♠  AI_0: K♠  AI_1: 9♠ → AI_0
-  T2: leader=AI_0 | AI_0: J♠  AI_1: A♥  AI_2: A♠  AI_3: Q♠ → AI_2
-  T3: leader=AI_2 | AI_2: 9●  AI_3: J●  AI_0: A●  AI_1: 10● → AI_0
-  T4: leader=AI_0 | AI_0: 7♣  AI_1: 8♣  AI_2: 9♣  AI_3: 10♣ → AI_3
-  T5: leader=AI_3 | AI_3: 7♥  AI_0: 8♥  AI_1: 9♥  AI_2: Q♥ → AI_2
-  T6: leader=AI_2 | AI_2: K●  AI_3: Q●  AI_0: K♥  AI_1: 8● → AI_2
+  T1: leader=AI_1 | AI_1: 10♠  AI_2: 9♠  AI_3: 7♠  AI_0: 8♠ → AI_1
+  T2: leader=AI_1 | AI_1: 9♥  AI_2: 8♥  AI_3: J♥  AI_0: 10♥ → AI_3
+  T3: leader=AI_3 | AI_3: 10♣  AI_0: 9♣  AI_1: 8♣  AI_2: A♣ → AI_2
+  T4: leader=AI_2 | AI_2: 7♣  AI_3: J♣  AI_0: K♣  AI_1: Q♣ → AI_0
+  T5: leader=AI_0 | AI_0: 8●  AI_1: Q●  AI_2: J●  AI_3: 10● → AI_1
 
 --- POSLEDNÝ ŤAH ---
-Hráč: AI_2
-Karta: K♣
+Hráč: AI_1
+Karta: Q♠
 
 --- REASONING ---
-  [AI_2] SWEEP_GATE1_DEBUG: hand_penalty=1, remaining=2, my_taken=7, already_taken=0
-  [SWEEP AI_2] štich 7: NIE | stav=IDLE | P(sweep)=0.00 | EV=0.0
-    → L1: FAIL — gate2: žiadny scenár nesplnený
-  [AI_2] L1-SAFE_LEAD: last resort: K♣
-  [AI_2] L-SAFE/SAFE: K♣
+  [AI_1] SWEEP_GATE1_DEBUG: hand_penalty=2, remaining=3, my_taken=0, already_taken=5
+  [SWEEP AI_1] štich 6: NIE | stav=IDLE | P(sweep)=0.00 | EV=0.0
+    → L1: FAIL — gate1: súper má 5 trestných kariet
+  [AI_1] L5-RISK_SPECIAL: risk horník: Q♠
+  [AI_1] L-RISK | OPEN: Q♠
 
---- AIMemory (AI_3) ---
-  Tricks taken: {0: 2, 1: 0, 2: 3, 3: 1}
-  Specials gone: {'leaf': True, 'acorn': False}
-  Illuminated by: {'leaf': 3, 'acorn': 2}
-  Void AI_0: ['bell']
-  Void AI_1: ['leaf']
-  Remaining heart: J♥
-  Remaining leaf: (žiadne)
-  Remaining acorn: A♣ K♣ Q♣ J♣
-  Remaining bell: 7●
+--- AIMemory (AI_2) ---
+  Tricks taken: {0: 1, 1: 2, 2: 1, 3: 1}
+  Specials gone: {'leaf': False, 'acorn': True}
+  Illuminated by: {'leaf': None, 'acorn': 1}
+  Remaining heart: A♥ K♥ Q♥ 7♥
+  Remaining leaf: A♠ Q♠
+  Remaining acorn: (žiadne)
+  Remaining bell: K● 9● 7●
   Sweep state: IDLE

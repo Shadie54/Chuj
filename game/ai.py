@@ -5,18 +5,18 @@ from game.player import Player
 from game.card import Card
 from game.trick import Trick
 from game.ai_memory import AIMemory
-from game.ai_hand_eval import HandEvaluator, GameContext
+from game.ai_hand_eval import HandEvaluator, GameContext, DecisionContext
 from game.ai_situation import SituationDetector
 from game.ai_card_select import CardSelector
 from game.ai_sweep import SweepPipeline, SweepDecision
 from game.ai_declaration import DeclarationAdvisor
+from game.ai_play_none import NonePlayer
+from game.ai_play_all import AllPlayer
 
 
 
 class AI:
-    def __init__(self, player: Player, difficulty: str = "hard",
-                 logger=None):
-
+    def __init__(self, player: Player, difficulty: str = "hard", logger=None):
         self.player = player
         self.difficulty = difficulty
         self.logger = logger
@@ -30,19 +30,25 @@ class AI:
 
         # Sweep
         self.sweep_pipeline = SweepPipeline(player, self.memory, logger)
+        self.sweep_confidence = None
+        self.sweep_attempt = None
 
-        # Moduly
+        # Moduly — normálna hra
         self.evaluator = HandEvaluator(self.memory)
         self.situator = SituationDetector(player, self.memory, difficulty)
         self.selector = CardSelector(player, self.memory, logger)
         self.declaration_advisor = DeclarationAdvisor(
             player, self.memory, difficulty, logger
         )
-        # Sweep
-        self.sweep_confidence = None
-        self.sweep_attempt = None
+
+        # Moduly — vyhlásené hry
+        self.none_player = NonePlayer(player, logger)
+        self.all_player = AllPlayer(player, self.memory, logger)
+        # Posledná použitá AI stratégia
+        self.last_strategy: str = ""
 
     def _log(self, strategy: str, details: str = ""):
+        self.last_strategy = strategy
         if self.logger:
             self.logger.log_strategy(self.player_name, strategy, details)
 
@@ -74,12 +80,18 @@ class AI:
         tricks_remaining = 8 - trick_number
         trick_cards = [c for _, c in current_trick.played_cards]
 
-        # skóre?
-        ctx = GameContext.build(
+        # Môj vlastný záväzok — nie cudzí
+        my_declaration = (
+            self.declaration_type
+            if self.declaration_player == self.player.index
+            else None
+        )
+
+        game_ctx = GameContext.build(
             self.player.index,
             all_scores if all_scores is not None
             else [self.player.total_score] * 4,
-            my_declaration=self.declaration_type  # ← nové
+            my_declaration=my_declaration
         )
 
         # --- KROK 1: HAND_EVAL ---
@@ -87,10 +99,22 @@ class AI:
             hand, tricks_remaining, trick_cards, current_trick
         )
 
-        # --- SWEEP PIPELINE ---
-        sweep_result = self.sweep_pipeline.evaluate(
-            hand_eval, trick_number,
+        # --- ROUTER: vyhlásené hry ---
+        if self.declaration_type == "none":
+            return self.none_player.decide(playable, current_trick, hand_eval)
+
+        if my_declaration == "all":
+            return self.all_player.decide(playable, hand_eval)
+
+        # --- KROK 2: DECISION CONTEXT ---
+        dctx = DecisionContext.build(
+            self.player, self.memory,
+            hand_eval, game_ctx,
+            playable, current_trick
         )
+
+        # --- SWEEP PIPELINE ---
+        sweep_result = self.sweep_pipeline.evaluate(hand_eval, trick_number)
         if self.logger:
             self.logger.log_sweep_pipeline(
                 self.player_name, sweep_result, trick_number + 1
@@ -101,34 +125,22 @@ class AI:
                 self._log("SWEEP_COMMIT", str(sweep_result.recommended_card))
                 return sweep_result.recommended_card
             else:
-                # BUG guard: sweep pipeline vrátila kartu mimo playable
                 self._log(
                     "SWEEP_BUG",
                     f"recommended {sweep_result.recommended_card} "
                     f"not in playable {playable} — fallback to default"
                 )
 
-        # WATCHING → default logika pokračuje
+        # --- KROK 3: SITUATION ---
+        situation = self.situator.determine(dctx)
 
-        if sweep_result.decision == SweepDecision.YES:
-            if sweep_result.recommended_card in playable:
-                self._log("SWEEP_COMMIT", str(sweep_result.recommended_card))
-                return sweep_result.recommended_card
+        # --- KROK 4: MODE ---
+        mode = self.situator.to_mode(situation)
 
-        # WATCHING → default logika pokračuje
+        # --- KROK 5: CARD ---
+        card = self.selector.select(situation, mode, dctx)
 
-        # --- KROK 2: SITUATION ---
-        situation = self.situator.determine(hand_eval, playable, current_trick, ctx)
-
-        # --- KROK 3: MODE ---
-        mode = self.situator.to_mode(situation, current_trick)
-
-        # --- KROK 4: CARD ---
-        card = self.selector.select(
-            mode, situation, hand_eval, playable, current_trick, ctx
-        )
-
-        self._log(f"{situation}/{mode}", str(card))
+        self._log(f"{situation} | {mode}", str(card))
         return card
 
     # ------------------------------------------------------------------

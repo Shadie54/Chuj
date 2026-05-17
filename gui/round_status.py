@@ -1,11 +1,12 @@
 # gui/round_status.py
 
 import pygame
+import os
 from config import (
     COLOR_WHITE, COLOR_GRAY, COLOR_GOLD,
     COLOR_GREEN, COLOR_RED, COLOR_YELLOW,
     ROUND_STATUS_X, ROUND_STATUS_Y, ROUND_STATUS_W, ROUND_STATUS_H,
-    NO_PENALTY_STREAK, get_font
+    NO_PENALTY_STREAK, get_font, SUIT_ICONS_PATH
 )
 
 
@@ -25,6 +26,18 @@ class RoundStatus:
         # Gulička rozmery
         self.bullet_r = 6
         self.bullet_spacing = 16
+
+        icon_h = 25
+        self._icons = {}
+        for suit in ("leaf", "acorn"):
+            path = os.path.join(SUIT_ICONS_PATH, f"{suit}-icon@small.png")
+            try:
+                img = pygame.image.load(path).convert_alpha()
+                w, h = img.get_size()
+                new_w = int(w * icon_h / h)
+                self._icons[suit] = pygame.transform.scale(img, (new_w, icon_h))
+            except FileNotFoundError:
+                self._icons[suit] = None
 
     # ------------------------------------------------------------------
     # Kreslenie
@@ -98,6 +111,17 @@ class RoundStatus:
             )
             self.screen.blit(name_surf, (self.x + 10, y))
 
+            icon_x = self.x + 10 + name_surf.get_width() + 6  # ← vždy definovaný
+
+            # Ikonky horníkov
+            if current_round:
+                for suit in ("leaf", "acorn"):
+                    if current_round.illuminated_by.get(suit) == i:
+                        icon = self._icons.get(suit)
+                        if icon:
+                            self.screen.blit(icon, (icon_x, y + 2))
+                            icon_x += icon.get_width() + 4
+
             # Body aktuálneho kola
             pts = player.round_points
             if pts > 0:
@@ -120,7 +144,7 @@ class RoundStatus:
 
     def _draw_streak(self, x: int, y: int, streak: int):
         """Nakreslí 5 guličiek — zelené pre sériu, sivé prázdne."""
-        max_show = max_show = NO_PENALTY_STREAK
+        max_show = NO_PENALTY_STREAK
         for i in range(max_show):
             cx = x + i * self.bullet_spacing + self.bullet_r
             if i < streak:

@@ -14,7 +14,7 @@ from config import (
 
 class GameOverScreen:
     def __init__(self, screen: pygame.Surface, players: list,
-                 loser, round_number: int):
+                 loser, round_number: int, game_state=None):
         """
         players: zoznam všetkých hráčov
         loser: porazený hráč (najviac bodov nad 100)
@@ -24,7 +24,10 @@ class GameOverScreen:
         self.players = players
         self.loser = loser
         self.round_number = round_number
+        self.game_state = game_state
+        self.show_chujogram = False
         self.clock = pygame.time.Clock()
+
 
         self.font_title = get_font(90)  # bolo 120
         self.font_large = get_font(FONT_SIZE_LARGE + 8)  # bolo +16
@@ -39,15 +42,13 @@ class GameOverScreen:
         btn_w = 220
         btn_h = 60
         center_x = SCREEN_WIDTH // 2
-        btn_y = SCREEN_HEIGHT - 180  # bolo -200
+        btn_y = SCREEN_HEIGHT - 180
 
-        self.btn_new_game = pygame.Rect(
-            center_x - btn_w - 20, btn_y, btn_w, btn_h
-        )
-        self.btn_menu = pygame.Rect(
-            center_x + 20, btn_y, btn_w, btn_h
-        )
-        self.hover = {"new_game": False, "menu": False}
+        self.btn_new_game = pygame.Rect(center_x - btn_w - 20, btn_y, btn_w, btn_h)
+        self.btn_menu = pygame.Rect(center_x + 20, btn_y, btn_w, btn_h)
+        self.btn_chujogram = pygame.Rect( center_x - btn_w // 2, 285, btn_w, btn_h)
+
+        self.hover = {"new_game": False, "menu": False, "chujogram": False}
 
     # ------------------------------------------------------------------
     # Hlavná slučka
@@ -69,13 +70,18 @@ class GameOverScreen:
 
                 if event.type == pygame.MOUSEBUTTONDOWN:
                     if event.button == 1:
-                        if self.btn_new_game.collidepoint(event.pos):
+                        if self.show_chujogram:
+                            self.show_chujogram = False
+                        elif self.btn_chujogram.collidepoint(event.pos):
+                            self.show_chujogram = True
+                        elif self.btn_new_game.collidepoint(event.pos):
                             return "new_game"
-                        if self.btn_menu.collidepoint(event.pos):
+                        elif self.btn_menu.collidepoint(event.pos):
                             return "menu"
 
             self.hover["new_game"] = self.btn_new_game.collidepoint(mouse_pos)
             self.hover["menu"] = self.btn_menu.collidepoint(mouse_pos)
+            self.hover["chujogram"] = self.btn_chujogram.collidepoint(mouse_pos)
 
             self._draw()
             pygame.display.flip()
@@ -98,6 +104,8 @@ class GameOverScreen:
         self._draw_scores()
         self._draw_info()
         self._draw_buttons()
+        if self.show_chujogram:
+            self._draw_chujogram_overlay()
 
     def _draw_title(self):
         """Nakreslí nadpis."""
@@ -184,16 +192,42 @@ class GameOverScreen:
             )
             self.screen.blit(score_surf, score_rect)
 
-            # Guličky
-            if player.bullets > 0:
-                bullets_text = "●" * min(player.bullets, 10)
-                bullets_surf = self.font_medium.render(
-                    bullets_text, True, COLOR_RED
-                )
-                self.screen.blit(
-                    bullets_surf,
-                    (panel_x + 70, y + panel_h - 18)
-                )
+    def _draw_chujogram_overlay(self):
+        from gui.chujogram_panel import ChujogramPanel
+
+        dark = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        dark.fill((0, 0, 0, 240))
+        self.screen.blit(dark, (0, 0))
+
+        if not hasattr(self, '_chujogram_panel'):
+            self._chujogram_panel = ChujogramPanel(
+                self.screen,
+                [p.name for p in self.players]
+            )
+            # Vycentruj panel
+            self._chujogram_panel.panel_x = SCREEN_WIDTH // 2 - self._chujogram_panel.panel_w // 2
+            self._chujogram_panel.panel_y = 50
+            self._chujogram_panel.panel_h = SCREEN_HEIGHT - 100
+            self._chujogram_panel.visible = True
+
+        panel = self._chujogram_panel
+        panel._draw_header()
+        panel._draw_content(
+            self.game_state.bullet_history,
+            self.game_state.round_scores_history
+        )
+
+        # Border
+        pygame.draw.rect(self.screen, COLOR_GOLD,
+                         (panel.panel_x, panel.panel_y,
+                          panel.panel_w, panel.panel_h),
+                         width=2, border_radius=8)
+
+        # Hint
+        hint = self.font_medium.render("Klikni pre zavretie", True, COLOR_GRAY)
+        self.screen.blit(hint, hint.get_rect(
+            centerx=SCREEN_WIDTH // 2, bottom=SCREEN_HEIGHT - 20
+        ))
 
     def _draw_info(self):
         """Nakreslí info o hre."""
@@ -213,6 +247,10 @@ class GameOverScreen:
             self.btn_menu, "Menu",
             COLOR_BUTTON_SECONDARY, self.hover["menu"]
         )
+        self._draw_btn(
+            self.btn_chujogram, "Chujogram",
+            COLOR_BUTTON_SECONDARY, self.hover["chujogram"]
+            )
 
     def _draw_btn(self, rect: pygame.Rect, text: str,
                   color: tuple, hover: bool):
