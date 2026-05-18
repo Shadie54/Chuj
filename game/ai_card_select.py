@@ -10,12 +10,16 @@ from config import NUM_PLAYERS, SUITS
 
 
 class CardSelector:
-    def __init__(self, player: Player, memory: AIMemory, logger=None):
+    def __init__(self, player: Player, memory: AIMemory,
+                 logger=None, on_strategy=None):
+        self.on_strategy = on_strategy  # callback → AI.last_strategy
         self.player = player
         self.memory = memory
         self.logger = logger
 
     def _log(self, strategy: str, details: str = ""):
+        if self.on_strategy:
+            self.on_strategy(strategy)
         if self.logger:
             self.logger.log_strategy(self.player.name, strategy, details)
 
@@ -64,8 +68,15 @@ class CardSelector:
                 if c in playable
                    and not c.is_special
                    and c.suit not in dctx.protected_suits
-                   # Veto — posledná escape v farbe živého cudzieho horníka
                    and not self._is_last_escape_in_dangerous_suit(c, dctx)
+                   # Veto — escape A/K vo farbe živého cudzieho horníka
+                   and not (
+                        c.rank in ("ace", "king")
+                        and c.suit in ("leaf", "acorn")
+                        and not self.memory.is_special_gone(c.suit)
+                        and not any(x.is_special and x.suit == c.suit
+                                    for x in self.player.hand.cards)
+                )
             ]
             if escape_playable:
                 card = min(escape_playable, key=lambda c: c.rank_order)
@@ -80,7 +91,8 @@ class CardSelector:
                    and not (
                         c.suit in ("leaf", "acorn")
                         and not self.memory.is_special_gone(c.suit)
-                        and self.player.index not in dctx.special_holders.get(c.suit, set())
+                        and not any(x.is_special and x.suit == c.suit
+                                    for x in self.player.hand.cards)
                 )
             ]
             if exhaust_cards:
@@ -108,10 +120,23 @@ class CardSelector:
                 self._log(Strategy.SAFE_LEAD, f"exhaust fallback: {card}")
                 return card
 
+            # Last resort — ak nemáme nič, skúsime protected suits
             non_special = [
                 c for c in playable
                 if not c.is_special or self._special_is_safe_lead(c)
             ]
+
+            # Prednostne escape z protected suits
+            protected_escape = [
+                c for c in non_special
+                if c.suit in dctx.protected_suits
+                   and c in hand_eval.escape_cards
+            ]
+            if protected_escape:
+                card = min(protected_escape, key=lambda c: c.rank_order)
+                self._log(Strategy.SAFE_LEAD, f"last resort protected escape: {card}")
+                return card
+
             pool = non_special if non_special else playable
             card = min(pool, key=lambda c: c.rank_order)
             self._log(Strategy.SAFE_LEAD, f"last resort: {card}")
@@ -122,6 +147,7 @@ class CardSelector:
             lead_suit = dctx.lead_suit
 
             # Dump trap A/K ak mám živého horníka v tej istej farbe
+            current_best = self._get_current_best(dctx.trick)
             if lead_suit in ("leaf", "acorn"):
                 if not self.memory.is_special_gone(lead_suit):
                     my_special = next(
@@ -134,16 +160,7 @@ class CardSelector:
                         special_in_trick = any(
                             c.is_special for _, c in dctx.trick.played_cards
                         )
-                        current_best = self._get_current_best(dctx.trick)
-                        winner_is_me = (
-                                current_best is not None and
-                                any(c == current_best for c in self.player.hand.cards)
-                        )
-                        effective_takes = (
-                            "yes" if dctx.is_last and not winner_is_me
-                            else dctx.someone_takes
-                        )
-                        if not special_in_trick and effective_takes == "yes":
+                        if not special_in_trick and dctx.someone_takes != "no":
                             if my_special and my_special in dctx.lead_cards:
                                 dangerous_after = False
                             else:
@@ -432,7 +449,7 @@ class CardSelector:
                 continue
             danger_trap += [
                 c for c in suit_cards
-                if c.rank in ("ace", "king") and self._is_trap(c, trick)
+                if c.rank in ("ace", "king")
             ]
 
         if danger_trap:
@@ -578,9 +595,14 @@ class CardSelector:
         if self.memory.is_special_gone(suit):
             return False
         holders = dctx.special_holders.get(suit, set())
-        if not holders or self.player.index in holders:
+        if not holders:
             return False
-        # Ostanú len trap karty po zahrání tejto escape?
+        i_have_special = any(
+            c.is_special and c.suit == suit
+            for c in self.player.hand.cards
+        )
+        if i_have_special:
+            return False
         remaining_escapes = [
             c for c in dctx.playable
             if c.suit == suit
@@ -593,8 +615,10 @@ class CardSelector:
             if c.suit == suit
                and not c.is_special
                and c.rank in ("ace", "king")
+               and self._is_trap(c, dctx.trick)
         ]
-        return not remaining_escapes and bool(high_cards)
+        result = not remaining_escapes and bool(high_cards)
+        return result
 
     def _is_trap(self, card: Card, trick: Trick | None = None) -> bool:
         higher_opponents = [

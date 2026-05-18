@@ -261,9 +261,17 @@ class AIMemory:
 
     def will_someone_else_take(self,
                                current_trick_played: list[tuple[int, Card]],
-                               players_after_me: list[int]) -> str:
+                               players_after_me: list[int],
+                               is_last: bool = False,
+                               winner_index: int | None = None) -> str:
         if not current_trick_played:
             return "maybe"
+
+        # Ak som posledný — výsledok je deterministický
+        if is_last:
+            if winner_index is not None and winner_index != self.player_index:
+                return "yes"  # niekto iný vyhráva
+            return "no"  # vyhrávam ja
 
         lead_suit = current_trick_played[0][1].suit
 

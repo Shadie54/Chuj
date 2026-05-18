@@ -87,8 +87,16 @@ class DecisionContext:
         ]
 
         trick_cards = [c for _, c in trick.played_cards]
+
+        # Vypočítaj winner_index pre is_last
+        winner_index = None
+        if is_last and trick.played_cards:
+            winner_index = trick.get_winner_index()
+
         someone_takes = memory.will_someone_else_take(
-            trick.played_cards, players_after
+            trick.played_cards, players_after,
+            is_last=is_last,
+            winner_index=winner_index
         )
 
         can_be_beaten = False
