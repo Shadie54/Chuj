@@ -18,16 +18,26 @@ def decide_card(self, playable, current_trick, trick_number,
         return random.choice(playable)
 
     hand_eval = self.evaluator.evaluate(...)
-    ctx = GameContext.build(self.player.index, all_scores, my_declaration)
+    game_ctx = GameContext.build(self.player.index, all_scores, my_declaration)
+
+    # Router: vyhlásené hry
+    if self.declaration_type == "none":
+        return self.none_player.decide(playable, current_trick, hand_eval,
+                                       declaration_player=self.declaration_player)
+    if my_declaration == "all":
+        return self.all_player.decide(playable, hand_eval)
+
+    dctx = DecisionContext.build(self.player, self.memory, hand_eval, game_ctx,
+                                  playable, current_trick)
 
     sweep_result = self.sweep_pipeline.evaluate(hand_eval, trick_number)
     if sweep_result.decision == YES:
         if sweep_result.recommended_card in playable:
             return sweep_result.recommended_card
 
-    situation = self.situator.determine(hand_eval, playable, current_trick, ctx)
-    mode = self.situator.to_mode(situation, current_trick)
-    card = self.selector.select(mode, situation, hand_eval, playable, current_trick, ctx)
+    situation = self.situator.determine(dctx)
+    mode = self.situator.to_mode(situation)
+    card = self.selector.select(situation, mode, dctx)
     return card
 ```
 
@@ -81,6 +91,24 @@ Výstup: `HandEval` dataclass — per-suit profiles, trap/escape/safe karty, agr
 | `gap_to_last` | rozdiel od posledného (0 ak som posledný) |
 | `my_declaration` | môj aktívny záväzok ("all"/"none"/None) |
 
+### `DecisionContext` — kompletný kontext pre každý ťah
+
+`DecisionContext.build(player, memory, hand_eval, game_ctx, playable, trick)` vracia:
+
+| Pole | Popis |
+|------|-------|
+| `is_leader` | som prvý v štichu |
+| `is_last` | som posledný v štichu |
+| `lead_suit` | farba štichu (None ak leader) |
+| `lead_cards` | moje karty v lead suit |
+| `players_after` | hráči ktorí ešte nehrajú po mne |
+| `someone_takes` | `"yes"` / `"maybe"` / `"no"` — či niekto iný vezme štich |
+| `can_be_beaten` | môže niekto prebiť moju najnižšiu lead kartu |
+| `trick_has_penalty` | štich obsahuje trestné body alebo akýkoľvek horník |
+| `protected_suits` | farby kde som svietil horníka a mám málo rezerv |
+| `exhaustable_suits` | farby kde môžem vyčerpať suit |
+| `special_holders` | kto môže mať horníka (leaf/acorn) |
+
 ### 2. SITUATION (`ai_situation.py`)
 
 **Leader situácie:**
@@ -99,29 +127,32 @@ Výstup: `HandEval` dataclass — per-suit profiles, trap/escape/safe karty, agr
 |----------|---------|------|
 | `FOLLOWER_VOID` | nemám lead suit | OPEN |
 | `FOLLOWER_FREE_TAKE` | vysvietený horník u skoršieho hráča zahral nehorníka + mám A/K, horník živý | TAKE |
+| `FOLLOWER_FORCED_CLEAN` | posledný + trap bell A/K + čistý štich | TAKE |
+| `FOLLOWER_RISK` | 3. v poradí + trap A/K + jedna escape + živý nevysvietený horník | RISK |
 | `FOLLOWER_SAFE` | viem podliezť | SAFE |
-| `FOLLOWER_CONTROLLED` | posledný + čistý štich + nemôžem podliezť | TAKE |
 | `FOLLOWER_WAIT` | niekto po mne môže biť, nie som i_will_likely_win | OPEN |
-| `FOLLOWER_FORCED` | nemôžem podliezť, som i_will_likely_win alebo penalty štich | TAKE |
+| `FOLLOWER_FORCED_CLEAN` | posledný + čistý štich + nemôžem podliezť | TAKE |
+| `FOLLOWER_FORCED_POINTS` | donútený + bodový štich | TAKE |
 
 ### 3. CARD (`ai_card_select.py`)
 
 **SAFE mode:**
 - Leader `LEADER_HIGH_SCORE`: nízka prebytočná červeň → `L4-HIGH_SCORE_LEAD`
-- Leader štandard: najnižšia non-heart escape (mimo protected suits) → `L1-SAFE_LEAD`
+- Leader štandard: escape podľa farby (bell → `_bell_escape()`, leaf/acorn → `_aggressive_card()`, ostatné → min) mimo protected suits → `L1-SAFE_LEAD`
   - `_protected_suits()` — chráni farbu kde som svietil horníka a mám málo rezerv
-- Follower: horník má prioritu ak je v underplay → inak najvyššia podliezka → `F1-UNDERPLAY`
+  - Veto: posledná escape v nebezpečnej farbe, escape A/K živého cudzieho horníka, posledný buffer pre môjho horníka
+- Follower: dump blok (horník/trap A/K ak someone_takes != "no") → underplay → `F1-UNDERPLAY`
 
 **TAKE mode:**
-- `LEADER_AGGRESSIVE`: najnižšia non-A/K v cudzej horník-farbe → `L2-FORCE_SPECIAL`
-- `FOLLOWER_CONTROLLED`: dump horník → dump trap A/K → najvyššia lead → `F3-LAST_TAKE`
+- `LEADER_AGGRESSIVE`: `_aggressive_card()` v cudzej horník-farbe → `L2-FORCE_SPECIAL`
+- `FOLLOWER_FORCED_CLEAN`: dump trap A/K (is_last) → najvyššia lead → `F3-LAST_TAKE`
 - `FOLLOWER_FREE_TAKE`: dump A/K v lead suit → `F4-DUMP_FREE`
+- `FOLLOWER_RISK`: najvyššia trap A/K → `F9-RISK_TRAP`
 - Follower štandard: najnižšia lead (nie posledný) / najvyššia lead (posledný) → `F2-FORCED_TAKE`
 
 **OPEN mode:**
 - `FOLLOWER_VOID` → `_void_discard()`:
   - 90+ → `_void_discard_high_score()`: trap červeň → horník → non-safe červeň → štandard
-  - "none" záväzok → `_void_discard_none()`: najvyššia non-special
   - štandard → `_void_discard_standard()`: horník → trap A/K živý horník → hearts → trap → fallback
 - `LEADER_RISK` → `_risk_play()`: horník namiesto A/K → `L5-RISK_SPECIAL`
 - `LEADER_FORCED` / `FOLLOWER_WAIT` → `_open_play()`:
@@ -168,6 +199,26 @@ Výstup: `HandEval` dataclass — per-suit profiles, trap/escape/safe karty, agr
   - `high_score_naked_high` — nahý vysoký bell bez buffera
 - **is_leader veto** — ak vediem skóre a rezerva = borderline → nevysvietim
 
+## Vyhlásené hry — `ai_play_none.py` / `ai_play_all.py`
+
+### NonePlayer — `ai_play_none.py`
+Logika platí pre **všetkých hráčov** keď je vyhlásený "none" záväzok.
+
+- **Leader:** `min(playable)` — najnižšia, vyhni sa farbe kde je vyhlasovateľ void
+- **Follower (má lead suit):**
+  - Posledný + nie som vyhlasovateľ + nemôžem podliezť → `max(lead_cards)`
+  - Vyhlasovateľ bol prebytý → `max(lead_cards)`
+  - Inak → `max(underplay)`; ak nie je možné → `min(lead_cards)`
+- **Follower (void):** `max(playable)` — najvyššia
+
+### AllPlayer — `ai_play_all.py` (stub)
+Logika len pre deklaranta "all".
+
+- **Vždy leader** — ak stratí lead, hra končí fail
+- Trap karta → `_best_trap()` (farba s najviac trapmi, najvyššia)
+- Ak nie je trap → najvyššia escape
+- Fallback → `max(playable)`
+
 ## 90+ logika
 
 Pri `my_score >= 90` sa mení správanie:
@@ -176,25 +227,52 @@ Pri `my_score >= 90` sa mení správanie:
 - **Void discard**: `_void_discard_high_score()` — priorita trap červeňov, near loss threshold 95b
 - **LEADER_AGGRESSIVE**: ostáva — horníci k súperom stále žiaduce
 
+## Bodovanie — `no_penalty_streak`
+
+`player.update_streak()` — volá sa vždy pre všetkých hráčov po každom kole.
+
+**Prerušenie:** `round_points > 0` ALEBO chytil horníka pri 90+
+**Pokračovanie:** `round_points == 0` — sweep bonus, splnený záväzok nepreruší
+
 ## Known issues / TODO
-- Sweep WATCHING vs 90+ logika konflikt
-- Útočnejší play ak som posledný (najmenej bodov)
-- Horník dump heuristika (komu nasoliť pri voide)
-- "Beriem všetko" declaration logika — nie je implementovaná
-- Správanie ostatných hráčov proti "none" záväzku
-- Výber escape karty — náhodnosť pri rovnocenných možnostiach
-- Last resort leader ignoruje protected suits
+
+### Netestované (implementované v poslednom chate)
+- Bell escape logika (`_bell_escape()`) — void riziko pre bell
+- Aggressive card logika pre leaf/acorn (`_aggressive_card()`) — void riziko
+- NonePlayer vylepšenia — void suits, prebytý vyhlasovateľ, posledný musí brať
+- Trap bell `FOLLOWER_FORCED_CLEAN` — posledný + A/K bell
+- Buffer veto pre horníka v escape filtri
+
+### Rozpracované / na pokračovanie
+- **Void riziko heuristika** — `_void_risk()` pre `F8-DUMP_DANGEROUS`: my_count vs remaining vs players_after → low/medium/high
+- **Výber escape karty pre leadera** — leaf/acorn detailnejšia logika (zatiaľ cez `_aggressive_card()`)
+- **Idea reštrukturalizácie rozhodovania AI** — priame handlery namiesto situation→mode→card pipeline, každý handler dostane kompletný DecisionContext
+
+### Dlhodobé
+- **Sweep WATCHING vs 90+** logika konflikt
+- **Útočnejší play ak som posledný** (najmenej bodov)
+- **Horník dump heuristika** (komu nasoliť pri voide)
+- **"Beriem všetko" declaration logika** — nie je implementovaná
+- **Správanie ostatných hráčov proti "all"** — nie je implementované
+- **90+ follower logika** — meniť správanie followera pri 90+
+- **Blízko hranice** — 85-89b cielene na 90b; blízko 100b → reset na 90b
+- **Last resort leader ignoruje protected suits** — čiastočne opravené
 
 ## Diagram volaní
+```
 AI.decide_card()
-├── HandEvaluator.evaluate()              [ai_hand_eval.py]
-│   └── AIMemory.build_all_profiles()    [ai_memory.py]
-├── GameContext.build()                   [ai_hand_eval.py]
-├── SweepPipeline.evaluate()             [ai_sweep.py]
+├── NonePlayer.decide()               [ai_play_none.py]  ← ak declaration_type == "none"
+├── AllPlayer.decide()                [ai_play_all.py]   ← ak my_declaration == "all"
+├── HandEvaluator.evaluate()          [ai_hand_eval.py]
+│   └── AIMemory.build_all_profiles() [ai_memory.py]
+├── GameContext.build()               [ai_hand_eval.py]
+├── DecisionContext.build()           [ai_hand_eval.py]
+├── SweepPipeline.evaluate()          [ai_sweep.py]
 │   └── L1 → L2 → L3 → L4 → L5 → L6 → L7
-├── SituationDetector.determine()        [ai_situation.py]
-├── SituationDetector.to_mode()          [ai_situation.py]
-└── CardSelector.select()                [ai_card_select.py]
+├── SituationDetector.determine()     [ai_situation.py]
+├── SituationDetector.to_mode()       [ai_situation.py]
+└── CardSelector.select()             [ai_card_select.py]
+```
 
 Teraz 03_CONVENTIONS.md:
 markdown# Konvencie projektu CHUJ

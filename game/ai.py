@@ -50,6 +50,8 @@ class AI:
         # Posledná použitá AI stratégia
         self.last_strategy: str = ""
 
+        self.none_player = NonePlayer(player, self.memory, logger)
+
     def _log(self, strategy: str, details: str = ""):
         self.last_strategy = strategy
         if self.logger:
@@ -104,7 +106,10 @@ class AI:
 
         # --- ROUTER: vyhlásené hry ---
         if self.declaration_type == "none":
-            return self.none_player.decide(playable, current_trick, hand_eval)
+            return self.none_player.decide(
+                playable, current_trick, hand_eval,
+                declaration_player=self.declaration_player
+            )
 
         if my_declaration == "all":
             return self.all_player.decide(playable, hand_eval)
@@ -143,7 +148,10 @@ class AI:
         # --- KROK 5: CARD ---
         card = self.selector.select(situation, mode, dctx)
 
-        self._log(f"{situation} | {mode}", str(card))
+        if self.logger:
+            self.logger.log_strategy(
+                self.player_name, f"{situation} | {mode}", str(card)
+            )
         return card
 
     # ------------------------------------------------------------------

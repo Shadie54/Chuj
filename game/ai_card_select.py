@@ -69,7 +69,6 @@ class CardSelector:
                    and not c.is_special
                    and c.suit not in dctx.protected_suits
                    and not self._is_last_escape_in_dangerous_suit(c, dctx)
-                   # Veto — escape A/K vo farbe živého cudzieho horníka
                    and not (
                         c.rank in ("ace", "king")
                         and c.suit in ("leaf", "acorn")
@@ -77,8 +76,37 @@ class CardSelector:
                         and not any(x.is_special and x.suit == c.suit
                                     for x in self.player.hand.cards)
                 )
+                   # Veto — posledný buffer pre môjho horníka
+                   and not (
+                        c.suit in ("leaf", "acorn")
+                        and any(x.is_special and x.suit == c.suit
+                                for x in self.player.hand.cards)
+                        and not self.memory.is_special_gone(c.suit)
+                        and len([x for x in dctx.playable
+                                 if x.suit == c.suit and not x.is_special
+                                 and x != c]) == 0
+                )
             ]
+
             if escape_playable:
+                # Bell má špeciálnu logiku
+                bell_escape = self._bell_escape(dctx)
+                if bell_escape and bell_escape in dctx.playable:
+                    self._log(Strategy.SAFE_LEAD, f"escape bell: {bell_escape}")
+                    return bell_escape
+
+                # Leaf/acorn — aggressive card logika
+                for suit in ("leaf", "acorn"):
+                    suit_escape = [
+                        c for c in escape_playable
+                        if c.suit == suit
+                    ]
+                    if suit_escape:
+                        card = self._aggressive_card(suit_escape, suit, dctx)
+                        self._log(Strategy.SAFE_LEAD, f"escape {suit}: {card}")
+                        return card
+
+                # Ostatné farby — najnižšia
                 card = min(escape_playable, key=lambda c: c.rank_order)
                 self._log(Strategy.SAFE_LEAD, f"escape: {card}")
                 return card
@@ -216,6 +244,56 @@ class CardSelector:
                 return card
             return min(dctx.playable, key=lambda c: c.rank_order)
 
+    def _bell_escape(self, dctx: DecisionContext) -> Card | None:
+        bell_cards = [
+            c for c in dctx.playable
+            if c.suit == "bell" and not c.is_special
+        ]
+        if not bell_cards:
+            return None
+
+        my_count = len([c for c in self.player.hand.cards if c.suit == "bell"])
+        remaining = len(self.memory.remaining["bell"])
+
+        if remaining >= 5:
+            if my_count <= 2:
+                return max(bell_cards, key=lambda c: c.rank_order)
+            elif my_count == 3:
+                all_bell = [c for c in self.player.hand.cards
+                            if c.suit == "bell" and not c.is_special]
+                mid = self._mid_card_relative(bell_cards, all_bell)
+                return mid if mid else min(bell_cards, key=lambda c: c.rank_order)
+            else:
+                safe = [c for c in bell_cards
+                        if c in dctx.hand_eval.profiles["bell"].safe_cards]
+                pool = safe if safe else [min(bell_cards, key=lambda c: c.rank_order)]
+                return min(pool, key=lambda c: c.rank_order)
+        else:
+            if my_count <= 2:
+                all_bell = [c for c in self.player.hand.cards
+                            if c.suit == "bell" and not c.is_special]
+                mid = self._mid_card_relative(bell_cards, all_bell)
+                return mid if mid else min(bell_cards, key=lambda c: c.rank_order)
+            else:
+                safe = [c for c in bell_cards
+                        if c in dctx.hand_eval.profiles["bell"].safe_cards]
+                pool = safe if safe else [min(bell_cards, key=lambda c: c.rank_order)]
+                return min(pool, key=lambda c: c.rank_order)
+
+    @staticmethod
+    def _mid_card_relative(candidates: list[Card],
+                           full_suit: list[Card]) -> Card | None:
+        if not candidates or not full_suit:
+            return None
+        highest = max(full_suit, key=lambda c: c.rank_order)
+        mid_candidates = [
+            c for c in candidates
+            if highest.rank_order - c.rank_order >= 2
+        ]
+        if not mid_candidates:
+            return None
+        return max(mid_candidates, key=lambda c: c.rank_order)
+
     # ------------------------------------------------------------------
     # TAKE
     # ------------------------------------------------------------------
@@ -224,7 +302,7 @@ class CardSelector:
         playable = dctx.playable
 
         if situation == Situation.LEADER_AGGRESSIVE:
-            for suit in SUITS:
+            for suit in ("leaf", "acorn"):
                 if self.memory.is_special_gone(suit):
                     continue
                 holders = dctx.special_holders.get(suit, set())
@@ -237,7 +315,7 @@ class CardSelector:
                        and c.rank not in ("ace", "king")
                 ]
                 if suit_cards:
-                    card = min(suit_cards, key=lambda c: c.rank_order)
+                    card = self._aggressive_card(suit_cards, suit, dctx)
                     self._log(Strategy.FORCE_SPECIAL,
                               f"vytiahni horníka {suit}: {card}")
                     return card
@@ -264,6 +342,35 @@ class CardSelector:
         if dctx.lead_cards:
             return max(dctx.lead_cards, key=lambda c: c.rank_order)
         return max(playable, key=lambda c: c.rank_order)
+
+    def _aggressive_card(self, suit_cards: list[Card],
+                         suit: str,
+                         dctx: DecisionContext) -> Card:
+        """Výber karty pre LEADER_AGGRESSIVE podľa void rizika."""
+        my_count = len([c for c in self.player.hand.cards
+                        if c.suit == suit and not c.is_special])
+        remaining = len(self.memory.remaining[suit])
+
+        if remaining >= 5:
+            if my_count <= 2:
+                return max(suit_cards, key=lambda c: c.rank_order)
+            elif my_count == 3:
+                mid = self._mid_card(suit_cards)
+                return mid if mid else min(suit_cards, key=lambda c: c.rank_order)
+            else:
+                safe = [c for c in suit_cards
+                        if c in dctx.hand_eval.profiles[suit].safe_cards]
+                pool = safe if safe else [min(suit_cards, key=lambda c: c.rank_order)]
+                return min(pool, key=lambda c: c.rank_order)
+        else:
+            if my_count <= 2:
+                mid = self._mid_card(suit_cards)
+                return mid if mid else min(suit_cards, key=lambda c: c.rank_order)
+            else:
+                safe = [c for c in suit_cards
+                        if c in dctx.hand_eval.profiles[suit].safe_cards]
+                pool = safe if safe else [min(suit_cards, key=lambda c: c.rank_order)]
+                return min(pool, key=lambda c: c.rank_order)
 
     def _controlled_take(self, dctx: DecisionContext) -> Card:
         lead_cards = dctx.lead_cards
@@ -579,6 +686,20 @@ class CardSelector:
     # ------------------------------------------------------------------
     # Pomocné
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _mid_card(suit_cards: list[Card]) -> Card | None:
+        if not suit_cards:
+            return None
+        highest = max(suit_cards, key=lambda c: c.rank_order)
+        candidates = [
+            c for c in suit_cards
+            if highest.rank_order - c.rank_order >= 2
+        ]
+        if not candidates:
+            return None
+        return max(candidates, key=lambda c: c.rank_order)  # najvyššia zo stredných
+
     def _special_points(self, card: Card) -> int:
         suit = "leaf" if card.is_leaf_over else "acorn"
         illuminated = self.memory.illuminated_by[suit] is not None

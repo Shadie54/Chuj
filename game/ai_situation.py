@@ -84,13 +84,12 @@ class SituationDetector:
         if game_ctx.is_high_score:
             return self._leader_high_score(dctx)
 
-        non_heart_escape = [
+        escape_candidates = [
             c for c in hand_eval.escape_cards
-            if c.suit != "heart"
-               and c in playable
+            if c in playable
                and not c.is_special
         ]
-        if non_heart_escape:
+        if escape_candidates:
             return Situation.LEADER_SAFE
 
         for suit in ("leaf", "acorn"):
@@ -167,6 +166,17 @@ class SituationDetector:
                     risk = self._should_risk_trap(dctx)
                     if risk:
                         return Situation.FOLLOWER_RISK
+
+        # Posledný + trap bell A/K + čistý štich → FOLLOWER_FORCED_CLEAN
+        if dctx.is_last and not dctx.trick_has_penalty:
+            high_bell = [
+                c for c in lead_cards
+                if c.suit == "bell"
+                   and c.rank in ("ace", "king")
+                   and not c.is_special
+            ]
+            if high_bell:
+                return Situation.FOLLOWER_FORCED_CLEAN
 
         if can_underplay:
             return Situation.FOLLOWER_SAFE
@@ -310,10 +320,10 @@ class SituationDetector:
         # Randomness podľa skóre
         rank = dctx.game_ctx.score_rank
         if rank == 1:
-            risk_chance = 0.5
+            risk_chance = 1.0
         elif rank == 4:
-            risk_chance = 0.7
+            risk_chance = 1.0
         else:
-            risk_chance = 0.2
+            risk_chance = 1.0
 
         return random.random() < risk_chance

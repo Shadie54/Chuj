@@ -182,27 +182,23 @@ class Round:
             all_penalty = (sweep_player == i)
 
             if not is_decl_player and declaration_succeeded:
-                # Záväzok splnený → ostatní 0b
                 pass  # total_score sa nemení
-
             elif not is_decl_player and declaration_none_failed:
-                # "none" nesplnený → ostatní -10b
                 player.total_score -= DECLARATION_FAIL_PENALTY
                 from config import WINNING_SCORE, RESET_SCORE
                 if player.total_score == WINNING_SCORE:
                     player.total_score = RESET_SCORE
-
             elif not is_decl_player and decl_type == "all":
-                # "all" nesplnený → ostatní 0b
                 pass  # total_score sa nemení
-
             else:
-                # Deklarant alebo normálny hráč
                 player.finalize_round(
                     all_penalty_taken=all_penalty,
                     leaf_illuminated=self.leaf_illuminated,
                     acorn_illuminated=self.acorn_illuminated,
                 )
+
+            # Streak sa aktualizuje vždy pre všetkých
+            player.update_streak()
 
         self.phase = "done"
 

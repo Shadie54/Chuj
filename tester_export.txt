@@ -1,17 +1,16 @@
 ======================================================================
 TESTER EXPORT
 ======================================================================
-Scenár: random_seed_99842
-Popis: Náhodné rozdanie (seed=99842)
+Scenár: random_seed_280185
+Popis: Náhodné rozdanie (seed=280185)
 
 --- STAV ---
-Štich: 2/8
-Na ťahu: AI_3
-First player: AI_1
+Štich: 1/8
+Na ťahu: AI_1
+First player: AI_0
 
 --- VYSVIETENIE ---
   leaf-over: AI_3
-  acorn-over: AI_1
 
 --- SKÓRE ---
   AI_0: 0b (celkovo: 0b)
@@ -20,40 +19,35 @@ First player: AI_1
   AI_3: 0b (celkovo: 0b)
 
 --- RUKY ---
-  AI_0 (7): J♥ J♣ 7♠ J♠ 10♥ 10♠ 9♠
-  AI_1 (7): 9♣ K♠ A♠ 8● Q♥ 8♥ Q♣
-  AI_2 (7): 8♠ 10♣ K● 7♣ A♣ J● K♥
-  AI_3 (7): A♥ 8♣ Q● 7♥ A● 9♥ Q♠ ← NA ŤAHU
+  AI_0 (7): 10♥ 8♣ A● A♥ 10● K♥ Q♣
+  AI_1 (8): J♣ 7♣ 9♣ 7● 8♠ A♣ K♠ 10♣ ← NA ŤAHU
+  AI_2 (8): 7♠ A♠ J♥ K♣ Q● J● 10♠ J♠
+  AI_3 (8): Q♠ 9♠ 8♥ K● Q♥ 7♥ 9● 9♥
 
 --- AKTUÁLNY ŠTICH ---
 Lead: bell
-  AI_1: 7●
-  AI_2: 9●
-  AI_3: 10●
-  AI_0: K♣
+  AI_0: 8●
 
 --- HISTÓRIA ---
-  T1: leader=AI_1 | AI_1: 7●  AI_2: 9●  AI_3: 10●  AI_0: K♣ → AI_3
 
 --- POSLEDNÝ ŤAH ---
 Hráč: AI_0
-Karta: K♣
-Štich: vyhral AI_3 (+0b)
+Karta: 8●
 
 --- REASONING ---
-  [AI_0] SWEEP_GATE1_DEBUG: hand_penalty=2, remaining=8, my_taken=0, already_taken=0
+  [AI_0] SWEEP_GATE1_DEBUG: hand_penalty=4, remaining=6, my_taken=0, already_taken=0
   [SWEEP AI_0] štich 1: NIE | stav=IDLE | P(sweep)=0.00 | EV=0.0
-    → L1: FAIL — gate2: žiadny scenár nesplnený
-  [AI_0] F5-WAIT: fallback high: K♣
-  [AI_0] F-VOID | OPEN: K♣
+    → L1: hearts-driven
+    → L2: strength=WEAK, profile=HEARTS_DRIVEN
+  [AI_0] L1-SAFE_LEAD: escape bell: 8●
+  [AI_0] L-SAFE | SAFE: 8●
 
---- AIMemory (AI_3) ---
-  Tricks taken: {0: 0, 1: 0, 2: 0, 3: 1}
+--- AIMemory (AI_1) ---
+  Tricks taken: {0: 0, 1: 0, 2: 0, 3: 0}
   Specials gone: {'leaf': False, 'acorn': False}
-  Illuminated by: {'leaf': 3, 'acorn': 1}
-  Void AI_0: ['bell']
-  Remaining heart: K♥ Q♥ J♥ 10♥ 8♥
-  Remaining leaf: A♠ K♠ J♠ 10♠ 9♠ 8♠ 7♠
-  Remaining acorn: A♣ Q♣ J♣ 10♣ 9♣ 7♣
-  Remaining bell: K● J● 8●
+  Illuminated by: {'leaf': 3, 'acorn': None}
+  Remaining heart: A♥ K♥ Q♥ J♥ 10♥ 9♥ 8♥ 7♥
+  Remaining leaf: A♠ Q♠ J♠ 10♠ 9♠ 7♠
+  Remaining acorn: K♣ Q♣ 8♣
+  Remaining bell: A● K● Q● J● 10● 9● 8●
   Sweep state: IDLE

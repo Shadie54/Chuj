@@ -1,7 +1,7 @@
 # game/player.py
 
-from game.hand import Hand
 from game.card import Card
+from game.hand import Hand
 
 
 class Player:
@@ -103,10 +103,7 @@ class Player:
         """
         from config import (SHOOT_MOON_BONUS, DECLARATION_ALL_BONUS,
                             DECLARATION_ALL_PENALTY, DECLARATION_NONE_BONUS,
-                            HIGH_SCORE_THRESHOLD, WINNING_SCORE, RESET_SCORE,
-                            NO_PENALTY_STREAK, NO_PENALTY_BONUS)
-
-        points = 0
+                            HIGH_SCORE_THRESHOLD, WINNING_SCORE, RESET_SCORE)
 
         # --- Záväzok "all" ---
         if self.declaration == "all":
@@ -147,17 +144,21 @@ class Player:
         if self.total_score == WINNING_SCORE:
             self.total_score = RESET_SCORE
 
-        # Séria — iba pri normálnom priebehu (nie záväzok)
-        if self.declaration is None:
-            if self.round_points == 0:
-                self.no_penalty_streak += 1
-                if self.no_penalty_streak >= NO_PENALTY_STREAK:
-                    self.total_score += NO_PENALTY_BONUS
-                    self.no_penalty_streak = 0
-            else:
-                self.no_penalty_streak = 0
-
         return points
+
+    def update_streak(self):
+        from config import HIGH_SCORE_THRESHOLD, NO_PENALTY_STREAK, NO_PENALTY_BONUS
+        took_special_at_high_score = (
+                self.total_score >= HIGH_SCORE_THRESHOLD
+                and any(c.is_special for c in self.penalty_cards)
+        )
+        if self.round_points > 0 or took_special_at_high_score:
+            self.no_penalty_streak = 0
+        else:
+            self.no_penalty_streak += 1
+            if self.no_penalty_streak >= NO_PENALTY_STREAK:
+                self.total_score += NO_PENALTY_BONUS
+                self.no_penalty_streak = 0
 
     def reset_round(self):
         """Resetuje stav hráča pre nové kolo."""

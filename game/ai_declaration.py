@@ -175,7 +175,8 @@ class DeclarationAdvisor:
         reason = "decision_yes" if result else "decision_no"
         return result, (reserve_quality, risk_level, reason, compensation, comp_breakdown, reason)
 
-    def _reserve_quality(self, reserves: list[Card]) -> str:
+    @staticmethod
+    def _reserve_quality(reserves: list[Card]) -> str:
         if len(reserves) >= 3:
             return "strong"
         if len(reserves) == 2:
@@ -199,7 +200,8 @@ class DeclarationAdvisor:
             return "borderline"
         return "good"
 
-    def _hand_risk_level(self, hand: list[Card], special_suit: str) -> str:
+    @staticmethod
+    def _hand_risk_level(hand: list[Card], special_suit: str) -> str:
         hearts = [c for c in hand if c.suit == "heart"]
         high_hearts = [c for c in hearts if c.rank in ("ace", "king")]
         low_hearts = [c for c in hearts if c.rank in ("seven", "eight", "nine")]
@@ -222,7 +224,8 @@ class DeclarationAdvisor:
         else:
             return "critical"
 
-    def _compensation_count(self, hand: list[Card], position: int) -> tuple[int, dict]:
+    @staticmethod
+    def _compensation_count(hand: list[Card], position: int) -> tuple[int, dict]:
         breakdown = {}
         void_suits = []
         for suit in SUITS:
@@ -240,7 +243,8 @@ class DeclarationAdvisor:
         count = len(void_suits) + (1 if position == 3 else 0)
         return count, breakdown
 
-    def _is_safe_to_illuminate_at_high_score(self, hand: list[Card]) -> str | None:
+    @staticmethod
+    def _is_safe_to_illuminate_at_high_score(hand: list[Card]) -> str | None:
         """Vráti None ak je bezpečné, inak dôvod veta."""
         hearts = [c for c in hand if c.suit == "heart"]
         high_hearts = [c for c in hearts if c.rank in ("ace", "king")]

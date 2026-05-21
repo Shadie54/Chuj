@@ -1,5 +1,5 @@
 # game/ai_play_none.py
-
+from game.ai_memory import AIMemory
 from game.card import Card
 from game.trick import Trick
 from game.player import Player
@@ -15,8 +15,9 @@ class NonePlayer:
     Body za trestné karty sa nepočítajú — len výsledok záväzku.
     """
 
-    def __init__(self, player: Player, logger=None):
+    def __init__(self, player: Player, memory: AIMemory, logger=None):
         self.player = player
+        self.memory = memory
         self.logger = logger
 
     def _log(self, strategy: str, details: str = ""):
@@ -25,11 +26,12 @@ class NonePlayer:
 
     def decide(self, playable: list[Card],
                trick: Trick,
-               hand_eval: HandEval) -> Card:
+               hand_eval: HandEval,
+               declaration_player: int | None = None) -> Card:
         is_leader = len(trick.played_cards) == 0
 
         if is_leader:
-            return self._lead(playable)
+            return self._lead(playable, declaration_player)
 
         lead_suit = trick.lead_suit
         lead_cards = [c for c in playable if c.suit == lead_suit]
@@ -37,14 +39,24 @@ class NonePlayer:
         if not lead_cards:
             return self._void(playable)
 
-        return self._follow(lead_cards, trick)
+        return self._follow(lead_cards, trick, declaration_player)
 
     # ------------------------------------------------------------------
     # Leader — zahraj najvyššiu kartu (pustíme niekoho na štich)
     # ------------------------------------------------------------------
 
-    def _lead(self, playable: list[Card]) -> Card:
-        card = min(playable, key=lambda c: c.rank_order)
+    def _lead(self, playable: list[Card],
+              declaration_player: int | None) -> Card:
+        if declaration_player is not None:
+            decl_void = self.memory.void_suits.get(declaration_player, set())
+            non_void_playable = [
+                c for c in playable
+                if c.suit not in decl_void
+            ]
+            pool = non_void_playable if non_void_playable else playable
+        else:
+            pool = playable
+        card = min(pool, key=lambda c: c.rank_order)
         self._log(Strategy.DECLARATION_NONE, f"lead najnižšia: {card}")
         return card
 
@@ -52,9 +64,38 @@ class NonePlayer:
     # Follower — podliezaj
     # ------------------------------------------------------------------
 
-    def _follow(self, lead_cards: list[Card], trick: Trick) -> Card:
-        current_best = self._get_current_best(trick)
+    def _follow(self, lead_cards: list[Card],
+                trick: Trick,
+                declaration_player: int | None) -> Card:
+        # Posledný a musím brať — hoď najvyššiu
+        is_last = len(trick.played_cards) == NUM_PLAYERS - 1
+        if is_last and self.player.index != declaration_player:
+            current_best = self._get_current_best(trick)
+            can_underplay = current_best and any(
+                c.rank_order < current_best.rank_order for c in lead_cards
+            )
+            if not can_underplay:
+                card = max(lead_cards, key=lambda c: c.rank_order)
+                self._log(Strategy.DECLARATION_NONE, f"posledný musím brať: {card}")
+                return card
+        # Bol vyhlasovateľ prebytý?
+        decl_beaten = False
+        if declaration_player is not None:
+            for idx, card in trick.played_cards:
+                if idx == declaration_player:
+                    current_best = self._get_current_best(trick)
+                    if current_best and current_best != card:
+                        decl_beaten = True
+                    break
 
+        if decl_beaten:
+            # Niekto prebil — hoď najvyššiu
+            card = max(lead_cards, key=lambda c: c.rank_order)
+            self._log(Strategy.DECLARATION_NONE, f"prebytý: {card}")
+            return card
+
+        # Nikto neprebil — podliezaj
+        current_best = self._get_current_best(trick)
         if current_best:
             underplay = [
                 c for c in lead_cards
@@ -65,7 +106,6 @@ class NonePlayer:
                 self._log(Strategy.DECLARATION_NONE, f"podliezam: {card}")
                 return card
 
-        # Nemôžem podliezť — najnižšia možná
         card = min(lead_cards, key=lambda c: c.rank_order)
         self._log(Strategy.DECLARATION_NONE, f"donútený najnižšia: {card}")
         return card
