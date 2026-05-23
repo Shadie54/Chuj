@@ -896,8 +896,15 @@ class TesterScreen:
     def _draw_log_entries(self, entries: list[LogEntry],
                           x: int, y: int, max_width: int) -> int:
         max_y = LOG_Y + LOG_HEIGHT - 20
+        prev = None
         for entry in entries:
-            for line in TesterLogger.format_entry(entry):
+            # Hlavička pred prvým trace v slede
+            header_lines = []
+            if TesterLogger.needs_trace_header(entry, prev):
+                y += self.font_mono.get_height() + 1
+                header_lines.append(f"[{entry.player}] SITUATION_TRACE:")
+
+            for line in header_lines + TesterLogger.format_entry(entry):
                 for wline in self._wrap_text(line, self.font_mono, max_width):
                     if y >= max_y:
                         overflow = self.font_mono.render(
@@ -908,6 +915,7 @@ class TesterScreen:
                     surf = self.font_mono.render(wline, True, T_TEXT)
                     self.screen.blit(surf, (x, y))
                     y += surf.get_height() + 1
+            prev = entry
         return y
 
     @staticmethod
@@ -1034,9 +1042,13 @@ class TesterScreen:
                 )
             lines.append("")
             lines.append("--- REASONING ---")
+            prev = None
             for entry in self.last_step.log_entries:
+                if TesterLogger.needs_trace_header(entry, prev):
+                    lines.append(f"  [{entry.player}] SITUATION_TRACE:")
                 for line in TesterLogger.format_entry(entry):
                     lines.append(f"  {line}")
+                prev = entry
             lines.append("")
 
         if not state.is_complete:

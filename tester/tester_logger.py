@@ -21,6 +21,11 @@ class LogEntry:
     sweep_result: SweepResult | None = None
     trick_number: int = 0
 
+    # trace
+    trace_situation: str = ""
+    trace_result: str = ""
+    trace_reason: str = ""
+
     # illumination
     suit: str = ""
     reserve_quality: str = ""
@@ -123,6 +128,19 @@ class TesterLogger:
     def new_round(self, *args, **kwargs):
         pass
 
+    def log_situation_trace(self, player: str, situation: str,
+                            result: str, reason: str = ""):
+        """Zachytí krok detekcie situácie (PASS/FAIL/SKIP/CHECK)."""
+        entry = LogEntry(
+            kind="trace",
+            player=player,
+            trace_situation=situation,
+            trace_result=result,
+            trace_reason=reason,
+        )
+        self.current_capture.append(entry)
+        self.full_history.append(entry)
+
     def log_declaration(self, *args, **kwargs):
         pass
 
@@ -176,12 +194,20 @@ class TesterLogger:
     def save_round(self, *args, **kwargs):
         pass
 
-    def save(self, *args, **kwargs):
+    @staticmethod
+    def save(*args, **kwargs):
         return None
 
     # ------------------------------------------------------------------
     # Pomocné — formátovanie pre zobrazenie
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def needs_trace_header(entry: LogEntry, prev_entry: LogEntry | None) -> bool:
+        """True ak je to prvý trace entry v slede (treba hlavičku)."""
+        if entry.kind != "trace":
+            return False
+        return prev_entry is None or prev_entry.kind != "trace"
 
     @staticmethod
     def format_entry(entry: LogEntry) -> list[str]:
@@ -259,4 +285,18 @@ class TesterLogger:
             lines.append(
                 f"[{entry.player}] záväzok: {declaration_text} | {entry.details}"
             )
+
+        elif entry.kind == "trace":
+            symbols = {
+                "PASS": "✓",
+                "FAIL": "✗",
+                "SKIP": "·",
+                "CHECK": "?",
+            }
+            sym = symbols.get(entry.trace_result, " ")
+            line = f"  {sym} {entry.trace_situation}: {entry.trace_result}"
+            if entry.trace_reason:
+                line += f" — {entry.trace_reason}"
+            lines.append(line)
+
         return lines

@@ -35,7 +35,7 @@ class AI:
 
         # Moduly — normálna hra
         self.evaluator = HandEvaluator(self.memory)
-        self.situator = SituationDetector(player, self.memory, difficulty)
+        self.situator = SituationDetector(player, self.memory, difficulty, logger)
         self.selector = CardSelector(
             player, self.memory, logger,
             on_strategy=lambda s: setattr(self, 'last_strategy', s)

@@ -63,6 +63,13 @@ class CardSelector:
                     self._log(Strategy.HIGH_SCORE_LEAD, f"prebytočná nízka červeň: {card}")
                     return card
 
+            # Bell escape — volaj vždy, nezávisle od escape_playable
+            bell_result = self._bell_escape(dctx)
+            if bell_result and bell_result[0] in dctx.playable:
+                card, detail = bell_result
+                self._log(Strategy.SAFE_LEAD, detail)
+                return card
+
             escape_playable = [
                 c for c in hand_eval.escape_cards
                 if c in playable
@@ -76,7 +83,6 @@ class CardSelector:
                         and not any(x.is_special and x.suit == c.suit
                                     for x in self.player.hand.cards)
                 )
-                   # Veto — posledný buffer pre môjho horníka
                    and not (
                         c.suit in ("leaf", "acorn")
                         and any(x.is_special and x.suit == c.suit
@@ -89,20 +95,14 @@ class CardSelector:
             ]
 
             if escape_playable:
-                # Bell má špeciálnu logiku
-                bell_escape = self._bell_escape(dctx)
-                if bell_escape and bell_escape in dctx.playable:
-                    self._log(Strategy.SAFE_LEAD, f"escape bell: {bell_escape}")
-                    return bell_escape
-
-                # Leaf/acorn — aggressive card logika
+                # Leaf/acorn — najnižšia escape
                 for suit in ("leaf", "acorn"):
                     suit_escape = [
                         c for c in escape_playable
                         if c.suit == suit
                     ]
                     if suit_escape:
-                        card = self._aggressive_card(suit_escape, suit, dctx)
+                        card = min(suit_escape, key=lambda c: c.rank_order)
                         self._log(Strategy.SAFE_LEAD, f"escape {suit}: {card}")
                         return card
 
@@ -148,13 +148,11 @@ class CardSelector:
                 self._log(Strategy.SAFE_LEAD, f"exhaust fallback: {card}")
                 return card
 
-            # Last resort — ak nemáme nič, skúsime protected suits
+            # Last resort
             non_special = [
                 c for c in playable
                 if not c.is_special or self._special_is_safe_lead(c)
             ]
-
-            # Prednostne escape z protected suits
             protected_escape = [
                 c for c in non_special
                 if c.suit in dctx.protected_suits
@@ -171,10 +169,8 @@ class CardSelector:
             return card
 
         else:
-            # Follower
+            # Follower — ostáva nezmenený
             lead_suit = dctx.lead_suit
-
-            # Dump trap A/K ak mám živého horníka v tej istej farbe
             current_best = self._get_current_best(dctx.trick)
             if lead_suit in ("leaf", "acorn"):
                 if not self.memory.is_special_gone(lead_suit):
@@ -244,41 +240,57 @@ class CardSelector:
                 return card
             return min(dctx.playable, key=lambda c: c.rank_order)
 
-    def _bell_escape(self, dctx: DecisionContext) -> Card | None:
-        bell_cards = [
+    def _bell_escape(self, dctx: DecisionContext) -> tuple[Card, str] | None:
+        # Bell už bola vedená → vyššie void riziko, nepoužívaj risk maticu
+        if "bell" in self.memory.suits_led:
+            return None
+
+        all_bell = [
             c for c in dctx.playable
             if c.suit == "bell" and not c.is_special
         ]
-        if not bell_cards:
+        if not all_bell:
             return None
 
         my_count = len([c for c in self.player.hand.cards if c.suit == "bell"])
         remaining = len(self.memory.remaining["bell"])
 
-        if remaining >= 5:
-            if my_count <= 2:
-                return max(bell_cards, key=lambda c: c.rank_order)
-            elif my_count == 3:
-                all_bell = [c for c in self.player.hand.cards
-                            if c.suit == "bell" and not c.is_special]
-                mid = self._mid_card_relative(bell_cards, all_bell)
-                return mid if mid else min(bell_cards, key=lambda c: c.rank_order)
-            else:
-                safe = [c for c in bell_cards
-                        if c in dctx.hand_eval.profiles["bell"].safe_cards]
-                pool = safe if safe else [min(bell_cards, key=lambda c: c.rank_order)]
-                return min(pool, key=lambda c: c.rank_order)
-        else:
-            if my_count <= 2:
-                all_bell = [c for c in self.player.hand.cards
-                            if c.suit == "bell" and not c.is_special]
-                mid = self._mid_card_relative(bell_cards, all_bell)
-                return mid if mid else min(bell_cards, key=lambda c: c.rank_order)
-            else:
-                safe = [c for c in bell_cards
-                        if c in dctx.hand_eval.profiles["bell"].safe_cards]
-                pool = safe if safe else [min(bell_cards, key=lambda c: c.rank_order)]
-                return min(pool, key=lambda c: c.rank_order)
+        # Trap bell dump ak mám buffer + nízke void riziko
+        trap_bell = [c for c in all_bell if self._is_trap(c, dctx.trick)]
+        non_trap_bell = [c for c in all_bell if not self._is_trap(c, dctx.trick)]
+
+        if trap_bell and non_trap_bell:
+            if remaining >= 5 and my_count <= 2:
+                card = max(trap_bell, key=lambda c: c.rank_order)
+                return card, f"escape bell trap+buffer: {card}"
+            # Nesplnené podmienky → pokračuj s non_trap logikou
+
+        # my_count == 1 poistka
+        if my_count == 1:
+            card = all_bell[0]
+            if not self._is_trap(card, dctx.trick):
+                return card, f"escape bell: {card}"
+            # Osamelý trap bell — zahraj ak bell nešli (nízke void riziko)
+            if "bell" not in self.memory.suits_led:
+                return card, f"escape bell osamelý trap: {card}"
+            return None
+
+        # Pôvodná logika — len non-trap karty
+        bell_cards = non_trap_bell
+        if not bell_cards:
+            return None
+
+        card = self._risk_pick(bell_cards, my_count, remaining, "bell", dctx)
+
+        # Trap bell vetva — ak jadro nič nedalo a veľa remaining
+        if card is None and my_count <= 2 and remaining >= 5:
+            if trap_bell:
+                t = max(trap_bell, key=lambda c: c.rank_order)
+                return t, f"escape bell trap: {t}"
+
+        if card:
+            return card, f"escape bell: {card}"
+        return None
 
     @staticmethod
     def _mid_card_relative(candidates: list[Card],
@@ -319,14 +331,18 @@ class CardSelector:
                     self._log(Strategy.FORCE_SPECIAL,
                               f"vytiahni horníka {suit}: {card}")
                     return card
-        if situation == Situation.FOLLOWER_RISK:
-            return self._risk_trap(dctx)
 
         if situation == Situation.FOLLOWER_FORCED_CLEAN:
             return self._controlled_take(dctx)
 
         if situation == Situation.FOLLOWER_FREE_TAKE:
             return self._free_take(dctx)
+
+        if situation == Situation.FOLLOWER_RISK:
+            return self._risk_trap(dctx)
+
+        if situation == Situation.FOLLOWER_EARLY_TAKE:
+            return self._early_take(dctx)
 
         # Follower štandard
         non_special_lead = [c for c in dctx.lead_cards if not c.is_special]
@@ -346,31 +362,56 @@ class CardSelector:
     def _aggressive_card(self, suit_cards: list[Card],
                          suit: str,
                          dctx: DecisionContext) -> Card:
-        """Výber karty pre LEADER_AGGRESSIVE podľa void rizika."""
+        """Výber karty pre LEADER_AGGRESSIVE — forcing horníka (7-J)."""
         my_count = len([c for c in self.player.hand.cards
                         if c.suit == suit and not c.is_special])
         remaining = len(self.memory.remaining[suit])
+
+        all_in_hand = [
+            c for c in self.player.hand.cards
+            if c.suit == suit and not c.is_special
+        ]
 
         if remaining >= 5:
             if my_count <= 2:
                 return max(suit_cards, key=lambda c: c.rank_order)
             elif my_count == 3:
-                mid = self._mid_card(suit_cards)
+                mid = self._mid_card_relative(suit_cards, all_in_hand)
                 return mid if mid else min(suit_cards, key=lambda c: c.rank_order)
             else:
-                safe = [c for c in suit_cards
-                        if c in dctx.hand_eval.profiles[suit].safe_cards]
-                pool = safe if safe else [min(suit_cards, key=lambda c: c.rank_order)]
-                return min(pool, key=lambda c: c.rank_order)
+                return min(suit_cards, key=lambda c: c.rank_order)
         else:
             if my_count <= 2:
-                mid = self._mid_card(suit_cards)
+                mid = self._mid_card_relative(suit_cards, all_in_hand)
                 return mid if mid else min(suit_cards, key=lambda c: c.rank_order)
             else:
-                safe = [c for c in suit_cards
-                        if c in dctx.hand_eval.profiles[suit].safe_cards]
-                pool = safe if safe else [min(suit_cards, key=lambda c: c.rank_order)]
-                return min(pool, key=lambda c: c.rank_order)
+                return min(suit_cards, key=lambda c: c.rank_order)
+
+    def _early_take(self, dctx: DecisionContext) -> Card:
+        """
+        Bell, čistý štich, nízke void riziko (2./3. pozícia) — zbav sa karty
+        podľa risk matice. Ak je v štiche vyššia karta než výber, podlez
+        najvyššou (max underplay).
+        """
+        bell_cards = [c for c in dctx.lead_cards if not c.is_special]
+        my_count = len([c for c in self.player.hand.cards
+                        if c.suit == "bell" and not c.is_special])
+        remaining = len(self.memory.remaining["bell"])
+
+        card = self._risk_pick(bell_cards, my_count, remaining, "bell", dctx)
+        if card is None:
+            card = max(bell_cards, key=lambda c: c.rank_order)
+
+        # Ak výber neprebije current_best, radšej max(underplay)
+        current_best = self._get_current_best(dctx.trick)
+        if current_best and card.rank_order < current_best.rank_order:
+            underplay = [c for c in bell_cards
+                         if c.rank_order < current_best.rank_order]
+            if underplay:
+                card = max(underplay, key=lambda c: c.rank_order)
+
+        self._log(Strategy.EARLY_TAKE, f"bell čistý štich: {card}")
+        return card
 
     def _controlled_take(self, dctx: DecisionContext) -> Card:
         lead_cards = dctx.lead_cards
@@ -686,19 +727,52 @@ class CardSelector:
     # ------------------------------------------------------------------
     # Pomocné
     # ------------------------------------------------------------------
-
-    @staticmethod
-    def _mid_card(suit_cards: list[Card]) -> Card | None:
+    def _risk_pick(self, suit_cards: list[Card],
+                   my_count: int,
+                   remaining: int,
+                   suit: str,
+                   dctx: DecisionContext) -> Card | None:
         if not suit_cards:
             return None
-        highest = max(suit_cards, key=lambda c: c.rank_order)
-        candidates = [
-            c for c in suit_cards
-            if highest.rank_order - c.rank_order >= 2
+
+        all_in_hand = [
+            c for c in self.player.hand.cards
+            if c.suit == suit and not c.is_special
         ]
-        if not candidates:
-            return None
-        return max(candidates, key=lambda c: c.rank_order)  # najvyššia zo stredných
+
+        def safe_or_lowest() -> Card:
+            safe = [c for c in suit_cards
+                    if c in dctx.hand_eval.profiles[suit].safe_cards]
+            pool = safe if safe else [min(suit_cards, key=lambda c: c.rank_order)]
+            return min(pool, key=lambda c: c.rank_order)
+
+        # Rozhodovacia matica s logovaním vetvy
+        if remaining >= 5:
+            if my_count <= 2:
+                branch = "R>=5, cnt<=2 → max"
+                card = max(suit_cards, key=lambda c: c.rank_order)
+            elif my_count == 3:
+                mid = self._mid_card_relative(suit_cards, all_in_hand)
+                card = mid if mid else min(suit_cards, key=lambda c: c.rank_order)
+                branch = f"R>=5, cnt==3 → mid={mid}"
+            else:
+                card = safe_or_lowest()
+                branch = "R>=5, cnt>=4 → safe"
+        else:
+            if my_count <= 2:
+                mid = self._mid_card_relative(suit_cards, all_in_hand)
+                card = mid if mid else min(suit_cards, key=lambda c: c.rank_order)
+                branch = f"R<5, cnt<=2 → mid={mid}"
+            else:
+                card = safe_or_lowest()
+                branch = "R<5, cnt>=3 → safe"
+
+        if self.logger:
+            self.logger.log_strategy(
+                self.player.name, "DEBUG_RISK_PICK",
+                f"{suit}: {branch} → {card}"
+            )
+        return card
 
     def _special_points(self, card: Card) -> int:
         suit = "leaf" if card.is_leaf_over else "acorn"

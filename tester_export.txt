@@ -1,53 +1,64 @@
 ======================================================================
 TESTER EXPORT
 ======================================================================
-Scenár: random_seed_280185
-Popis: Náhodné rozdanie (seed=280185)
+Scenár: random_seed_639206
+Popis: Náhodné rozdanie (seed=639206)
 
 --- STAV ---
-Štich: 1/8
-Na ťahu: AI_1
+Štich: 4/8
+Na ťahu: AI_0
 First player: AI_0
-
---- VYSVIETENIE ---
-  leaf-over: AI_3
 
 --- SKÓRE ---
   AI_0: 0b (celkovo: 0b)
   AI_1: 0b (celkovo: 0b)
   AI_2: 0b (celkovo: 0b)
-  AI_3: 0b (celkovo: 0b)
+  AI_3: 4b (celkovo: 0b)
 
 --- RUKY ---
-  AI_0 (7): 10♥ 8♣ A● A♥ 10● K♥ Q♣
-  AI_1 (8): J♣ 7♣ 9♣ 7● 8♠ A♣ K♠ 10♣ ← NA ŤAHU
-  AI_2 (8): 7♠ A♠ J♥ K♣ Q● J● 10♠ J♠
-  AI_3 (8): Q♠ 9♠ 8♥ K● Q♥ 7♥ 9● 9♥
+  AI_0 (5): 9♥ 7♥ 8♥ 10♥ 8♠ ← NA ŤAHU
+  AI_1 (5): 9♣ 7♠ Q♥ K♠ J♥
+  AI_2 (5): 10● 7♣ A♥ K♥ 9●
+  AI_3 (4): Q♠ 8● 10♠ Q●
 
 --- AKTUÁLNY ŠTICH ---
 Lead: bell
-  AI_0: 8●
+  AI_3: 7●
 
 --- HISTÓRIA ---
+  T1: leader=AI_0 | AI_0: J♠  AI_1: 9♠  AI_2: A●  AI_3: A♠ → AI_3
+  T2: leader=AI_3 | AI_3: K●  AI_0: K♣  AI_1: A♣  AI_2: J● → AI_3
+  T3: leader=AI_3 | AI_3: Q♣  AI_0: J♣  AI_1: 10♣  AI_2: 8♣ → AI_3
 
 --- POSLEDNÝ ŤAH ---
-Hráč: AI_0
-Karta: 8●
+Hráč: AI_3
+Karta: 7●
 
 --- REASONING ---
-  [AI_0] SWEEP_GATE1_DEBUG: hand_penalty=4, remaining=6, my_taken=0, already_taken=0
-  [SWEEP AI_0] štich 1: NIE | stav=IDLE | P(sweep)=0.00 | EV=0.0
-    → L1: hearts-driven
-    → L2: strength=WEAK, profile=HEARTS_DRIVEN
-  [AI_0] L1-SAFE_LEAD: escape bell: 8●
-  [AI_0] L-SAFE | SAFE: 8●
+  [AI_3] SWEEP_GATE1_DEBUG: hand_penalty=1, remaining=8, my_taken=1, already_taken=0
+  [AI_3] SWEEP_CAP_DEBUG: remaining_bell=[10●, 9●], hand_bell=[7●, 8●, Q●], hand_acorn=[], remaining_leaf=[K♠, 8♠, 7♠], remaining_acorn=[9♣, 7♣], remaining_heart=[A♥, K♥, Q♥, J♥, 10♥, 9♥, 8♥, 7♥]heart_wins=0, bell_wins=3, leaf_wins=0, acorn_wins=0
+  [AI_3] SWEEP_RTC_DEBUG: hearts_pts=8, leaf_pts=0, acorn_pts=0, total=8
+  [AI_3] SWEEP_L2_DEBUG: capacity=6, to_capture=8, heart_killers=0, ratio=0.75 | hearts_pts=?, leaf_pts=?, acorn_pts=?
+  [AI_3] SWEEP_STATE: COMMITTED_FULL → IDLE
+  [SWEEP AI_3] štich 4: NIE | stav=IDLE | P(sweep)=0.00 | EV=0.0
+    → L1: control-driven
+    → L2: strength=WEAK, profile=CONTROL_DRIVEN
+  [AI_3] SITUATION_TRACE:
+    ✗ L-AGGRESSIVE: FAIL — žiadny vhodný cudzí horník v leaf/acorn
+    · L-HIGH_SCORE: SKIP — not is_high_score
+    ✓ L-SAFE: PASS — escape dostupný: 3 kariet
+  [AI_3] L1-SAFE_LEAD: escape: 7●
+  [AI_3] L-SAFE | SAFE: 7●
 
---- AIMemory (AI_1) ---
-  Tricks taken: {0: 0, 1: 0, 2: 0, 3: 0}
-  Specials gone: {'leaf': False, 'acorn': False}
-  Illuminated by: {'leaf': 3, 'acorn': None}
-  Remaining heart: A♥ K♥ Q♥ J♥ 10♥ 9♥ 8♥ 7♥
-  Remaining leaf: A♠ Q♠ J♠ 10♠ 9♠ 7♠
-  Remaining acorn: K♣ Q♣ 8♣
-  Remaining bell: A● K● Q● J● 10● 9● 8●
+--- AIMemory (AI_0) ---
+  Tricks taken: {0: 0, 1: 0, 2: 0, 3: 3}
+  Specials gone: {'leaf': False, 'acorn': True}
+  Illuminated by: {'leaf': None, 'acorn': None}
+  Void AI_0: ['bell']
+  Void AI_1: ['bell']
+  Void AI_2: ['leaf']
+  Remaining heart: A♥ K♥ Q♥ J♥
+  Remaining leaf: K♠ Q♠ 10♠ 7♠
+  Remaining acorn: 9♣ 7♣
+  Remaining bell: Q● 10● 9● 8● 7●
   Sweep state: IDLE

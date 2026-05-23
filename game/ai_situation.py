@@ -13,10 +13,18 @@ from config import NUM_PLAYERS, SUITS
 
 class SituationDetector:
     def __init__(self, player: Player, memory: AIMemory,
-                 difficulty: str = "hard"):
+                 difficulty: str = "hard", logger=None):
         self.player = player
         self.memory = memory
         self.difficulty = difficulty
+        self.logger = logger
+
+    def _trace(self, situation: str, result: str, reason: str = ""):
+        """Loguje krok detekcie situácie — len ak logger podporuje (tester)."""
+        if self.logger and hasattr(self.logger, "log_situation_trace"):
+            self.logger.log_situation_trace(
+                self.player.name, situation, result, reason
+            )
 
     def determine(self, dctx: DecisionContext) -> str:
         if dctx.is_leader:
@@ -32,6 +40,7 @@ class SituationDetector:
             Situation.LEADER_AGGRESSIVE: Mode.TAKE,
             Situation.LEADER_HIGH_SCORE: Mode.SAFE,
             Situation.LEADER_RISK: Mode.OPEN,
+            Situation.LEADER_EXHAUST_SPECIAL: Mode.SAFE,  # ← nové
             Situation.FOLLOWER_SAFE: Mode.SAFE,
             Situation.FOLLOWER_VOID: Mode.OPEN,
             Situation.FOLLOWER_FORCED_CLEAN: Mode.TAKE,
@@ -39,6 +48,7 @@ class SituationDetector:
             Situation.FOLLOWER_FREE_TAKE: Mode.TAKE,
             Situation.FOLLOWER_WAIT: Mode.OPEN,
             Situation.FOLLOWER_RISK: Mode.RISK,
+            Situation.FOLLOWER_EARLY_TAKE: Mode.TAKE,  # ← nové
         }
         return mapping.get(situation, Mode.OPEN)
 
@@ -48,7 +58,7 @@ class SituationDetector:
         game_ctx = dctx.game_ctx
 
         if self.difficulty == "hard":
-            for suit in ("leaf", "acorn"):  # ← namiesto SUITS
+            for suit in ("leaf", "acorn"):
                 if self.memory.is_special_gone(suit):
                     continue
                 holders = dctx.special_holders[suit]
@@ -63,7 +73,6 @@ class SituationDetector:
                        and c.rank not in ("ace", "king")
                 ]
                 if suit_cards:
-                    # Veto — ak je to posledná escape a ostanú len trap karty
                     remaining_non_special = [
                         c for c in playable
                         if c.suit == suit
@@ -78,19 +87,45 @@ class SituationDetector:
                            and c.rank in ("ace", "king")
                     ]
                     if not remaining_non_special and high_cards:
-                        continue  # preskočíme — zahodíme jedinú escape
+                        self._trace(Situation.LEADER_AGGRESSIVE, "FAIL",
+                                    f"{suit}: posledná escape, ostanú len A/K")
+                        continue
+                    self._trace(Situation.LEADER_AGGRESSIVE, "PASS",
+                                f"cudzí horník {suit}, mám non-A/K")
                     return Situation.LEADER_AGGRESSIVE
+            self._trace(Situation.LEADER_AGGRESSIVE, "FAIL",
+                        "žiadny vhodný cudzí horník v leaf/acorn")
+        else:
+            self._trace(Situation.LEADER_AGGRESSIVE, "SKIP",
+                        f"difficulty={self.difficulty}")
 
         if game_ctx.is_high_score:
+            self._trace(Situation.LEADER_HIGH_SCORE, "CHECK", "is_high_score=True")
             return self._leader_high_score(dctx)
+        else:
+            self._trace(Situation.LEADER_HIGH_SCORE, "SKIP", "not is_high_score")
 
-        escape_candidates = [
+        non_heart_escape = [
             c for c in hand_eval.escape_cards
             if c in playable
                and not c.is_special
         ]
-        if escape_candidates:
+
+        bell_escape_possible = (
+                "bell" not in self.memory.suits_led
+                and any(
+            c.suit == "bell" and not c.is_special
+            for c in playable
+        )
+        )
+
+        if non_heart_escape or bell_escape_possible:
+            self._trace(Situation.LEADER_SAFE, "PASS",
+                        f"escape dostupný: {len(non_heart_escape)} kariet"
+                        + (" + bell escape" if bell_escape_possible else ""))
             return Situation.LEADER_SAFE
+        else:
+            self._trace(Situation.LEADER_SAFE, "FAIL", "žiadna escape karta")
 
         for suit in ("leaf", "acorn"):
             if self.memory.is_special_gone(suit):
@@ -111,8 +146,12 @@ class SituationDetector:
                 if c.rank_order > special.rank_order and not c.is_special
             ]
             if remaining_higher:
+                self._trace(Situation.LEADER_RISK, "PASS",
+                            f"{suit}: horník + len A/K, vonku vyššia")
                 return Situation.LEADER_RISK
+        self._trace(Situation.LEADER_RISK, "FAIL", "podmienky risku nesplnené")
 
+        self._trace(Situation.LEADER_FORCED, "PASS", "fallback")
         return Situation.LEADER_FORCED
 
     def _leader_high_score(self, dctx: DecisionContext) -> str:
@@ -132,6 +171,8 @@ class SituationDetector:
                    and c.rank in ("seven", "eight", "nine")
             ]
             if low_heart_playable:
+                self._trace(Situation.LEADER_HIGH_SCORE, "PASS",
+                            f"prebytočná nízka červeň (surplus={surplus_low})")
                 return Situation.LEADER_HIGH_SCORE
 
         non_heart_escape = [
@@ -139,8 +180,15 @@ class SituationDetector:
             if c.suit != "heart" and c in playable
         ]
         if non_heart_escape:
+            self._trace(Situation.LEADER_HIGH_SCORE, "FAIL",
+                        "žiadna prebytočná nízka červeň → SAFE")
+            self._trace(Situation.LEADER_SAFE, "PASS",
+                        f"non-heart escape: {len(non_heart_escape)} kariet")
             return Situation.LEADER_SAFE
 
+        self._trace(Situation.LEADER_HIGH_SCORE, "FAIL",
+                    "žiadna prebytočná červeň ani escape → FORCED")
+        self._trace(Situation.LEADER_FORCED, "PASS", "fallback")
         return Situation.LEADER_FORCED
 
     def _follower(self, dctx: DecisionContext) -> str:
@@ -148,10 +196,16 @@ class SituationDetector:
         lead_cards = dctx.lead_cards
 
         if not lead_cards:
+            self._trace(Situation.FOLLOWER_VOID, "PASS", "nemám lead suit")
             return Situation.FOLLOWER_VOID
 
         if self._trick_is_free_to_take(dctx):
+            self._trace(Situation.FOLLOWER_FREE_TAKE, "PASS",
+                        "vysvietený horník zahral, mám A/K")
             return Situation.FOLLOWER_FREE_TAKE
+        else:
+            self._trace(Situation.FOLLOWER_FREE_TAKE, "FAIL",
+                        "podmienky free take nesplnené")
 
         current_best = self._get_current_best(dctx.trick)
         can_underplay = any(
@@ -159,15 +213,28 @@ class SituationDetector:
             for c in lead_cards
         ) if current_best else False
 
-        # FOLLOWER_RISK — tretí v poradí, trap A/K + jedna escape, živý nevysvietený horník
+        # FOLLOWER_RISK
         if not dctx.is_last and len(dctx.players_after) == 1:
             if not dctx.game_ctx.is_high_score:
                 if not (80 <= dctx.game_ctx.my_score <= 89):
                     risk = self._should_risk_trap(dctx)
                     if risk:
+                        self._trace(Situation.FOLLOWER_RISK, "PASS",
+                                    "3. v poradí, trap A/K + jedna escape")
                         return Situation.FOLLOWER_RISK
+                    else:
+                        self._trace(Situation.FOLLOWER_RISK, "FAIL",
+                                    "_should_risk_trap=False")
+                else:
+                    self._trace(Situation.FOLLOWER_RISK, "SKIP",
+                                f"score 80-89 ({dctx.game_ctx.my_score})")
+            else:
+                self._trace(Situation.FOLLOWER_RISK, "SKIP", "is_high_score")
+        else:
+            self._trace(Situation.FOLLOWER_RISK, "SKIP",
+                        f"nie 3. v poradí (players_after={len(dctx.players_after)})")
 
-        # Posledný + trap bell A/K + čistý štich → FOLLOWER_FORCED_CLEAN
+        # FOLLOWER_FORCED_CLEAN (early — trap bell)
         if dctx.is_last and not dctx.trick_has_penalty:
             high_bell = [
                 c for c in lead_cards
@@ -176,10 +243,23 @@ class SituationDetector:
                    and not c.is_special
             ]
             if high_bell:
+                self._trace(Situation.FOLLOWER_FORCED_CLEAN, "PASS",
+                            "posledný + trap bell A/K + čistý štich")
                 return Situation.FOLLOWER_FORCED_CLEAN
 
+        # FOLLOWER_EARLY_TAKE — 2./3. pozícia, bell, čistý štich, nízke riziko
+        if self._can_early_take(dctx):
+            self._trace(Situation.FOLLOWER_EARLY_TAKE, "PASS",
+                        "bell čistý štich, nízke void riziko")
+            return Situation.FOLLOWER_EARLY_TAKE
+        else:
+            self._trace(Situation.FOLLOWER_EARLY_TAKE, "FAIL",
+                        "podmienky early take nesplnené")
         if can_underplay:
+            self._trace(Situation.FOLLOWER_SAFE, "PASS", "viem podliezť")
             return Situation.FOLLOWER_SAFE
+        else:
+            self._trace(Situation.FOLLOWER_SAFE, "FAIL", "nemôžem podliezť")
 
         i_will_likely_win = (
                 len(lead_cards) == 1
@@ -196,19 +276,31 @@ class SituationDetector:
 
         if not dctx.trick_has_penalty:
             if dctx.is_last and not can_underplay:
+                self._trace(Situation.FOLLOWER_FORCED_CLEAN, "PASS",
+                            "posledný + čistý štich, nemôžem podliezť")
                 return Situation.FOLLOWER_FORCED_CLEAN
             else:
                 if dctx.can_be_beaten and not i_will_likely_win:
+                    self._trace(Situation.FOLLOWER_WAIT, "PASS",
+                                "čistý štich, niekto po mne môže biť")
                     return Situation.FOLLOWER_WAIT
                 else:
+                    self._trace(Situation.FOLLOWER_FORCED_CLEAN, "PASS",
+                                "čistý štich, pravdepodobne vyhrám/nemôžem čakať")
                     return Situation.FOLLOWER_FORCED_CLEAN
         else:
             if dctx.is_last:
+                self._trace(Situation.FOLLOWER_FORCED_POINTS, "PASS",
+                            "posledný + bodový štich")
                 return Situation.FOLLOWER_FORCED_POINTS
             else:
                 if dctx.can_be_beaten and not i_will_likely_win:
+                    self._trace(Situation.FOLLOWER_WAIT, "PASS",
+                                "bodový štich, niekto po mne môže biť")
                     return Situation.FOLLOWER_WAIT
                 else:
+                    self._trace(Situation.FOLLOWER_FORCED_POINTS, "PASS",
+                                "bodový štich, nemôžem čakať")
                     return Situation.FOLLOWER_FORCED_POINTS
 
     def _trick_is_free_to_take(self, dctx: DecisionContext) -> bool:
@@ -280,6 +372,29 @@ class SituationDetector:
     def _get_play_order(trick: Trick) -> list[int]:
         return [(trick.leader_index + i) % NUM_PLAYERS
                 for i in range(NUM_PLAYERS)]
+
+    def _can_early_take(self, dctx: DecisionContext) -> bool:
+        """
+        FOLLOWER_EARLY_TAKE — dobrovoľné zbavenie sa bell v čistom štiche
+        pri nízkom void riziku (2./3. pozícia, nie posledný).
+        """
+        if dctx.is_last:
+            return False
+        if dctx.lead_suit != "bell":
+            return False
+        if dctx.trick_has_penalty:
+            return False
+        # Mám aspoň 2 bell karty (1 = nutne priznávam, žiadny výber)
+        bell_cards = [c for c in dctx.lead_cards if not c.is_special]
+        if len(bell_cards) < 2:
+            return False
+        # Bell už bola vedená → vyššie void riziko
+        if "bell" in self.memory.suits_led:
+            return False
+        # Nízke void riziko
+        if len(self.memory.remaining["bell"]) < 5:
+            return False
+        return True
 
     def _should_risk_trap(self, dctx: DecisionContext) -> bool:
 

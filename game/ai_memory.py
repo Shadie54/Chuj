@@ -33,6 +33,9 @@ class AIMemory:
         # Zahraté karty
         self.played_cards: set[Card] = set()
 
+        # Farby ktoré boli vedené (lead suit v nejakom štichu)
+        self.suits_led: set[str] = set()
+
         # Pre každú farbu — ostávajúce karty u súperov
         # (po init_with_hand sem nepatria moje karty)
         self.remaining: dict[str, list[Card]] = {
@@ -92,6 +95,7 @@ class AIMemory:
                      winner_index: int):
         """Zaznamená odohraný štich a aktualizuje pamäť."""
         lead_suit = played_cards[0][1].suit
+        self.suits_led.add(lead_suit)
 
         for player_idx, card in played_cards:
             self.played_cards.add(card)

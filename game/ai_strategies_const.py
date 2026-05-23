@@ -8,6 +8,7 @@ class Situation:
     LEADER_AGGRESSIVE   = "L-AGGRESSIVE"
     LEADER_HIGH_SCORE   = "L-HIGH_SCORE"
     LEADER_RISK         = "L-RISK"
+    LEADER_EXHAUST_SPECIAL = "L-EXHAUST_SPECIAL"  # ← nové
 
     # Follower situácie
     FOLLOWER_SAFE          = "F-SAFE"
@@ -17,6 +18,7 @@ class Situation:
     FOLLOWER_FREE_TAKE     = "F-FREE_TAKE"
     FOLLOWER_WAIT          = "F-WAIT"
     FOLLOWER_RISK          = "F-RISK"
+    FOLLOWER_EARLY_TAKE    = "F-EARLY_TAKE"  # ← nové
 
 
 class Mode:
@@ -33,6 +35,7 @@ class Strategy:
     DUMP_SETUP      = "L3-DUMP_SETUP"
     HIGH_SCORE_LEAD = "L4-HIGH_SCORE_LEAD"  # ← nové
     RISK_SPECIAL    = "L5-RISK_SPECIAL"
+    EXHAUST_SPECIAL = "L6-EXHAUST_SPECIAL"  # ← nové
 
     # Follower
     UNDERPLAY       = "F1-UNDERPLAY"  # podliezam
@@ -44,6 +47,7 @@ class Strategy:
     DUMP_HEART      = "F7-DUMP_HEART"
     DUMP_DANGEROUS  = "F8-DUMP_DANGEROUS"
     RISK_TRAP       = "F9-RISK_TRAP"
+    EARLY_TAKE      = "F10-EARLY_TAKE"  # ← nové
 
     # Proti záväzku
     BREAK_ALL       = "A1-BREAK_ALL"

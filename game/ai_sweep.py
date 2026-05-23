@@ -477,7 +477,8 @@ class SweepPipeline:
 
         return None
 
-    def _gate3_lethal_void(self, hand: list[Card]) -> bool:
+    @staticmethod
+    def _gate3_lethal_void(hand: list[Card]) -> bool:
         """
         Lethal void = scenár kde matematicky NIE JE možné zobrať všetky
         trestné karty.
@@ -726,6 +727,13 @@ class SweepPipeline:
             if not i_have_acorn_q and acorn_control == 0:
                 acorn_pts = 8 if acorn_lit else 4
 
+        if self.logger:
+            self.logger.log_strategy(
+                self.player.name, "SWEEP_RTC_DEBUG",
+                f"hearts_pts={hearts_pts}, leaf_pts={leaf_pts}, "
+                f"acorn_pts={acorn_pts}, total={hearts_pts + leaf_pts + acorn_pts}"
+            )
+
         return hearts_pts + leaf_pts + acorn_pts
 
     @staticmethod
@@ -821,7 +829,36 @@ class SweepPipeline:
             remaining = self.memory.remaining[suit]
             non_heart_wins += self._suit_extended_wins(my_cards, remaining)
         non_heart_coverage = non_heart_wins * 2
-
+        heart_wins = self._suit_extended_wins(
+            [c for c in hand if c.suit == "heart"],
+            self.memory.remaining["heart"],
+        )
+        bell_wins = self._suit_extended_wins(
+            [c for c in hand if c.suit == "bell"],
+            self.memory.remaining["bell"],
+        )
+        leaf_wins = self._suit_extended_wins(
+            [c for c in hand if c.suit == "leaf"],
+            self.memory.remaining["leaf"],
+        )
+        acorn_wins = self._suit_extended_wins(
+            [c for c in hand if c.suit == "acorn"],
+            self.memory.remaining["acorn"],
+        )
+        if self.logger:
+            self.logger.log_strategy(
+                self.player.name, "SWEEP_CAP_DEBUG",
+                f"remaining_bell={self.memory.remaining['bell']}, "
+                f"hand_bell={[c for c in hand if c.suit == 'bell']}, "
+                f"hand_acorn={[c for c in hand if c.suit == 'acorn']}, "
+                
+                f"remaining_leaf={self.memory.remaining['leaf']}, "
+                f"remaining_acorn={self.memory.remaining['acorn']}, "
+                f"remaining_heart={self.memory.remaining['heart']}"
+                
+                f"heart_wins={heart_wins}, bell_wins={bell_wins}, "
+                f"leaf_wins={leaf_wins}, acorn_wins={acorn_wins}"
+            )
         return hearts_coverage + non_heart_coverage
 
     def _hand_summary(self, per_suit: dict[str, SuitEval]) -> tuple:
@@ -855,6 +892,14 @@ class SweepPipeline:
             ratio = float("inf")
         else:
             ratio = capacity / to_capture
+
+        if self.logger:
+            self.logger.log_strategy(
+                self.player.name, "SWEEP_L2_DEBUG",
+                f"capacity={capacity}, to_capture={to_capture}, "
+                f"heart_killers={heart_killers}, ratio={ratio:.2f} | "
+                f"hearts_pts=?, leaf_pts=?, acorn_pts=?"
+            )
 
         # --- Strength rozhodnutie ---
         if ratio >= 1.5 and heart_killers == 0:
@@ -1494,7 +1539,8 @@ class SweepPipeline:
             best_candidate=best
         )
 
-    def _simulate_candidate(self, first_card: Card,
+    @staticmethod
+    def _simulate_candidate(first_card: Card,
                             l4: Layer4Result) -> CandidateResult:
         """
         Simuluje P(sweep) pre daného kandidáta.
@@ -1722,7 +1768,8 @@ class SweepPipeline:
     # ------------------------------------------------------------------
     # VRSTVA 7: Decision
     # ------------------------------------------------------------------
-    def _layer7(self, l1: Layer1Result,
+    @staticmethod
+    def _layer7(l1: Layer1Result,
                 l2: Layer2Result,
                 l5: Layer5Result,
                 l6: Layer6Result) -> tuple[SweepDecision, SweepState, Card | None]:

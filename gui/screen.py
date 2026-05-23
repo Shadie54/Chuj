@@ -42,6 +42,9 @@ class Screen:
         except FileNotFoundError:
             self.table_bg = None
 
+        self.pending_risk_play: tuple | None = None  # (player_index, card, ai)
+        self.risk_bubble_timer: int = 0
+
         self.clock = pygame.time.Clock()
         self.debug = debug
         self.new_game = new_game
@@ -104,6 +107,7 @@ class Screen:
         self.sort_ascending = False
         self.declaration_failed_timer: int = 0
         self.show_last_trick = False
+
     # ------------------------------------------------------------------
     # Hlavná slučka
     # ------------------------------------------------------------------
@@ -316,9 +320,15 @@ class Screen:
         if not current_round:
             return
 
-        phase = current_round.phase
+        # Čakáme na vypršanie risk bubliny
+        if self.pending_risk_play:
+            if pygame.time.get_ticks() >= self.risk_bubble_timer:
+                player_index, card, ai = self.pending_risk_play
+                self.pending_risk_play = None
+                self._commit_ai_card(player_index, card)
+            return
 
-        # preparation spracuje _confirm_preparation() nie AI turn
+        phase = current_round.phase
         if phase == "tricks":
             if not self.game_state.is_human_turn:
                 current_index = current_round.get_current_player_index()
@@ -335,7 +345,7 @@ class Screen:
 
         playable = player.hand.get_playable_cards(
             current_round.current_trick.lead_suit,
-            current_round.trick_number  # ← pridané
+            current_round.trick_number
         )
 
         scores = [p.total_score for p in self.game_state.players]
@@ -345,19 +355,27 @@ class Screen:
             current_round.trick_number,
             scores
         )
-        print(f"[DEBUG risk] player={player_index} last_strategy={ai.last_strategy}")
-        current_round.play_card(player_index, card)
 
-        # Bublina pre risk
+        # Bublina pre risk — zahranie odložíme o 2 sekundy
         if ai.last_strategy in (Strategy.RISK_TRAP, Strategy.RISK_SPECIAL):
             texts = ["Risknem to!", "Skúsim šťastie...", "Dúfam že ho nemá..."]
             self.speech_bubble.show_bid(player_index, random.choice(texts), duration_ms=4000)
+            self.pending_risk_play = (player_index, card, ai)
+            self.risk_bubble_timer = pygame.time.get_ticks() + 2000
+            self.waiting_for_ai = False
+            return
+
+        self._commit_ai_card(player_index, card)
+        self.waiting_for_ai = False
+
+    def _commit_ai_card(self, player_index: int, card):
+        """Fyzicky zahrá AI kartu a spracuje koniec štichu."""
+        current_round = self.game_state.current_round
+        current_round.play_card(player_index, card)
 
         if current_round.current_trick.is_complete:
             self.trick_waiting = True
             self.trick_display_timer = pygame.time.get_ticks() + 1500
-
-        self.waiting_for_ai = False
 
     # ------------------------------------------------------------------
     # Spracovanie štichu

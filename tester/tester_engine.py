@@ -676,6 +676,7 @@ class TesterEngine:
             ai.sweep_pipeline.logger = self.logger
             ai.declaration_advisor.logger = self.logger
             ai.selector.logger = self.logger
+            ai.situator.logger = self.logger  # ← pridané
 
         # Sanity check — po restore musí byť round.players[i] is players[i]
         for i in range(NUM_PLAYERS):
@@ -694,7 +695,6 @@ class TesterEngine:
     # ------------------------------------------------------------------
 
     def reset(self):
-        """Reštartuje scenár od začiatku."""
         self.logger.reset()
         self.players = []
         self.ais = {}
@@ -703,5 +703,7 @@ class TesterEngine:
         self._pending_new_trick = False
         self._last_trick_cards = []
         self.completed_tricks = []
+        self.illumination_logs = []  # ← pridané
+        self.declaration_logs = []  # ← pridané
         self._snapshots = []
         self._load_scenario()

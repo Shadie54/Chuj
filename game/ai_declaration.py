@@ -192,13 +192,11 @@ class DeclarationAdvisor:
             if len(mid) == 2:
                 return "borderline"
             return "good"
-        # 1 rezerva
+        # 1 rezerva — nikdy nie "good"
         rank = reserves[0].rank
         if rank in ("ace", "king"):
             return "bad"
-        if rank in ("under", "ten"):
-            return "borderline"
-        return "good"
+        return "borderline"
 
     @staticmethod
     def _hand_risk_level(hand: list[Card], special_suit: str) -> str:
