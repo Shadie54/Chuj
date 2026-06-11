@@ -233,6 +233,9 @@ class Screen:
         if self.show_last_trick:
             self.show_last_trick = False
             return
+        if self.phase_renderer._button_chujogram_rect().collidepoint(pos):
+            self.chujogram.toggle()
+            return
 
         if (self.phase_renderer._button_last_trick_rect().collidepoint(pos) and
                 self.game_state.current_round and
@@ -476,7 +479,7 @@ class Screen:
         if current_round.check_declaration_failed():
             decl_idx = current_round.declaration_player
             if current_round.declaration_type == "none":
-                msg = "Nevyšlo! Chytil som trestný bod."
+                msg = "Nevyšlo! Zobral som štich."
             else:
                 msg = "Nevyšlo! Niekto mi zobral štich."
             self.speech_bubble.show_bid(decl_idx, msg)
@@ -672,12 +675,6 @@ class Screen:
         Záväzok zlyhal — zobraz hlásenie a nastav timer na ukončenie kola.
         """
         current_round = self.game_state.current_round
-
-        if current_round.declaration_type == "none":
-            msg = "Nevyšlo! Chytil som trestný bod."
-        else:
-            msg = "Nevyšlo! Niekto mi zobral štich."
-        self.speech_bubble.show_bid(current_round.declaration_player, msg)
 
         # Timer — po 2s ukončí kolo
         self.declaration_failed_timer = pygame.time.get_ticks() + 2000

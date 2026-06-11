@@ -28,7 +28,9 @@ class Player:
         self.penalty_cards: list[Card] = [] # trestné karty zozbierané v kole
 
         # Séria bez trestných bodov
-        self.no_penalty_streak: int = 0     # počet kôl bez trestných bodov
+        self.no_penalty_streak: int = -1     # počet kôl bez trestných bodov
+        """no penalty streak začína na -1, aby sa nezapočítala úplne prvá hra 
+        ako "prvý krát som nechytil žiadne body po sebe" """
 
         # Chujogram
         self.bullets: int = 0              # počet guličiek v chujograme
@@ -146,13 +148,10 @@ class Player:
 
         return points
 
-    def update_streak(self):
-        from config import HIGH_SCORE_THRESHOLD, NO_PENALTY_STREAK, NO_PENALTY_BONUS
-        took_special_at_high_score = (
-                self.total_score >= HIGH_SCORE_THRESHOLD
-                and any(c.is_special for c in self.penalty_cards)
-        )
-        if self.round_points > 0 or took_special_at_high_score:
+    def update_streak(self, actual_points: int = None):
+        from config import NO_PENALTY_STREAK, NO_PENALTY_BONUS
+        check = actual_points if actual_points is not None else self.round_points
+        if check > 0:
             self.no_penalty_streak = 0
         else:
             self.no_penalty_streak += 1

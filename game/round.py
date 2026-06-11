@@ -152,11 +152,10 @@ class Round:
 
     def score_round(self):
         """Uzavrie kolo a aktualizuje skóre všetkých hráčov."""
-        from config import DECLARATION_FAIL_PENALTY
+        from config import DECLARATION_FAIL_PENALTY, WINNING_SCORE, RESET_SCORE
 
         sweep_player = self._check_sweep()
 
-        # Detekcia výsledku záväzku
         decl_player = self.declaration_player
         decl_type = self.declaration_type
 
@@ -182,23 +181,32 @@ class Round:
             all_penalty = (sweep_player == i)
 
             if not is_decl_player and declaration_succeeded:
-                pass  # total_score sa nemení
-            elif not is_decl_player and declaration_none_failed:
-                player.total_score -= DECLARATION_FAIL_PENALTY
-                from config import WINNING_SCORE, RESET_SCORE
+                # Ostatní nič nedostali → streak pokračuje
+                player.update_streak(actual_points=0)
+
+            elif is_decl_player and declaration_none_failed:
+                # Deklarant dostal +10b → streak sa preruší
+                player.total_score += DECLARATION_FAIL_PENALTY
                 if player.total_score == WINNING_SCORE:
                     player.total_score = RESET_SCORE
+                player.update_streak(actual_points=DECLARATION_FAIL_PENALTY)
+
+            elif not is_decl_player and declaration_none_failed:
+                # Ostatní nič → streak pokračuje
+                player.update_streak(actual_points=0)
+
             elif not is_decl_player and decl_type == "all":
-                pass  # total_score sa nemení
+                # Ostatní nič → streak pokračuje
+                player.update_streak(actual_points=0)
+
             else:
-                player.finalize_round(
+                # Normálny priebeh alebo deklarant
+                points = player.finalize_round(
                     all_penalty_taken=all_penalty,
                     leaf_illuminated=self.leaf_illuminated,
                     acorn_illuminated=self.acorn_illuminated,
                 )
-
-            # Streak sa aktualizuje vždy pre všetkých
-            player.update_streak()
+                player.update_streak(actual_points=max(0, points))
 
         self.phase = "done"
 

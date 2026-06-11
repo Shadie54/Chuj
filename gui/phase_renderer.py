@@ -8,9 +8,9 @@ from config import (
     BUTTON_SORT_X, BUTTON_SORT_Y, BUTTON_SORT_WIDTH, BUTTON_SORT_HEIGHT,
     BUTTON_INFO_X, BUTTON_INFO_Y, BUTTON_INFO_WIDTH, BUTTON_INFO_HEIGHT,
     BUTTON_MENU_X, BUTTON_MENU_Y, BUTTON_MENU_WIDTH, BUTTON_MENU_HEIGHT,
-    BUTTON_LAST_TRICK_X, BUTTON_LAST_TRICK_Y,BUTTON_LAST_TRICK_WIDTH, BUTTON_LAST_TRICK_HEIGHT,
+    BUTTON_LAST_TRICK_X, BUTTON_LAST_TRICK_Y, BUTTON_LAST_TRICK_WIDTH, BUTTON_LAST_TRICK_HEIGHT,
     COLOR_BUTTON_PRIMARY, COLOR_BUTTON_SECONDARY,
-    get_font
+    get_font, BUTTON_CHUJOGRAM_X, BUTTON_CHUJOGRAM_Y, BUTTON_CHUJOGRAM_W, BUTTON_CHUJOGRAM_H
 )
 
 
@@ -19,17 +19,28 @@ class PhaseRenderer:
 
     def __init__(self, surface: pygame.Surface, screen_ref):
         self.surface = surface
-        self.s = screen_ref  # referencia na Screen
+        self.s = screen_ref
 
         self.font_medium = get_font(FONT_SIZE_MEDIUM)
         self.font_large = get_font(FONT_SIZE_LARGE)
 
+        # Chuj ikonka
         chuj_path = os.path.join("assets", "graphics", "chuj.png")
         try:
             img = pygame.image.load(chuj_path).convert_alpha()
             self._chuj_icon = pygame.transform.scale(img, (100, 100))
         except FileNotFoundError:
             self._chuj_icon = None
+
+        # Declaration badges
+        self._declaration_badges = {}
+        for key in ("all", "none"):
+            path = os.path.join("assets", "graphics", f"{key}.png")
+            try:
+                img = pygame.image.load(path).convert_alpha()
+                self._declaration_badges[key] = pygame.transform.scale(img, (100, 100))
+            except FileNotFoundError:
+                self._declaration_badges[key] = None
     # ------------------------------------------------------------------
     # Hlavné draw metódy (volané z Screen._draw)
     # ------------------------------------------------------------------
@@ -55,27 +66,45 @@ class PhaseRenderer:
             pygame.draw.rect(self.surface, COLOR_GOLD, bg_rect, width=1, border_radius=6)
             self.surface.blit(surf, rect)
 
+            # Ikony napravo/naľavo od menovky — zoradené za sebou
+            right_x = bg_rect.right + 6  # pre hráčov 0, 1, 2
+            left_x = bg_rect.left - 6  # pre hráča 3
+
+            def place_icon(icon_surf):
+                nonlocal right_x, left_x
+                ir = icon_surf.get_rect()
+                if i == 1:  # PC1 vpravo — ikonky naľavo
+                    ir.midright = (left_x, bg_rect.centery)
+                    left_x -= ir.width + 4
+                else:  # všetci ostatní vrátane PC3 — ikonky napravo
+                    ir.midleft = (right_x, bg_rect.centery)
+                    right_x += ir.width + 4
+                self.surface.blit(icon_surf, ir)
+
             # Chuj ikonka — hráč s najvyšším skóre
             if self._chuj_icon:
                 scores = [p.total_score for p in self.s.game_state.players]
                 max_score = max(scores)
                 if scores.count(max_score) < len(scores) and player.total_score == max_score:
-                    icon_rect = self._chuj_icon.get_rect()
-                    if i == 3:  # PC3 vľavo — ikonka naľavo od menovky
-                        icon_rect.midright = (bg_rect.left - 6, bg_rect.centery)
-                    else:  # ostatní — ikonka napravo od menovky
-                        icon_rect.midleft = (bg_rect.right + 6, bg_rect.centery)
-                    self.surface.blit(self._chuj_icon, icon_rect)
+                    place_icon(self._chuj_icon)
+
+            # Declaration badge
+            current_round = self.s.game_state.current_round
+            if current_round and current_round.declaration_player == i:
+                decl_type = current_round.declaration_type
+                badge = self._declaration_badges.get(decl_type)
+                if badge:
+                    place_icon(badge)
 
     def draw_buttons(self):
         """Nakreslí vždy viditeľné tlačidlá + preparation tlačidlá."""
-        # Zobraziť len ak bol odohraný aspoň 1 štich
         if (self.s.game_state.current_round and
                 self.s.game_state.current_round.trick_number > 0):
             self.draw_button(
                 self._button_last_trick_rect(), "Posledný štich",
                 COLOR_BUTTON_SECONDARY
             )
+        self.draw_button(self._button_chujogram_rect(), "Chujogram", COLOR_BUTTON_SECONDARY)
         self.draw_button(self._button_sort_rect(), "Zoradiť", COLOR_BUTTON_SECONDARY)
         self.draw_button(self._button_info_rect(), "Pravidlá", COLOR_BUTTON_SECONDARY)
         self.draw_button(self._button_menu_rect(), "Menu", COLOR_BUTTON_SECONDARY)
@@ -243,6 +272,11 @@ class PhaseRenderer:
     def _button_last_trick_rect() -> pygame.Rect:
         return pygame.Rect(BUTTON_LAST_TRICK_X, BUTTON_LAST_TRICK_Y,
                            BUTTON_LAST_TRICK_WIDTH, BUTTON_LAST_TRICK_HEIGHT)
+
+    @staticmethod
+    def _button_chujogram_rect() -> pygame.Rect:
+        return pygame.Rect(BUTTON_CHUJOGRAM_X, BUTTON_CHUJOGRAM_Y,
+                           BUTTON_CHUJOGRAM_W, BUTTON_CHUJOGRAM_H)
 
     @staticmethod
     def _button_sort_rect() -> pygame.Rect:

@@ -8,7 +8,8 @@ class PreparationHandler:
 
     def __init__(self, screen_ref):
         self.s = screen_ref  # referencia na Screen
-
+        self.declaration_delay_timer: int = 0
+        self.declaration_pending_index: int = -1
     # ------------------------------------------------------------------
     # Klikanie
     # ------------------------------------------------------------------
@@ -228,8 +229,21 @@ class PreparationHandler:
         if player.is_human:
             return
 
+        # Asynchrónna pauza — nastav timer pri prvom volaní
+        if self.s.declaration_pending_index != current_index:
+            self.s.declaration_pending_index = current_index
+            self.s.declaration_delay_timer = pygame.time.get_ticks() + 2500
+            return
+
+        # Čakaj kým neuplynie timer
+        if pygame.time.get_ticks() < self.s.declaration_delay_timer:
+            return
+
+        # Reset
+        self.s.declaration_pending_index = -1
+        self.s.declaration_delay_timer = 0
+
         ai = self.s.ai_players[current_index]
-        pygame.time.delay(300)
         declaration = ai.decide_declaration()
         current_round.process_declaration(current_index, declaration)
 
@@ -250,7 +264,6 @@ class PreparationHandler:
             return
 
         ai = self.s.ai_players[current_index]
-        pygame.time.delay(300)
         illuminate_leaf, illuminate_acorn = ai.decide_illumination(
             current_round.first_player_index
         )

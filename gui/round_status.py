@@ -17,6 +17,16 @@ class RoundStatus:
         self.font_medium = get_font( 30)  # bolo 26
         self.font_large = get_font( 38)  # bolo 32
 
+        # Declaration badges
+        self._declaration_badges = {}
+        for key in ("all", "none"):
+            path = os.path.join("assets", "graphics", f"{key}.png")
+            try:
+                img = pygame.image.load(path).convert_alpha()
+                self._declaration_badges[key] = pygame.transform.scale(img, (30, 30))
+            except FileNotFoundError:
+                self._declaration_badges[key] = None
+
         # Rozmery
         self.x = ROUND_STATUS_X
         self.y = ROUND_STATUS_Y
@@ -24,8 +34,8 @@ class RoundStatus:
         self.h = ROUND_STATUS_H
 
         # Gulička rozmery
-        self.bullet_r = 6
-        self.bullet_spacing = 16
+        self.bullet_r = 8
+        self.bullet_spacing = 20
 
         icon_h = 25
         self._icons = {}
@@ -35,7 +45,7 @@ class RoundStatus:
                 img = pygame.image.load(path).convert_alpha()
                 w, h = img.get_size()
                 new_w = int(w * icon_h / h)
-                self._icons[suit] = pygame.transform.scale(img, (new_w, icon_h))
+                self._icons[suit] = pygame.transform.scale(img, (30,30))
             except FileNotFoundError:
                 self._icons[suit] = None
 
@@ -111,7 +121,8 @@ class RoundStatus:
             )
             self.screen.blit(name_surf, (self.x + 10, y))
 
-            icon_x = self.x + 10 + name_surf.get_width() + 6  # ← vždy definovaný
+            streak_end_x = self.x + 10 + NO_PENALTY_STREAK * self.bullet_spacing + self.bullet_r
+            icon_x = max(self.x + 10 + name_surf.get_width() + 6, streak_end_x + 10)
 
             # Ikonky horníkov
             if current_round:
@@ -121,6 +132,12 @@ class RoundStatus:
                         if icon:
                             self.screen.blit(icon, (icon_x, y + 2))
                             icon_x += icon.get_width() + 4
+            # Declaration badge
+            if current_round and current_round.declaration_player == i:
+                badge = self._declaration_badges.get(current_round.declaration_type)
+                if badge:
+                    self.screen.blit(badge, (icon_x, y + 2))
+                    icon_x += badge.get_width() + 4
 
             # Body aktuálneho kola
             pts = player.round_points

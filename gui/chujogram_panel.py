@@ -29,12 +29,6 @@ class ChujogramPanel:
         self.hidden_x = -self.panel_w      # schovaný = mimo obrazovky
         self.anim_speed = 25               # px za frame
 
-        # Tlačidlo CH
-        self.btn_w = 40
-        self.btn_h = ROUND_STATUS_H
-        self.btn_x = 0                     # bude sa meniť s panelom
-        self.btn_y = SCREEN_HEIGHT - self.btn_h - 20
-
         # Scrollovanie
         self.scroll_y = 0
         self.scroll_speed = 20
@@ -76,10 +70,6 @@ class ChujogramPanel:
         Vracia True ak panel zachytil event.
         """
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            btn_rect = self._btn_rect()
-            if btn_rect.collidepoint(event.pos):
-                self.toggle()
-                return True
 
             # Klik na panel — zachyť
             panel_rect = pygame.Rect(
@@ -116,9 +106,6 @@ class ChujogramPanel:
         round_scores: [[0,5,3,12], ...] body každého hráča v kole
         """
         self.update()
-
-        # Tlačidlo — vždy viditeľné
-        self._draw_btn()
 
         # Nekresli panel ak je úplne schovaný
         if self.panel_x <= self.hidden_x:
@@ -276,36 +263,6 @@ class ChujogramPanel:
                         prev_active[-1], curr_active[0],
                         width=2
                     )
-
-    def _draw_btn(self):
-        btn_rect = self._btn_rect()
-        text = "CHUJOGRAM"
-        char_spacing = (btn_rect.height - 16) // len(text)  # dynamicky podľa výšky
-
-        btn_surf = pygame.Surface((self.btn_w, btn_rect.height), pygame.SRCALPHA)
-        btn_surf.fill((15, 8, 3, 220))
-        self.screen.blit(btn_surf, (btn_rect.x, btn_rect.y))
-
-        color = COLOR_GOLD if self.visible else COLOR_GRAY
-        pygame.draw.rect(self.screen, color, btn_rect, width=2, border_radius=5)
-
-        for i, char in enumerate(text):
-            surf = self.font_small.render(char, True, COLOR_GOLD)
-            rect = surf.get_rect(
-                centerx=btn_rect.centerx,
-                top=btn_rect.top + 8 + i * char_spacing
-            )
-            self.screen.blit(surf, rect)
-
-    @staticmethod
-    def _btn_rect() -> pygame.Rect:
-        from config import ROUND_STATUS_X, ROUND_STATUS_Y, ROUND_STATUS_H
-        return pygame.Rect(
-            ROUND_STATUS_X - 50,  # tesne naľavo od tabuľky KOLO
-            ROUND_STATUS_Y,  # rovnaké Y
-            40,  # šírka tlačidla
-            ROUND_STATUS_H  # rovnaká výška ako tabuľka KOLO
-        )
 
     def __repr__(self) -> str:
         return f"ChujogramPanel(visible={self.visible})"

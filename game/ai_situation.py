@@ -398,7 +398,6 @@ class SituationDetector:
 
     def _should_risk_trap(self, dctx: DecisionContext) -> bool:
 
-        # Veto — ak mám horníka sám, nie je čo riskovať
         my_special = next(
             (c for c in dctx.lead_cards if c.is_special), None
         )
@@ -410,7 +409,6 @@ class SituationDetector:
             return False
         if self.memory.is_special_gone(lead_suit):
             return False
-        # Veto — horník už v štichu
         special_in_trick = any(
             c.is_special and c.suit == lead_suit
             for _, c in dctx.trick.played_cards
@@ -432,13 +430,21 @@ class SituationDetector:
         if not trap_high or len(escape_low) != 1:
             return False
 
-        # Randomness podľa skóre
+        # Veto — v štichu je už vyššia karta ako môj trap
+        my_best_trap = max(trap_high, key=lambda c: c.rank_order)
+        higher_in_trick = any(
+            c.suit == lead_suit and c.rank_order > my_best_trap.rank_order
+            for _, c in dctx.trick.played_cards
+        )
+        if higher_in_trick:
+            return False
+
         rank = dctx.game_ctx.score_rank
         if rank == 1:
-            risk_chance = 1.0
+            risk_chance = 0.2
         elif rank == 4:
-            risk_chance = 1.0
+            risk_chance = 0.7
         else:
-            risk_chance = 1.0
+            risk_chance = 0.5
 
         return random.random() < risk_chance

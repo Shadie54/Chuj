@@ -201,7 +201,7 @@ class InfoOverlay:
                 (COLOR_BONUS, "−10b", "Záväzok splnený: Nechytím nič"),
                 (COLOR_BONUS, "−20b", "Záväzok splnený: Beriem všetko"),
                 (COLOR_PENALTY, "+20b", "Nesplnený: Beriem všetko → hráč +20b"),
-                (COLOR_PENALTY, "−10b", "Nesplnený: Nechytím nič → ostatní −10b"),
+                (COLOR_PENALTY, "+10b", "Nesplnený: Nechytím nič → hráč +10b"),
                 (COLOR_GRAY, "Reset", "Presne 100b → resetuje sa na 90b"),
                 (COLOR_GRAY, "90b+", "Horníci sa nepočítajú nad 90b"),
             ]
@@ -335,8 +335,8 @@ class InfoOverlay:
             "  Nesplnený: +20b pre teba, ostatní 0b",
             "",
             "Nechytím nič — nesmieš chytiť štich.",
-            "  Splnený: −10b pre teba, ostatní 0b",
-            "  Nesplnený: ostatní −10b, ty 0b",
+            "  Splnený:   −10b pre teba, ostatní 0b",
+            "  Nesplnený: +10b pre teba, ostatní 0b",
         ])
 
         cy2 = draw_section(col2_x, cy2, "ŠPECIÁLNE PRAVIDLÁ", [

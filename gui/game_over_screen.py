@@ -50,6 +50,8 @@ class GameOverScreen:
 
         self.hover = {"new_game": False, "menu": False, "chujogram": False}
 
+        self.chujogram_scroll = 0
+
     # ------------------------------------------------------------------
     # Hlavná slučka
     # ------------------------------------------------------------------
@@ -67,6 +69,11 @@ class GameOverScreen:
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
                         return "menu"
+                if event.type == pygame.MOUSEWHEEL:
+                    if self.show_chujogram:
+                        self.chujogram_scroll = max(
+                            0, self.chujogram_scroll - event.y * 20
+                        )
 
                 if event.type == pygame.MOUSEBUTTONDOWN:
                     if event.button == 1:
@@ -211,6 +218,7 @@ class GameOverScreen:
             self._chujogram_panel.visible = True
 
         panel = self._chujogram_panel
+        panel.scroll_y = self.chujogram_scroll
         panel._draw_header()
         panel._draw_content(
             self.game_state.bullet_history,
