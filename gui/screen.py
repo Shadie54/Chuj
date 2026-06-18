@@ -288,7 +288,9 @@ class Screen:
             return
 
         playable = self.game_state.players[player_index].hand.get_playable_cards(
-            current_round.current_trick.lead_suit,current_round.trick_number
+            current_round.current_trick.lead_suit,
+            current_round.trick_number,
+            declaration_active=current_round.declaration_type is not None
         )
 
         clicked_card = self.card_renderer.get_clicked_card(
@@ -348,7 +350,8 @@ class Screen:
 
         playable = player.hand.get_playable_cards(
             current_round.current_trick.lead_suit,
-            current_round.trick_number
+            current_round.trick_number,
+            declaration_active=current_round.declaration_type is not None
         )
 
         scores = [p.total_score for p in self.game_state.players]
@@ -584,7 +587,8 @@ class Screen:
                 highlight_playable=is_current and player.is_human,
                 lead_suit=lead_suit,
                 selected_illumination=illuminated,
-                trick_number=current_round.trick_number if current_round else 0
+                trick_number=current_round.trick_number if current_round else 0,
+                declaration_active=current_round.declaration_type is not None if current_round else False
             )
 
 

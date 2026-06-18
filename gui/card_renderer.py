@@ -60,7 +60,9 @@ class CardRenderer:
 
     def draw_hand(self, cards, player_index, is_human,
                   selected_cards, highlight_playable,
-                  lead_suit,selected_illumination=None, trick_number: int = 0):
+                  lead_suit, selected_illumination=None,
+                  trick_number: int = 0,
+                  declaration_active: bool = False):
         """Nakreslí ruku hráča."""
         if not cards:
             return
@@ -120,7 +122,8 @@ class CardRenderer:
                 from game.hand import Hand
                 h = Hand()
                 h.add_cards(cards)
-                playable = h.get_playable_cards(lead_suit, trick_number)
+                playable = h.get_playable_cards(lead_suit, trick_number,
+                                                declaration_active=declaration_active)
                 if card in playable:
                     self._draw_highlight(x, y, CARD_SIZE_MEDIUM, COLOR_GREEN)
                 else:

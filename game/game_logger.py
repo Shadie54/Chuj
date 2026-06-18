@@ -43,7 +43,7 @@ class GameLogger:
     def log_declaration(self, player: str, declaration: str | None):
         """Zaznamená záväzok hráča."""
         if declaration == "all":
-            self.entries.append(f"  Záväzok [{player}]: VŠETKY štichY (-20b)")
+            self.entries.append(f"  Záväzok [{player}]: VŠETKY štichy (-20b)")
         elif declaration == "none":
             self.entries.append(f"  Záväzok [{player}]: ŽIADNY TRESTNÝ BOD (-10b)")
         else:

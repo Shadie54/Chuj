@@ -27,17 +27,18 @@ class Hand:
         return [card for card in self.cards if card.suit == suit]
 
     def get_playable_cards(self, lead_suit: str | None,
-                           trick_number: int = 0) -> list[Card]:
+                           trick_number: int = 0,
+                           declaration_active: bool = False) -> list[Card]:
         """
         Vráti karty ktoré môže hráč zahrať.
         - Ak je leader: môže zahrať čokoľvek
-          (okrem srdcí v 1. štichu)
+          (okrem srdcí v 1. štichu — platí len bez záväzku)
         - Ak má farbu: môže zahrať akúkoľvek kartu tej farby
           (aj nižšiu — podliezanie)
         - Ak nemá farbu: môže zahrať čokoľvek
         """
-        # Prvý štich — žiadna červeň
-        if trick_number == 0:
+        # Prvý štich — žiadna červeň (odpadá pri záväzku)
+        if trick_number == 0 and not declaration_active:
             non_heart = [c for c in self.cards if c.suit != "heart"]
             available = non_heart if non_heart else self.cards
         else:
@@ -48,10 +49,9 @@ class Hand:
             return available
 
         # Follower — musí priznať farbu ak má
-        # ALE môže zahrať akúkoľvek kartu tej farby (podliezanie)
         same_suit = [c for c in available if c.suit == lead_suit]
         if same_suit:
-            return same_suit  # ← všetky karty farby, nie len vyššie
+            return same_suit
 
         # Nemá farbu — môže zahrať čokoľvek
         return available

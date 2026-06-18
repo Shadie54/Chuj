@@ -265,6 +265,10 @@ class TesterScreen:
             self._on_next_clicked()
         elif rects["back"].collidepoint(pos):
             self._on_back_clicked()
+        elif rects["ai_toggle"].collidepoint(pos):  # ← pridať
+            self._on_ai_toggle_clicked()  # ← pridať
+        elif rects["override"].collidepoint(pos):
+            self._on_override_clicked()
         elif rects["override"].collidepoint(pos):
             self._on_override_clicked()
         elif rects["trick"].collidepoint(pos):
@@ -365,6 +369,7 @@ class TesterScreen:
         section("akcie")
         btn("next")
         btn("back")
+        btn("ai_toggle")
         btn("override")
         # Štich + Kolo vedľa seba
         half = (SB_INNER_W - SB_BTN_GAP) // 2
@@ -446,6 +451,18 @@ class TesterScreen:
             print(f"ERROR pri go_back(): {type(e).__name__}: {e}")
             return
         self.last_step = None
+
+    def _on_ai_toggle_clicked(self):
+        """Prepne starý/nový AI systém pre všetkých hráčov a reštartuje scenár."""
+        # Zisti aktuálny stav
+        current = getattr(self.engine.ais[0], 'use_new_system', False)
+        new_value = not current
+
+        # Ulož do scenára ako flag — engine ho použije pri _load_scenario()
+        self.scenario._use_new_system = new_value
+
+        # Reštartuj engine
+        self.engine.reset()
 
     def _on_override_clicked(self):
         if self.autoplay_mode is not None or self.engine.is_complete():
@@ -587,6 +604,13 @@ class TesterScreen:
         next_color = T_BUTTON_PRIMARY
         self._draw_sb_button(rects["next"], "Next →", next_color)
         self._draw_sb_button(rects["back"], "← Back", T_BUTTON_BG)
+
+        # AI systém toggle
+        use_new = getattr(self.engine.ais[0], 'use_new_system', False)
+        ai_label = "AI: NOVÝ" if use_new else "AI: STARÝ"
+        ai_color = T_BUTTON_SUCCESS if use_new else T_BUTTON_BG
+        self._draw_sb_button(rects["ai_toggle"], ai_label, ai_color)
+
         override_color = T_HIGHLIGHT if self.override_mode else T_BUTTON_BG
         self._draw_sb_button(
             rects["override"],

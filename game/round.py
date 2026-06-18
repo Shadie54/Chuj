@@ -113,7 +113,8 @@ class Round:
         player = self.players[player_index]
         playable = player.hand.get_playable_cards(
             self.current_trick.lead_suit,
-            self.trick_number  # ← pridané
+            self.trick_number,
+            declaration_active=self.declaration_type is not None
         )
         if card not in playable:
             return False
