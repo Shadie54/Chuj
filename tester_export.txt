@@ -1,60 +1,66 @@
 ======================================================================
 TESTER EXPORT
 ======================================================================
-Scenár: random_seed_545531
-Popis: Náhodné rozdanie (seed=545531)
+Scenár: random_seed_677840
+Popis: Náhodné rozdanie (seed=677840)
 
 --- STAV ---
-Štich: 5/8
-Na ťahu: AI_3
+Štich: 6/8
+Na ťahu: AI_0
 First player: AI_0
 
 --- VYSVIETENIE ---
-  leaf-over: AI_3
+  leaf-over: AI_2
+  acorn-over: AI_3
 
 --- SKÓRE ---
-  AI_0: 4b (celkovo: 0b)
-  AI_1: 0b (celkovo: 0b)
+  AI_0: 2b (celkovo: 0b)
+  AI_1: 34b (celkovo: 0b)
   AI_2: 0b (celkovo: 0b)
-  AI_3: 1b (celkovo: 0b)
+  AI_3: 0b (celkovo: 0b)
 
 --- RUKY ---
-  AI_0 (3): 8● 10♣ J●
-  AI_1 (3): J♣ 7● 9♣
-  AI_2 (3): J♠ A♣ 9♥
-  AI_3 (4): Q♣ 8♥ A♥ Q♠ ← NA ŤAHU
+  AI_0 (3): A♣ K♠ 10♥ ← NA ŤAHU
+  AI_1 (3): K♣ J♠ A♠
+  AI_2 (3): 10♠ 10● 7♠
+  AI_3 (3): 8♠ Q♥ 9♠
 
 --- AKTUÁLNY ŠTICH ---
 Lead: acorn
-  AI_0: 8♣
   AI_1: 7♣
-  AI_2: K♣
+  AI_2: J●
+  AI_3: A♥
+  AI_0: 9♣
 
 --- HISTÓRIA ---
-  T1: leader=AI_0 | AI_0: 9●  AI_1: 10●  AI_2: A●  AI_3: K● → AI_2
-  T2: leader=AI_2 | AI_2: 8♠  AI_3: 7♠  AI_0: K♠  AI_1: Q♥ → AI_0
-  T3: leader=AI_0 | AI_0: 9♠  AI_1: J♥  AI_2: 10♠  AI_3: A♠ → AI_3
-  T4: leader=AI_3 | AI_3: 7♥  AI_0: K♥  AI_1: Q●  AI_2: 10♥ → AI_0
+  T1: leader=AI_0 | AI_0: 10♣  AI_1: J♣  AI_2: Q♠  AI_3: 8♣ → AI_1
+  T2: leader=AI_1 | AI_1: 9♥  AI_2: K●  AI_3: 7♥  AI_0: 8♥ → AI_1
+  T3: leader=AI_1 | AI_1: A●  AI_2: Q●  AI_3: 8●  AI_0: K♥ → AI_1
+  T4: leader=AI_1 | AI_1: 9●  AI_2: 7●  AI_3: Q♣  AI_0: J♥ → AI_1
+  T5: leader=AI_1 | AI_1: 7♣  AI_2: J●  AI_3: A♥  AI_0: 9♣ → AI_0
 
 --- POSLEDNÝ ŤAH ---
-Hráč: AI_2
-Karta: K♣
+Hráč: AI_0
+Karta: 9♣
+Štich: vyhral AI_0 (+1b)
 
 --- REASONING ---
-  [AI_2] SWEEP_GATE1_DEBUG: hand_penalty=1, remaining=4, my_taken=0, already_taken=5
-  [SWEEP AI_2] štich 5: NIE | stav=IDLE | P(sweep)=0.00 | EV=0.0
-    → L1: FAIL — gate1: súper má 5 trestných kariet
-  [AI_2] AI_V2: trick=5 playable=[K♣, A♣] outcome=UNKNOWN
-  [AI_2] ACTIVE_STRATEGIES: []
-  [AI_2] GLOBAL_FALLBACK: žiadna stratégia nemala kandidáta: K♣
+  [AI_0] SWEEP_GATE1_DEBUG: hand_penalty=1, remaining=2, my_taken=0, already_taken=7
+  [SWEEP AI_0] štich 5: NIE | stav=IDLE | P(sweep)=0.00 | EV=0.0
+    → L1: FAIL — gate1: súper má 7 trestných kariet
+  [AI_0] AI_V2: trick=5 playable=[A♣, 9♣] outcome=CERTAIN
+  [AI_0] ACTIVE_STRATEGIES: []
+  [AI_0] GLOBAL_FALLBACK: žiadna stratégia nemala kandidáta: 9♣
 
---- AIMemory (AI_3) ---
-  Tricks taken: {0: 2, 1: 0, 2: 1, 3: 1}
-  Specials gone: {'leaf': False, 'acorn': False}
-  Illuminated by: {'leaf': 3, 'acorn': None}
-  Void AI_1: ['heart', 'leaf']
-  Remaining heart: 9♥
-  Remaining leaf: J♠
-  Remaining acorn: A♣ K♣ J♣ 10♣ 9♣ 8♣ 7♣
-  Remaining bell: J● 8● 7●
+--- AIMemory (AI_0) ---
+  Tricks taken: {0: 1, 1: 4, 2: 0, 3: 0}
+  Specials gone: {'leaf': True, 'acorn': True}
+  Illuminated by: {'leaf': 2, 'acorn': 3}
+  Void AI_0: ['bell']
+  Void AI_2: ['acorn', 'heart']
+  Void AI_3: ['acorn', 'bell']
+  Remaining heart: Q♥
+  Remaining leaf: A♠ J♠ 10♠ 9♠ 8♠ 7♠
+  Remaining acorn: K♣
+  Remaining bell: 10●
   Sweep state: IDLE

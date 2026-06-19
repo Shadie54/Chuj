@@ -6,14 +6,6 @@ from game.ai_v2.strategies.base import Strategy
 
 
 class DumpHigh(Strategy):
-    """
-    Zbav sa najvyššej dostupnej karty keď som void.
-    Posledná možnosť pred globálnym fallbackom.
-
-    Varianty:
-    - HIGH_CARD — najvyššia non-special non-heart karta
-    """
-
     name = "DumpHigh"
 
     def is_active(self, ctx: AIContext) -> bool:
@@ -25,21 +17,19 @@ class DumpHigh(Strategy):
             return False
         return bool(self._candidates(ctx))
 
-    def propose(self, ctx: AIContext) -> Card | None:
+    def propose(self, ctx: AIContext) -> list[tuple[Card, str, str]]:
         candidates = self._candidates(ctx)
         if not candidates:
-            return None
-        card = max(candidates, key=lambda c: c.rank_order)
-        self._set_log("HIGH_CARD", f"{card}")
-        return card
+            return []
+        max_rank = max(c.rank_order for c in candidates)
+        top = [c for c in candidates if c.rank_order == max_rank]
+        return [(card, "HIGH_CARD", f"{card}") for card in top]
 
     @staticmethod
     def _candidates(ctx: AIContext) -> list[Card]:
-        """Non-special, non-heart karty."""
         return [
             c for c in ctx.playable
-            if not c.is_special
-               and c.suit != "heart"
+            if not c.is_special and c.suit != "heart"
         ]
 
     def weight(self, ctx: AIContext) -> float:

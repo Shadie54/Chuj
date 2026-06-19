@@ -6,13 +6,6 @@ from game.ai_v2.strategies.base import Strategy
 
 
 class Wait(Strategy):
-    """
-    Zahrám nízku escape kartu a čakám — niekto po mne môže prebiť.
-
-    Varianty:
-    - WAIT — najnižšia escape karta
-    """
-
     name = "Wait"
 
     def is_active(self, ctx: AIContext) -> bool:
@@ -23,21 +16,18 @@ class Wait(Strategy):
         if not ctx.lead_cards:
             return False
 
-        # Aktivuj len ak mám escape kartu ktorá dáva NEVER/UNKNOWN
         escape = self._escape_candidates(ctx)
         return bool(escape)
 
-    def propose(self, ctx: AIContext) -> Card | None:
+    def propose(self, ctx: AIContext) -> list[tuple[Card, str, str]]:
         escape = self._escape_candidates(ctx)
         if not escape:
-            return None
-
-        card = min(escape, key=lambda c: c.rank_order)
-        self._set_log("WAIT", f"escape: {card}")
-        return card
+            return []
+        min_rank = min(c.rank_order for c in escape)
+        bottom = [c for c in escape if c.rank_order == min_rank]
+        return [(card, "WAIT", f"escape: {card}") for card in bottom]
 
     def _escape_candidates(self, ctx: AIContext) -> list[Card]:
-        """Escape karty kde card_outcome != CERTAIN."""
         candidates = []
         for c in ctx.lead_cards:
             if c.is_special:

@@ -480,6 +480,7 @@ class Screen:
 
         # Skontroluj zlyhanie záväzku
         if current_round.check_declaration_failed():
+
             decl_idx = current_round.declaration_player
             if current_round.declaration_type == "none":
                 msg = "Nevyšlo! Zobral som štich."
@@ -488,6 +489,10 @@ class Screen:
             self.speech_bubble.show_bid(decl_idx, msg)
             self.declaration_failed_timer = pygame.time.get_ticks() + 2000
             current_round.phase = "scoring"  # ← zastav ďalšie štichy
+
+            current_round.phase = "scoring"
+            self._handle_declaration_failed()
+
             return
 
         if current_round.phase == "scoring":
@@ -679,6 +684,14 @@ class Screen:
         Záväzok zlyhal — zobraz hlásenie a nastav timer na ukončenie kola.
         """
         current_round = self.game_state.current_round
+
+
+        if current_round.declaration_type == "none":
+            msg = "Nevyšlo! Zobral som štich."
+        else:
+            msg = "Nevyšlo! Niekto mi zobral štich."
+        self.speech_bubble.show_bid(current_round.declaration_player, msg)
+
 
         # Timer — po 2s ukončí kolo
         self.declaration_failed_timer = pygame.time.get_ticks() + 2000

@@ -1,5 +1,3 @@
-# game/ai_v2/selector.py
-
 from game.card import Card
 from game.player import Player
 from game.ai_memory import AIMemory
@@ -8,17 +6,6 @@ from game.ai_v2.strategies.base import Strategy
 
 
 class StrategySelector:
-    """
-    Zbiera aktívne stratégie, vyberá najlepšiu kartu.
-
-    Mechanika:
-    1. Zozbieraj všetky aktívne stratégie
-    2. Dump stratégie (void / TAKE_CERTAIN) → pevná priorita
-    3. Ostatné → najvyššia váha
-    4. Globálny fallback ak žiadna stratégia nemá kandidáta
-    """
-
-    # Pevná priorita dump stratégií
     DUMP_PRIORITY = [
         "DumpSpecial",
         "DumpHeart",
@@ -39,12 +26,10 @@ class StrategySelector:
         if self.logger:
             self._log_active(active)
 
-        # Dump stratégie — vždy s pevnou prioritou
         card = self._select_dump(active, ctx)
         if card:
             return card
 
-        # Ostatné stratégie — súťaž cez váhy
         card = self._select_by_weight(active, ctx)
         if card:
             return card
@@ -55,63 +40,61 @@ class StrategySelector:
                      ctx: AIContext) -> Card | None:
         """
         Dump stratégie v pevnom poradí priority.
-        Prvá aktívna dump stratégia s kandidátom vyhrá.
+        Berie VŠETKY kandidátov z prvej stratégie ktorá má kandidáta,
+        vyberie najlepšieho podľa interného poradia (max rank_order ak viacero).
         """
         for name in self.DUMP_PRIORITY:
-            strategy = next(
-                (s for s in active if s.name == name), None
-            )
+            strategy = next((s for s in active if s.name == name), None)
             if strategy is None:
                 continue
-            card = strategy.propose(ctx)
-            if card is not None:
-                if self.logger:
+            proposals = strategy.propose(ctx)
+            if not proposals:
+                continue
+
+            if self.logger:
+                for card, variant, detail in proposals:
                     self.logger.log_strategy(
                         self.player.name,
-                        strategy.log_entry(),
-                        f"dump_priority → {card}"
+                        f"{strategy.name} | {variant}",
+                        f"{detail}"
                     )
-                self._log_selected(strategy, card, "dump_priority")
-                return card
+
+            # Z kandidátov tejto stratégie vyber najvyšší rank (najhodnotnejší dump)
+            best_card, _, _ = max(proposals, key=lambda p: p[0].rank_order)
+
+            if self.logger:
+                self.logger.log_strategy(
+                    self.player.name, "DUMP_SELECTED", f"{best_card}"
+                )
+            return best_card
 
         return None
 
     def _select_by_weight(self, active: list[Strategy],
                           ctx: AIContext) -> Card | None:
-        """
-        Ostatné stratégie súťažia cez váhy.
-        Karta môže dostať podporu od viacerých stratégií.
-        """
-        # Vylúč dump stratégie — tie riešime osobitne
-        non_dump = [
-            s for s in active
-            if s.name not in self.DUMP_PRIORITY
-        ]
-
+        non_dump = [s for s in active if s.name not in self.DUMP_PRIORITY]
         if not non_dump:
             return None
 
-        # Každá stratégia navrhne kartu + váhu
         card_scores: dict[Card, float] = {}
         card_sources: dict[Card, list[str]] = {}
 
         for strategy in non_dump:
-            card = strategy.propose(ctx)
-            if card is None:
+            proposals = strategy.propose(ctx)
+            if not proposals:
                 continue
-            w = strategy.weight(ctx)
-            # ← zaloguj variant ihneď po propose()
-            if self.logger:
-                self.logger.log_strategy(
-                    self.player.name,
-                    strategy.log_entry(),
-                    f"navrhuje: {card} (váha={w})"
+            for card, variant, detail in proposals:
+                w = strategy.variant_weight(variant, ctx)
+                if self.logger:
+                    self.logger.log_strategy(
+                        self.player.name,
+                        f"{strategy.name} | {variant}",
+                        f"{detail} (váha={w})"
+                    )
+                card_scores[card] = card_scores.get(card, 0.0) + w
+                card_sources.setdefault(card, []).append(
+                    f"{strategy.name}.{variant}({w})"
                 )
-            if card not in card_scores:
-                card_scores[card] = 0.0
-                card_sources[card] = []
-            card_scores[card] += w
-            card_sources[card].append(f"{strategy.name}({w})")
 
         if not card_scores:
             return None
@@ -124,41 +107,22 @@ class StrategySelector:
         return best_card
 
     def _fallback(self, ctx: AIContext) -> Card:
-        """Globálny fallback — žiadna stratégia nemala kandidáta."""
         non_special = [c for c in ctx.playable if not c.is_special]
         pool = non_special if non_special else ctx.playable
         card = min(pool, key=lambda c: c.rank_order)
-
         if self.logger:
             self.logger.log_strategy(
-                self.player.name,
-                "GLOBAL_FALLBACK",
+                self.player.name, "GLOBAL_FALLBACK",
                 f"žiadna stratégia nemala kandidáta: {card}"
             )
         return card
-
-    # ------------------------------------------------------------------
-    # Logging
-    # ------------------------------------------------------------------
 
     def _log_active(self, active: list[Strategy]):
         if not self.logger:
             return
         names = [s.name for s in active]
         self.logger.log_strategy(
-            self.player.name,
-            "ACTIVE_STRATEGIES",
-            f"{names}"
-        )
-
-    def _log_selected(self, strategy: Strategy,
-                      card: Card, method: str):
-        if not self.logger:
-            return
-        self.logger.log_strategy(
-            self.player.name,
-            strategy.log_entry(),
-            f"[{method}] → {card}"
+            self.player.name, "ACTIVE_STRATEGIES", f"{names}"
         )
 
     def _log_scores(self, card_scores: dict[Card, float],
@@ -171,7 +135,5 @@ class StrategySelector:
             for c in sorted(card_scores, key=lambda c: card_scores[c], reverse=True)
         )
         self.logger.log_strategy(
-            self.player.name,
-            "WEIGHT_SELECTION",
-            f"{scores_str} → {best_card}"
+            self.player.name, "WEIGHT_SELECTION", f"{scores_str} → {best_card}"
         )

@@ -6,18 +6,6 @@ from game.ai_v2.strategies.base import Strategy
 
 
 class DumpHeart(Strategy):
-    """
-    Zbav sa červene.
-
-    Varianty:
-    - VOID      — som void na lead suit, hodím červeň
-    - UNDERPLAY — červeň podlieza current_best
-
-    Kontext (ovplyvňuje váhu):
-    - is_high_score      → vyššia váha
-    - both_illuminated   → ešte vyššia váha (červene = 2b každá)
-    """
-
     name = "DumpHeart"
 
     def is_active(self, ctx: AIContext) -> bool:
@@ -25,11 +13,14 @@ class DumpHeart(Strategy):
             return False
         if ctx.trick_outcome == TrickOutcome.NEVER:
             return False
+
         hearts = [c for c in ctx.playable if c.suit == "heart"]
         if not hearts:
             return False
+
         if ctx.is_void:
             return True
+
         if ctx.current_best:
             underplay = [
                 c for c in hearts
@@ -37,50 +28,47 @@ class DumpHeart(Strategy):
             ]
             if underplay:
                 return True
+
         return False
 
-    def propose(self, ctx: AIContext) -> Card | None:
+    def propose(self, ctx: AIContext) -> list[tuple[Card, str, str]]:
+        results = []
         hearts = [c for c in ctx.playable if c.suit == "heart"]
         if not hearts:
-            return None
+            return results
 
-        # Void → najlepšia červeň
         if ctx.is_void:
-            card = self._best_heart(hearts, ctx)
-            self._set_log("VOID", f"{card}")
-            return card
+            for card in self._ranked_hearts(hearts, ctx):
+                results.append((card, "VOID", f"{card}"))
+            return results
 
-        # Underplay → červeň ktorá podlieza a dáva NEVER
         if ctx.current_best:
             underplay = [
                 c for c in hearts
                 if c.rank_order < ctx.current_best.rank_order
                    and card_outcome(
-                    c, ctx.decision.trick,
-                    self.memory, ctx.decision.players_after
-                ) == TrickOutcome.NEVER
+                       c, ctx.decision.trick,
+                       self.memory, ctx.decision.players_after
+                   ) == TrickOutcome.NEVER
             ]
-            if underplay:
-                card = self._best_heart(underplay, ctx)
-                self._set_log("UNDERPLAY", f"{card} podlieza {ctx.current_best}")
-                return card
+            for card in self._ranked_hearts(underplay, ctx):
+                results.append((
+                    card, "UNDERPLAY", f"{card} podlieza {ctx.current_best}"
+                ))
 
-        return None
+        return results
 
-    def _best_heart(self, hearts: list[Card], ctx: AIContext) -> Card:
-        """
-        Vyber najlepšiu červeň na zahodenie.
-        Priorita: trap → non-safe → safe
-        """
+    def _ranked_hearts(self, hearts: list[Card], ctx: AIContext) -> list[Card]:
+        """Vráti všetky karty na rovnakej prioritnej úrovni (trap > non-safe > safe)."""
+        if not hearts:
+            return []
         trap = [c for c in hearts if self._is_trap(c, ctx)]
         if trap:
-            return max(trap, key=lambda c: c.rank_order)
-
+            return trap
         non_safe = [c for c in hearts if not self._is_safe(c, ctx)]
         if non_safe:
-            return max(non_safe, key=lambda c: c.rank_order)
-
-        return max(hearts, key=lambda c: c.rank_order)
+            return non_safe
+        return hearts
 
     def _both_illuminated(self) -> bool:
         return (
@@ -89,12 +77,6 @@ class DumpHeart(Strategy):
         )
 
     def weight(self, ctx: AIContext) -> float:
-        """
-        Váha DumpHeart.
-        Štandard: nižšia ako DumpSpecial (horníci > červene).
-        Pri 90+: vyššia ako DumpSpecial (červene > horníci).
-        Both illuminated: ešte vyššia (červene = 2b každá).
-        """
         if ctx.is_high_score:
             if self._both_illuminated():
                 return 10.0

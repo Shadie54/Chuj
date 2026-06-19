@@ -8,53 +8,37 @@ from game.ai_v2.context import AIContext
 
 
 class Strategy(ABC):
-    """
-    Základná trieda pre všetky stratégie AI v2.
-
-    Každá stratégia:
-    - Skontroluje podmienky aktivácie (is_active)
-    - Navrhne kartu alebo None (propose)
-    - Určí svoju váhu v danom kontexte (weight)
-    - Vráti log string pre debugging (log_variant)
-    """
-
     def __init__(self, player: Player, memory: AIMemory):
         self.player = player
         self.memory = memory
-        self._last_variant: str = ""
-        self._last_detail: str = ""
 
     @abstractmethod
     def is_active(self, ctx: AIContext) -> bool:
-        """Podmienky aktivácie — kedy je táto stratégia relevantná."""
         ...
 
     @abstractmethod
-    def propose(self, ctx: AIContext) -> Card | None:
-        """Navrhni kartu alebo None ak nemá kandidáta."""
+    def propose(self, ctx: AIContext) -> list[tuple[Card, str, str]]:
+        """
+        Vráti zoznam kandidátov: (card, variant, detail).
+        Prázdny zoznam ak žiadny kandidát.
+        """
         ...
 
     @abstractmethod
     def weight(self, ctx: AIContext) -> float:
-        """Váha stratégie v danom kontexte — pre súťaž medzi stratégiami."""
         ...
+
+    def variant_weight(self, variant: str, ctx: AIContext) -> float:
+        """
+        Váha pre konkrétny variant. Default — rovnaká pre všetky varianty
+        danej stratégie (volá weight()). Stratégie s rozdielnymi váhami
+        per variant túto metódu override-ujú.
+        """
+        return self.weight(ctx)
 
     @property
     def name(self) -> str:
-        """Názov stratégie pre logy — override v podtriede."""
         return self.__class__.__name__
-
-    def log_entry(self) -> str:
-        """
-        Vráti log string vo formáte: stratégia | variant | detail
-        Volaj po propose() — _last_variant a _last_detail sú nastavené tam.
-        """
-        return f"{self.name} | {self._last_variant} | {self._last_detail}"
-
-    def _set_log(self, variant: str, detail: str = ""):
-        """Pomocná metóda — nastav log variant a detail."""
-        self._last_variant = variant
-        self._last_detail = detail
 
     # ------------------------------------------------------------------
     # Zdieľané pomocné metódy pre všetky stratégie
@@ -62,13 +46,9 @@ class Strategy(ABC):
 
     @staticmethod
     def _get_current_best(ctx: AIContext) -> Card | None:
-        """Aktuálny víťaz štichu."""
         return ctx.current_best
 
     def _is_trap(self, card: Card, ctx: AIContext) -> bool:
-        """
-        Karta je trap — nikto vyšší vonku (remaining + trick + vlastná ruka).
-        """
         higher_remaining = [
             c for c in self.memory.remaining[card.suit]
             if c.rank_order > card.rank_order
@@ -87,16 +67,12 @@ class Strategy(ABC):
 
     @staticmethod
     def _is_safe(card: Card, ctx: AIContext) -> bool:
-        """
-        Karta je safe — všetci vonku sú vyšší → garantovane nezoberiem štich.
-        """
         profile = ctx.decision.hand_eval.profiles.get(card.suit)
         if profile:
             return card in profile.safe_cards
         return False
 
     def _special_points(self, card: Card) -> int:
-        """Body za horníka (s vysvietením)."""
         if card.is_leaf_over:
             illuminated = self.memory.illuminated_by["leaf"] is not None
             return 16 if illuminated else 8

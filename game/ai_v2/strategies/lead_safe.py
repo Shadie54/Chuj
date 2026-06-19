@@ -1,21 +1,11 @@
 # game/ai_v2/strategies/lead_safe.py
 
 from game.card import Card
-from game.ai_v2.context import AIContext, TrickOutcome, card_outcome
+from game.ai_v2.context import AIContext, TrickOutcome
 from game.ai_v2.strategies.base import Strategy
 
 
 class LeadSafe(Strategy):
-    """
-    Vediem bezpečnou kartou ako leader.
-
-    Varianty:
-    - HIGH_SCORE  — pri 90+, vediem nízkou prebytočnou červeňou
-    - BELL_ESCAPE — bell nešla, risk_pick matica
-    - ESCAPE      — najnižšia escape karta (leaf/acorn prednosť)
-    - EXHAUST     — vyčerpaj farbu kde mám veľa rezerv
-    """
-
     name = "LeadSafe"
 
     def is_active(self, ctx: AIContext) -> bool:
@@ -24,7 +14,7 @@ class LeadSafe(Strategy):
 
         if ctx.is_high_score and self._surplus_low_hearts(ctx):
             return True
-        if self._bell_escape_card(ctx):
+        if self._bell_escape_cards(ctx):
             return True
         if self._escape_candidates(ctx):
             return True
@@ -33,45 +23,36 @@ class LeadSafe(Strategy):
 
         return False
 
-    def propose(self, ctx: AIContext) -> Card | None:
-        # HIGH_SCORE — prebytočná nízka červeň
+    def propose(self, ctx: AIContext) -> list[tuple[Card, str, str]]:
+        results = []
+
         if ctx.is_high_score:
-            card = self._surplus_low_hearts(ctx)
-            if card:
-                self._set_log("HIGH_SCORE", f"prebytočná nízka červeň: {card}")
-                return card
+            cards = self._surplus_low_hearts(ctx)
+            for card in cards:
+                results.append((card, "HIGH_SCORE", f"prebytočná nízka červeň: {card}"))
 
-        # BELL_ESCAPE
-        bell = self._bell_escape_card(ctx)
-        if bell:
-            self._set_log("BELL_ESCAPE", f"{bell}")
-            return bell
+        bell = self._bell_escape_cards(ctx)
+        for card in bell:
+            results.append((card, "BELL_ESCAPE", f"{card}"))
 
-        # ESCAPE
         escape = self._escape_candidates(ctx)
         if escape:
-            # Leaf/acorn prednosť
-            for suit in ("leaf", "acorn"):
+            suits_present = set(c.suit for c in escape)
+            for suit in suits_present:
                 suit_escape = [c for c in escape if c.suit == suit]
-                if suit_escape:
-                    card = min(suit_escape, key=lambda c: c.rank_order)
-                    self._set_log("ESCAPE", f"{suit}: {card}")
-                    return card
-            card = min(escape, key=lambda c: c.rank_order)
-            self._set_log("ESCAPE", f"{card}")
-            return card
+                min_rank = min(c.rank_order for c in suit_escape)
+                for card in [c for c in suit_escape if c.rank_order == min_rank]:
+                    results.append((card, "ESCAPE", f"{suit}: {card}"))
 
-        # EXHAUST
         exhaust = self._exhaust_candidates(ctx)
         if exhaust:
-            card = min(exhaust, key=lambda c: c.rank_order)
-            self._set_log("EXHAUST", f"{card}")
-            return card
+            min_rank = min(c.rank_order for c in exhaust)
+            for card in [c for c in exhaust if c.rank_order == min_rank]:
+                results.append((card, "EXHAUST", f"{card}"))
 
-        return None
+        return results
 
-    def _surplus_low_hearts(self, ctx: AIContext) -> Card | None:
-        """Pri 90+ — prebytočná nízka červeň (viac nízkych než vysokých)."""
+    def _surplus_low_hearts(self, ctx: AIContext) -> list[Card]:
         hand = self.player.hand.cards
         hearts = [c for c in hand if c.suit == "heart"]
         high_hearts = [c for c in hearts if c.rank in ("ace", "king")]
@@ -79,32 +60,27 @@ class LeadSafe(Strategy):
 
         surplus = len(low_hearts) - len(high_hearts)
         if surplus <= 0:
-            return None
+            return []
 
         playable_low = [
             c for c in ctx.playable
-            if c.suit == "heart"
-               and c.rank in ("seven", "eight", "nine")
+            if c.suit == "heart" and c.rank in ("seven", "eight", "nine")
         ]
         if not playable_low:
-            return None
+            return []
+        max_rank = max(c.rank_order for c in playable_low)
+        return [c for c in playable_low if c.rank_order == max_rank]
 
-        return max(playable_low, key=lambda c: c.rank_order)
-
-    def _bell_escape_card(self, ctx: AIContext) -> Card | None:
-        """
-        Bell escape — bell nešla + risk_pick matica.
-        Zahrnuje trap bell ak mám buffer a nízke void riziko.
-        """
+    def _bell_escape_cards(self, ctx: AIContext) -> list[Card]:
         if "bell" in self.memory.suits_led:
-            return None
+            return []
 
         all_bell = [
             c for c in ctx.playable
             if c.suit == "bell" and not c.is_special
         ]
         if not all_bell:
-            return None
+            return []
 
         my_count = len([
             c for c in self.player.hand.cards
@@ -119,39 +95,26 @@ class LeadSafe(Strategy):
         trap_bell = [c for c in all_bell if self._is_trap(c, ctx)]
         non_trap_bell = [c for c in all_bell if not self._is_trap(c, ctx)]
 
-        # Trap + non-trap — dump trap ak buffer + nízke void riziko
         if trap_bell and non_trap_bell:
             if remaining >= 5 and my_count <= 2:
-                return max(trap_bell, key=lambda c: c.rank_order)
+                max_rank = max(c.rank_order for c in trap_bell)
+                return [c for c in trap_bell if c.rank_order == max_rank]
 
-        # Osamelá bell
         if my_count == 1:
-            card = all_bell[0]
-            if not self._is_trap(card, ctx):
-                return card
-            return card  # osamelý trap — bell nešla = nízke void riziko
+            return all_bell
 
-        # Non-trap bell cez risk_pick
         if non_trap_bell:
-            card = self._risk_pick_matrix(
-                non_trap_bell, my_count, remaining, all_in_hand, ctx
-            )
-            if card:
-                return card
+            cards = self._risk_pick_matrix(non_trap_bell, my_count, remaining, all_in_hand, ctx)
+            if cards:
+                return cards
 
-        # Trap bell fallback ak veľa remaining
         if trap_bell and my_count <= 2 and remaining >= 5:
-            return max(trap_bell, key=lambda c: c.rank_order)
+            max_rank = max(c.rank_order for c in trap_bell)
+            return [c for c in trap_bell if c.rank_order == max_rank]
 
-        return None
+        return []
 
     def _escape_candidates(self, ctx: AIContext) -> list[Card]:
-        """
-        Escape karty — nie special, nie protected,
-        nie last escape v živej horník farbe,
-        nie A/K v živej horník farbe bez vlastného horníka.
-        Card_outcome musí byť NEVER alebo UNKNOWN.
-        """
         hand = self.player.hand.cards
         candidates = []
 
@@ -164,12 +127,10 @@ class LeadSafe(Strategy):
                 continue
             if self._is_last_escape_dangerous(c, ctx):
                 continue
-            # A/K v živej horník farbe bez vlastného horníka
             if c.rank in ("ace", "king") and c.suit in ("leaf", "acorn"):
                 if not self.memory.is_special_gone(c.suit):
                     if not any(x.is_special and x.suit == c.suit for x in hand):
                         continue
-            # Posledný buffer pre môjho horníka
             if c.suit in ("leaf", "acorn"):
                 if any(x.is_special and x.suit == c.suit for x in hand):
                     if not self.memory.is_special_gone(c.suit):
@@ -179,20 +140,11 @@ class LeadSafe(Strategy):
                         ]
                         if not non_special_playable:
                             continue
-            # card_outcome musí byť NEVER alebo UNKNOWN
-            outcome = card_outcome(
-                c, ctx.decision.trick,
-                self.memory, ctx.decision.players_after
-            )
-            if outcome == TrickOutcome.CERTAIN:
-                continue
             candidates.append(c)
 
         return candidates
 
-    def _is_last_escape_dangerous(self, card: Card,
-                                   ctx: AIContext) -> bool:
-        """Posledná escape v živej horník farbe."""
+    def _is_last_escape_dangerous(self, card: Card, ctx: AIContext) -> bool:
         suit = card.suit
         if suit not in ("leaf", "acorn"):
             return False
@@ -204,24 +156,30 @@ class LeadSafe(Strategy):
         hand = self.player.hand.cards
         if any(c.is_special and c.suit == suit for c in hand):
             return False
+
         remaining_escapes = [
             c for c in ctx.playable
-            if c.suit == suit
-               and not c.is_special
-               and c.rank not in ("ace", "king")
-               and c != card
+            if c.suit == suit and not c.is_special
+               and c.rank not in ("ace", "king") and c != card
         ]
         high_cards = [
             c for c in ctx.playable
-            if c.suit == suit
-               and not c.is_special
-               and c.rank in ("ace", "king")
-               and self._is_trap(c, ctx)
+            if c.suit == suit and not c.is_special
+               and c.rank in ("ace", "king") and self._is_trap(c, ctx)
         ]
+
+        # Veto má zmysel len ak okrem horníka existuje ešte aspoň jedna
+        # iná karta vonku — inak je horník neodvrátiteľný a trap je irelevantný
+        other_cards_outside = [
+            c for c in self.memory.remaining[suit]
+            if not c.is_special
+        ]
+        if not other_cards_outside:
+            return False
+
         return not remaining_escapes and bool(high_cards)
 
     def _exhaust_candidates(self, ctx: AIContext) -> list[Card]:
-        """Farba kde som vysvietil horníka + 4+ rezervy + žiadny A/K."""
         candidates = []
         for suit in ("leaf", "acorn"):
             if self.memory.illuminated_by[suit] != self.player.index:
@@ -244,41 +202,60 @@ class LeadSafe(Strategy):
     def _risk_pick_matrix(self, suit_cards: list[Card],
                           my_count: int, remaining: int,
                           all_in_hand: list[Card],
-                          ctx: AIContext) -> Card | None:
+                          ctx: AIContext) -> list[Card]:
         if not suit_cards:
-            return None
+            return []
 
-        def safe_or_lowest() -> Card:
+        def safe_or_lowest() -> list[Card]:
             safe = [c for c in suit_cards if self._is_safe(c, ctx)]
             pool = safe if safe else suit_cards
-            return min(pool, key=lambda c: c.rank_order)
+            min_rank = min(c.rank_order for c in pool)
+            return [c for c in pool if c.rank_order == min_rank]
 
-        def mid_card() -> Card | None:
+        def mid_cards() -> list[Card]:
             if not all_in_hand:
-                return None
+                return []
             highest = max(all_in_hand, key=lambda c: c.rank_order)
             candidates = [
                 c for c in suit_cards
                 if highest.rank_order - c.rank_order >= 2
             ]
             if not candidates:
-                return None
-            return max(candidates, key=lambda c: c.rank_order)
+                return []
+            max_rank = max(c.rank_order for c in candidates)
+            return [c for c in candidates if c.rank_order == max_rank]
 
         if remaining >= 5:
             if my_count <= 2:
-                return max(suit_cards, key=lambda c: c.rank_order)
+                max_rank = max(c.rank_order for c in suit_cards)
+                return [c for c in suit_cards if c.rank_order == max_rank]
             elif my_count == 3:
-                mid = mid_card()
-                return mid if mid else min(suit_cards, key=lambda c: c.rank_order)
+                mid = mid_cards()
+                if mid:
+                    return mid
+                min_rank = min(c.rank_order for c in suit_cards)
+                return [c for c in suit_cards if c.rank_order == min_rank]
             else:
                 return safe_or_lowest()
         else:
             if my_count <= 2:
-                mid = mid_card()
-                return mid if mid else min(suit_cards, key=lambda c: c.rank_order)
+                mid = mid_cards()
+                if mid:
+                    return mid
+                min_rank = min(c.rank_order for c in suit_cards)
+                return [c for c in suit_cards if c.rank_order == min_rank]
             else:
                 return safe_or_lowest()
 
     def weight(self, ctx: AIContext) -> float:
         return 6.0
+
+    def variant_weight(self, variant: str, ctx: AIContext) -> float:
+        if variant == "BELL_ESCAPE":
+            # Vyššia priorita v prvom štichu
+            if ctx.decision.hand_eval.tricks_remaining == 8:
+                return 8.0
+            return 6.0
+        if variant == "HIGH_SCORE":
+            return 7.0
+        return self.weight(ctx)  # ESCAPE, EXHAUST → default 6.0
