@@ -15,6 +15,8 @@ from gui.menu import Menu
 from gui.settings_screen import SettingsScreen
 from gui.game_over_screen import GameOverScreen
 from config import DEBUG_MODE
+from game.ai import AI
+from game.ai_v2.ai import AIv2
 
 SETTINGS_PATH = os.path.join(
     os.path.expanduser("~"), "Documents", "Chuj", "settings.json"
@@ -53,11 +55,14 @@ def _create_game(settings: dict) -> tuple:
             ai_players.append(None)
         else:
             difficulty = settings.get(f"ai{i}_difficulty", "hard")
-            ai_players.append(
-                AI(player, difficulty=difficulty,
-                   logger=game_state.logger,
-                   use_new_system=settings.get("use_new_ai_system", False))
-            )
+            if settings.get("use_new_ai_system", False):
+                ai_players.append(
+                    AIv2(player, difficulty=difficulty, logger=game_state.logger)
+                )
+            else:
+                ai_players.append(
+                    AI(player, difficulty=difficulty, logger=game_state.logger)
+                )
     return game_state, ai_players
 
 

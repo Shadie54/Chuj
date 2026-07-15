@@ -1,61 +1,58 @@
 ======================================================================
 TESTER EXPORT
 ======================================================================
-Scenár: random_seed_894952
-Popis: Náhodné rozdanie (seed=894952)
+Scenár: random_seed_508419
+Popis: Náhodné rozdanie (seed=508419)
 
 --- STAV ---
-Štich: 2/8
-Na ťahu: AI_1
+Štich: 3/8
+Na ťahu: AI_3
 First player: AI_2
 
 --- VYSVIETENIE ---
-  acorn-over: AI_3
+  leaf-over: AI_3
 
 --- SKÓRE ---
-  AI_0: 0b (celkovo: 0b)
-  AI_1: 8b (celkovo: 0b)
-  AI_2: 0b (celkovo: 0b)
-  AI_3: 0b (celkovo: 0b)
+  AI_0: 0b (celkovo: 90b)
+  AI_1: 16b (celkovo: 90b)
+  AI_2: 0b (celkovo: 90b)
+  AI_3: 0b (celkovo: 90b)
 
 --- RUKY ---
-  AI_0 (7): J● J♣ A♣ A♠ 9♥ 9♠ 7●
-  AI_1 (7): 10♥ J♥ 7♠ J♠ 8● 9● 10♠ ← NA ŤAHU
-  AI_2 (7): A♥ K♠ 7♣ K♣ 10● K♥ 8♠
-  AI_3 (7): 8♣ 9♣ 8♥ Q♥ Q♠ 7♥ 10♣
+  AI_0 (6): K♥ 9♥ Q♥ J♣ 10♠ 8♠
+  AI_1 (5): 8♣ 9● 10♣ 8♥ 7♥
+  AI_2 (5): K♣ 9♣ A♣ 7♣ A♥
+  AI_3 (6): J♠ J♥ 7♠ 10♥ 9♠ A♠ ← NA ŤAHU
 
 --- AKTUÁLNY ŠTICH ---
-Lead: bell
-  AI_2: K●
-  AI_3: Q♣
-  AI_0: Q●
-  AI_1: A●
+Lead: leaf
+  AI_1: K♠
+  AI_2: Q♣
 
 --- HISTÓRIA ---
-  T1: leader=AI_2 | AI_2: K●  AI_3: Q♣  AI_0: Q●  AI_1: A● → AI_1
+  T1: leader=AI_2 | AI_2: A●  AI_3: 8●  AI_0: K●  AI_1: Q● → AI_2
+  T2: leader=AI_2 | AI_2: 7●  AI_3: Q♠  AI_0: 10●  AI_1: J● → AI_1
 
 --- POSLEDNÝ ŤAH ---
-Hráč: AI_1
-Karta: A●
-Štich: vyhral AI_1 (+4b)
+Hráč: AI_2
+Karta: Q♣
 
 --- REASONING ---
-  [AI_1] SWEEP_GATE1_DEBUG: hand_penalty=2, remaining=8, my_taken=0, already_taken=0
-  [SWEEP AI_1] štich 1: NIE | stav=IDLE | P(sweep)=0.00 | EV=0.0
-    → L1: FAIL — gate2: žiadny scenár nesplnený
-  [AI_1] AI_V2: trick=1 playable=[A●, 8●, 9●] outcome=CERTAIN
-  [AI_1] ACTIVE_STRATEGIES: ['AvoidTrick', 'AcceptTrick']
-  [AI_1] AvoidTrick | UNDERPLAY: 9● (váha=5.0)
-  [AI_1] AcceptTrick | FORCED_POINTS: posledný max: A● (váha=8.0)
-  [AI_1] WEIGHT_SELECTION: A●=8.0(AcceptTrick.FORCED_POINTS(8.0)), 9●=5.0(AvoidTrick.UNDERPLAY(5.0)) → A●
+  [AI_2] SWEEP_GATE1_DEBUG: hand_penalty=2, remaining=7, my_taken=0, already_taken=1
+  [SWEEP AI_2] štich 3: NIE | stav=IDLE | P(sweep)=0.00 | EV=0.0
+    → L1: FAIL — gate1: súper má 1 trestných kariet
+  [AI_2] AI_V2: trick=3 playable=[K♣, Q♣, 9♣, A♣, 7♣, A♥] outcome=UNKNOWN
+  [AI_2] ACTIVE_STRATEGIES: ['DumpSpecial', 'DumpHeart', 'DumpDangerous', 'DumpHigh']
+  [AI_2] DumpSpecial | VOID: 90+ Q♣ (4b)
+  [AI_2] DUMP_SELECTED: Q♣
 
---- AIMemory (AI_1) ---
-  Tricks taken: {0: 0, 1: 1, 2: 0, 3: 0}
-  Specials gone: {'leaf': False, 'acorn': True}
-  Illuminated by: {'leaf': None, 'acorn': 3}
+--- AIMemory (AI_3) ---
+  Tricks taken: {0: 0, 1: 1, 2: 1, 3: 0}
+  Specials gone: {'leaf': True, 'acorn': False}
+  Illuminated by: {'leaf': 3, 'acorn': None}
   Void AI_3: ['bell']
   Remaining heart: A♥ K♥ Q♥ 9♥ 8♥ 7♥
-  Remaining leaf: A♠ K♠ Q♠ 9♠ 8♠
-  Remaining acorn: A♣ K♣ J♣ 10♣ 9♣ 8♣ 7♣
-  Remaining bell: J● 10● 7●
+  Remaining leaf: K♠ 10♠ 8♠
+  Remaining acorn: A♣ K♣ Q♣ J♣ 10♣ 9♣ 8♣ 7♣
+  Remaining bell: 9●
   Sweep state: IDLE

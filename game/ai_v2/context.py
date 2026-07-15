@@ -130,6 +130,12 @@ def card_outcome(card: Card, trick: Trick, memory: AIMemory,
     if current_best and card.rank_order <= current_best.rank_order:
         return TrickOutcome.NEVER
 
+    # Posledný hráč: karta prebíja current_best → CERTAIN, netreba
+    # kontrolovať remaining (súper mohol mať viac kariet farby a zahral
+    # len jednu — tie v remaining nie sú súčasťou tohto štichu)
+    if not players_after:
+        return TrickOutcome.CERTAIN
+
     # Nikto vyšší vonku → CERTAIN
     higher_remaining = [
         c for c in memory.remaining[card.suit]
@@ -140,10 +146,6 @@ def card_outcome(card: Card, trick: Trick, memory: AIMemory,
         if c.rank_order > card.rank_order
     ]
     if not higher_remaining and not higher_in_trick:
-        # Posledný → CERTAIN
-        if not players_after:
-            return TrickOutcome.CERTAIN
-        # Niekto po mne môže mať vyššiu → ale nikto vyšší neexistuje
         return TrickOutcome.CERTAIN
 
     # Niekto vyšší existuje + hráč po mne nie je void → NEVER

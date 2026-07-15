@@ -13,6 +13,12 @@ class StrategySelector:
         ("DumpDangerous", "TRAP"),
         ("DumpHigh", None),
     ]
+    DUMP_PRIORITY_HIGH_SCORE = [
+        ("DumpHeart", None),
+        ("DumpSpecial", None),
+        ("DumpDangerous", "TRAP"),
+        ("DumpHigh", None),
+    ]
 
     def __init__(self, player: Player, memory: AIMemory,
                  strategies: list[Strategy], logger=None):
@@ -20,10 +26,12 @@ class StrategySelector:
         self.memory = memory
         self.strategies = strategies
         self.logger = logger
+        self.last_variant: str = ""
 
     def select(self, ctx: AIContext) -> Card:
         if len(ctx.playable) == 1:
             card = ctx.playable[0]
+            self.last_variant = "FORCED_SINGLE_CARD"
             if self.logger:
                 self.logger.log_strategy(
                     self.player.name, "FORCED_SINGLE_CARD", f"jediná legálna karta: {card}"
@@ -47,16 +55,10 @@ class StrategySelector:
 
     def _select_dump(self, active: list[Strategy],
                      ctx: AIContext) -> Card | None:
-        """
-        Dump stratégie v pevnom poradí priority (tier list).
-        Každý tier je (strategy_name, variant_filter) — variant_filter=None
-        znamená ktorýkoľvek variant danej stratégie.
-        Berie VŠETKY kandidátov z prvého tieru ktorý má kandidáta,
-        vyberie najlepšieho podľa interného poradia (max rank_order ak viacero).
-        """
+        priority = self.DUMP_PRIORITY_HIGH_SCORE if ctx.is_high_score else self.DUMP_PRIORITY
         proposals_cache: dict[str, list[tuple[Card, str, str]]] = {}
 
-        for strategy_name, variant_filter in self.DUMP_PRIORITY:
+        for strategy_name, variant_filter in priority:
             strategy = next((s for s in active if s.name == strategy_name), None)
             if strategy is None:
                 continue
@@ -80,7 +82,8 @@ class StrategySelector:
                     )
 
             # Z kandidátov tohto tieru vyber najvyšší rank (najhodnotnejší dump)
-            best_card, _, _ = max(proposals, key=lambda p: p[0].rank_order)
+            best_card, best_variant, _ = max(proposals, key=lambda p: p[0].rank_order)
+            self.last_variant = best_variant
 
             if self.logger:
                 self.logger.log_strategy(
@@ -124,6 +127,15 @@ class StrategySelector:
             return None
 
         best_card = max(card_scores, key=lambda c: card_scores[c])
+        # Nájdi variant s najvyššou váhou pre víťaznú kartu (posledný zdroj ak viac)
+        sources = card_sources.get(best_card, [])
+        if sources:
+            # source formát: "StrategyName.VARIANT(weight)"
+            last_source = sources[-1]
+            variant_part = last_source.split(".", 1)[-1].split("(")[0]
+            self.last_variant = variant_part
+        else:
+            self.last_variant = ""
 
         if self.logger:
             self._log_scores(card_scores, card_sources, best_card)
@@ -134,6 +146,7 @@ class StrategySelector:
         non_special = [c for c in ctx.playable if not c.is_special]
         pool = non_special if non_special else ctx.playable
         card = min(pool, key=lambda c: c.rank_order)
+        self.last_variant = "GLOBAL_FALLBACK"
         if self.logger:
             self.logger.log_strategy(
                 self.player.name, "GLOBAL_FALLBACK",

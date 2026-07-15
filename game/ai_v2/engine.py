@@ -116,3 +116,7 @@ class AIEngine:
         for strategy in self.strategies:
             if hasattr(strategy, 'reset'):
                 strategy.reset()
+
+    @property
+    def last_strategy(self) -> str:
+        return self.selector.last_variant

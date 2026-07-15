@@ -363,7 +363,8 @@ class Screen:
         )
 
         # Bublina pre risk — zahranie odložíme o 2 sekundy
-        if ai.last_strategy in (Strategy.RISK_TRAP, Strategy.RISK_SPECIAL):
+        if ai.last_strategy in (Strategy.RISK_TRAP, Strategy.RISK_SPECIAL,
+                                "RISK_TRAP", "RISK"):
             texts = ["Risknem to!", "Skúsim šťastie...", "Dúfam že ho nemá..."]
             self.speech_bubble.show_bid(player_index, random.choice(texts), duration_ms=4000)
             self.pending_risk_play = (player_index, card, ai)

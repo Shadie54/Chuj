@@ -99,6 +99,22 @@ class DumpSpecial(Strategy):
                     card, "VOID",
                     f"90+ {card} ({self._special_points(card)}b)"
                 ))
+            return results
+
+        if ctx.current_best:
+            underplay = [
+                c for c in specials
+                if c.rank_order < ctx.current_best.rank_order
+                   and card_outcome(
+                       c, ctx.decision.trick,
+                       self.memory, ctx.decision.players_after
+                   ) == TrickOutcome.NEVER
+            ]
+            for card in underplay:
+                results.append((
+                    card, "UNDERPLAY",
+                    f"90+ {card} podlieza {ctx.current_best}"
+                ))
 
         return results
 

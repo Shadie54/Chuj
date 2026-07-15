@@ -3,9 +3,15 @@
 from game.card import Card
 from game.ai_v2.context import AIContext, TrickOutcome, card_outcome
 from game.ai_v2.strategies.base import Strategy
+from config import HIGH_SCORE_THRESHOLD
 
 
 class AcceptTrick(Strategy):
+    """
+    Follower stratégia — dobrovoľné/vynútené vzatie štichu, keď je výsledok
+    istý (CERTAIN) alebo keď sa oplatí zobrať skôr (bell early take, free take
+    po illuminator hral A/K).
+    """
     name = "AcceptTrick"
 
     def is_active(self, ctx: AIContext) -> bool:
@@ -17,16 +23,29 @@ class AcceptTrick(Strategy):
             return False
 
         if ctx.trick_outcome == TrickOutcome.CERTAIN:
+            print(
+                f"DEBUG: current_best={ctx.current_best}, is_special={ctx.current_best.is_special if ctx.current_best else None}, total_base_points={ctx.decision.trick.total_base_points}, is_last={ctx.is_last}")
             if ctx.current_best and ctx.current_best.is_special:
-                non_special = [c for c in ctx.lead_cards if not c.is_special]
-                has_never = any(
-                    card_outcome(
-                        c, ctx.decision.trick,
-                        self.memory, ctx.decision.players_after
-                    ) == TrickOutcome.NEVER
-                    for c in non_special
-                )
-                if not has_never and not self._has_alternative(ctx):
+                # Horník je current_best — bežne radšej podľahni a nechaj
+                # body pôvodnému hráčovi horníka (netreba ho preberať na seba).
+                # Výnimka: ak som posledný a JA aj majiteľ horníka máme 90+,
+                # horník je preňho aj pre mňa neutrálny (0b) → pokojne vezmi
+                # a zbav sa vysokej A/K karty bez rizika.
+                both_high_score = self._both_high_score(ctx)
+
+                if not both_high_score:
+                    non_special = [c for c in ctx.lead_cards if not c.is_special]
+                    has_never = any(
+                        card_outcome(
+                            c, ctx.decision.trick,
+                            self.memory, ctx.decision.players_after
+                        ) == TrickOutcome.NEVER
+                        for c in non_special
+                    )
+                    if has_never:
+                        return False
+
+                if not self._has_alternative(ctx, ignore_penalty=both_high_score):
                     return True
             elif not self._has_alternative(ctx):
                 return True
@@ -41,8 +60,9 @@ class AcceptTrick(Strategy):
 
     def propose(self, ctx: AIContext) -> list[tuple[Card, str, str]]:
         results = []
+        both_high_score = self._both_high_score(ctx)
 
-        if ctx.trick_outcome == TrickOutcome.CERTAIN and not self._has_alternative(ctx):
+        if ctx.trick_outcome == TrickOutcome.CERTAIN and not self._has_alternative(ctx, ignore_penalty=both_high_score):
             certain_cards = [
                 c for c in ctx.lead_cards
                 if not c.is_special
@@ -80,7 +100,55 @@ class AcceptTrick(Strategy):
 
         return results
 
-    def _has_alternative(self, ctx: AIContext) -> bool:
+    def _owner_index(self, card, ctx: AIContext) -> int | None:
+        """Nájde index hráča, ktorý zahral danú kartu do aktuálneho štichu."""
+        return next(
+            (idx for idx, c in ctx.decision.trick.played_cards if c == card),
+            None
+        )
+
+    def _both_high_score(self, ctx: AIContext) -> bool:
+        """
+        True len ak som posledný, current_best je horník, a JA aj majiteľ
+        horníka máme 90+ (horník je preto neutrálny pre oboch — 0b).
+        Mimo is_last sa toto zámerne nevyhodnocuje (víťaz štichu ešte nie je
+        istý, kým niekto po mne ešte hrá).
+        """
+        if not ctx.is_last:
+            return False
+        if not ctx.current_best or not ctx.current_best.is_special:
+            return False
+        owner_index = self._owner_index(ctx.current_best, ctx)
+        owner_high_score = (
+                owner_index is not None
+                and ctx.all_scores[owner_index] >= HIGH_SCORE_THRESHOLD
+        )
+        return ctx.is_high_score and owner_high_score
+
+    def _penalty_points_for_me(self, ctx: AIContext) -> int:
+        """
+        Skutočná bodová hodnota štichu PRE MŇA, ak by som ho zobral.
+        Heart body počítajú vždy; horníkove body len ak mi 90+ pravidlo
+        nedáva 0 (t.j. nemám 90+).
+        """
+        total = 0
+        for _, c in ctx.decision.trick.played_cards:
+            if c.suit == "heart":
+                total += c.base_points
+            elif c.is_special:
+                total += self._special_value_for_me(c, ctx)
+        return total
+
+    def _has_alternative(self, ctx: AIContext, ignore_penalty: bool = False) -> bool:
+        """
+        Zisťuje, či mám legitímnu alternatívu k dobrovoľnému vzatiu štichu.
+        - is_last: alternatíva je NEVER karta pri bodovom štichu (>2b, počítané
+          z môjho pohľadu — horníkove body sa nerátajú ak mám 90+) — radšej
+          nechám body tomu, kto vedie, než ich preberať na seba.
+          ignore_penalty vypne túto podmienku (pozri _both_high_score).
+        - nie is_last: akákoľvek karta, ktorá nie je CERTAIN, je alternatíva
+          (mám možnosť počkať, výsledok závisí od hráčov po mne).
+        """
         non_special = [c for c in ctx.lead_cards if not c.is_special]
         for c in non_special:
             outcome = card_outcome(
@@ -88,8 +156,10 @@ class AcceptTrick(Strategy):
                 self.memory, ctx.decision.players_after
             )
             if ctx.is_last:
-                if ctx.decision.trick.total_base_points > 2 and outcome == TrickOutcome.NEVER:
-                    return True
+                if not ignore_penalty and outcome == TrickOutcome.NEVER:
+                    penalty_points = self._penalty_points_for_me(ctx)
+                    if penalty_points > 2:
+                        return True
                 if outcome == TrickOutcome.UNKNOWN:
                     return True
             else:
@@ -99,6 +169,7 @@ class AcceptTrick(Strategy):
 
     def _forced_clean(self, ctx: AIContext,
                       certain_cards: list[Card]) -> list[tuple[Card, str, str]]:
+        """Čistý štich (bez bodov) — posledný hráč sa zbaví trap karty, inak najvyššia."""
         results = []
         if ctx.is_last:
             traps = [c for c in certain_cards if self._is_trap(c, ctx)]
@@ -116,6 +187,7 @@ class AcceptTrick(Strategy):
     @staticmethod
     def _forced_points(ctx: AIContext,
                        certain_cards: list[Card]) -> list[tuple[Card, str, str]]:
+        """Bodový štich, nemám alternatívu — posledný berie max, inak min škoda."""
         results = []
         if ctx.is_last:
             target = max(c.rank_order for c in certain_cards)
@@ -128,6 +200,7 @@ class AcceptTrick(Strategy):
         return results
 
     def _can_early_take(self, ctx: AIContext) -> bool:
+        """Bell, čistý štich, 2./3. pozícia, nízke void riziko — dobrovoľné zbavenie sa bell karty."""
         if ctx.is_last:
             return False
         if ctx.lead_suit != "bell":
@@ -185,6 +258,7 @@ class AcceptTrick(Strategy):
         return cards
 
     def _can_free_take(self, ctx: AIContext) -> bool:
+        """Illuminator už zahral A/K vo svojej vysvietenej farbe — bezpečné dumpnúť vlastné A/K."""
         if ctx.lead_suit not in ("leaf", "acorn"):
             return False
         if self.memory.is_special_gone(ctx.lead_suit):
@@ -233,6 +307,7 @@ class AcceptTrick(Strategy):
                           my_count: int, remaining: int,
                           all_in_hand: list[Card],
                           ctx: AIContext) -> list[Card]:
+        """Zdieľaná risk-pick matica (max/mid/safe podľa my_count vs remaining) — použitá pre bell v _early_take_cards."""
         if not suit_cards:
             return []
 

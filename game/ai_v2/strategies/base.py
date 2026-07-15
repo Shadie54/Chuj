@@ -5,6 +5,7 @@ from game.card import Card
 from game.player import Player
 from game.ai_memory import AIMemory
 from game.ai_v2.context import AIContext
+from config import HIGH_SCORE_THRESHOLD
 
 
 class Strategy(ABC):
@@ -80,3 +81,27 @@ class Strategy(ABC):
             illuminated = self.memory.illuminated_by["acorn"] is not None
             return 8 if illuminated else 4
         return 0
+
+    def _special_value_for_me(self, card: Card, ctx: AIContext) -> int:
+        """
+        Skutočná hodnota horníka PRE MŇA, ak ho schytám do vlastného štichu.
+        0 ak mám 90+ bodov (pravidlo 90+: horníci sa mi nepočítajú).
+        Inak rovnaké ako _special_points() (nominálna hodnota).
+        """
+        if ctx.is_high_score:
+            return 0
+        return self._special_points(card)
+
+    def _special_value_for_opponent(self, card: Card, opponent_index: int,
+                                    ctx: AIContext) -> int:
+        """
+        Skutočná hodnota horníka PRE SÚPERA, ak by ho schytal do svojho štichu.
+        0 ak má daný súper 90+ bodov (preňho sa horníci tiež nepočítajú).
+        Inak rovnaké ako _special_points() (nominálna hodnota).
+        Použitie: cielené dumpovanie — oplatí sa mi nechať horníka
+        konkrétnemu súperovi, alebo je preňho neutrálny?
+        """
+        opponent_score = ctx.all_scores[opponent_index]
+        if opponent_score >= HIGH_SCORE_THRESHOLD:
+            return 0
+        return self._special_points(card)

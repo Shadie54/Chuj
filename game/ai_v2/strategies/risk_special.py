@@ -2,12 +2,18 @@
 
 import random
 from game.card import Card
+from game.player import Player
+from game.ai_memory import AIMemory
 from game.ai_v2.context import AIContext, TrickOutcome, card_outcome
 from game.ai_v2.strategies.base import Strategy
 
 
 class RiskSpecial(Strategy):
     name = "RiskSpecial"
+
+    def __init__(self, player: Player, memory: AIMemory):
+        super().__init__(player, memory)
+        self._risk_roll = False
 
     def is_active(self, ctx: AIContext) -> bool:
         if ctx.is_leader:
@@ -26,7 +32,9 @@ class RiskSpecial(Strategy):
                 for card in top
             ]
 
-        if not self._should_risk_trap(ctx):
+        if not self._risk_trap_conditions_met(ctx):
+            return []
+        if not self._risk_roll:
             return []
         trap_high = [
             c for c in ctx.lead_cards
@@ -81,6 +89,12 @@ class RiskSpecial(Strategy):
         return candidates
 
     def _should_risk_trap(self, ctx: AIContext) -> bool:
+        if not self._risk_trap_conditions_met(ctx):
+            return False
+        self._risk_roll = random.random() < self._risk_chance(ctx)
+        return self._risk_roll
+
+    def _risk_trap_conditions_met(self, ctx: AIContext) -> bool:
         if ctx.is_last:
             return False
         if len(ctx.decision.players_after) != 1:
@@ -128,9 +142,8 @@ class RiskSpecial(Strategy):
         if higher_in_trick:
             return False
 
-        return random.random() < self._risk_chance(ctx)
+        return True
 
-    @staticmethod
     def _risk_chance(self, ctx: AIContext) -> float:
         if len(set(ctx.all_scores)) == 1:
             return 0.5
@@ -146,5 +159,5 @@ class RiskSpecial(Strategy):
 
     def variant_weight(self, variant: str, ctx: AIContext) -> float:
         if variant == "RISK_TRAP":
-            return 6.0
+            return 11.0
         return self.weight(ctx)
