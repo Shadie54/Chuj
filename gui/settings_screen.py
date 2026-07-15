@@ -80,6 +80,14 @@ class SettingsScreen:
             x = thumb_start + i * (thumb_w + 20)
             self.bg_rects.append(pygame.Rect(x, thumb_y, thumb_w, thumb_h))
 
+        # Prepínač AI systému (starý/nový)
+        toggle_w, toggle_h = 240, 55
+        self.ai_system_toggle = {
+            "rect": pygame.Rect(center_x - toggle_w // 2,
+                                thumb_y + 160 + 50, toggle_w, toggle_h),
+            "hover": False
+        }
+
         # Tlačidlo späť
         self.back_button = {
             "rect":  pygame.Rect(center_x - 150, SCREEN_HEIGHT - 70, 300, 50),
@@ -147,6 +155,10 @@ class SettingsScreen:
                 self.settings["table_bg"] = fname
                 return None
 
+        if self.ai_system_toggle["rect"].collidepoint(pos):
+            self.settings["use_new_ai_system"] = not self.settings.get("use_new_ai_system", False)
+            return None
+
         if self.back_button["rect"].collidepoint(pos):
             return "back"
 
@@ -156,6 +168,7 @@ class SettingsScreen:
         for buttons in self.ai_buttons.values():
             for btn in buttons:
                 btn["hover"] = btn["rect"].collidepoint(mouse_pos)
+        self.ai_system_toggle["hover"] = self.ai_system_toggle["rect"].collidepoint(mouse_pos)
         self.back_button["hover"] = self.back_button["rect"].collidepoint(
             mouse_pos
         )
@@ -177,6 +190,7 @@ class SettingsScreen:
         self._draw_title()
         self._draw_ai_sections()
         self._draw_bg_section()
+        self._draw_ai_system_toggle()
         self._draw_back_button()
 
     def _draw_title(self):
@@ -237,6 +251,28 @@ class SettingsScreen:
                 )
                 text_rect = text.get_rect(center=btn["rect"].center)
                 self.screen.blit(text, text_rect)
+
+    def _draw_ai_system_toggle(self):
+        rect = self.ai_system_toggle["rect"]
+        is_new = self.settings.get("use_new_ai_system", False)
+        label = "AI systém: NOVÝ" if is_new else "AI systém: STARÝ"
+        base_color = COLOR_GOLD if is_new else COLOR_GRAY
+
+        overlay = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
+        if self.ai_system_toggle["hover"]:
+            overlay.fill((*base_color, 180))
+        else:
+            overlay.fill((40, 25, 10, 200))
+        self.screen.blit(overlay, (rect.x, rect.y))
+
+        pygame.draw.rect(
+            self.screen, base_color,
+            rect, width=2, border_radius=BUTTON_RADIUS
+        )
+
+        text = self.font_medium.render(label, True, COLOR_WHITE)
+        text_rect = text.get_rect(center=rect.center)
+        self.screen.blit(text, text_rect)
 
     def _draw_bg_section(self):
         label_y    = self.bg_rects[0].top - 42

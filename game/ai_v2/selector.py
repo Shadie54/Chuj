@@ -7,10 +7,11 @@ from game.ai_v2.strategies.base import Strategy
 
 class StrategySelector:
     DUMP_PRIORITY = [
-        "DumpSpecial",
-        "DumpHeart",
-        "DumpDangerous",
-        "DumpHigh",
+        ("DumpSpecial", None),
+        ("DumpDangerous", "DANGER_TRAP"),
+        ("DumpHeart", None),
+        ("DumpDangerous", "TRAP"),
+        ("DumpHigh", None),
     ]
 
     def __init__(self, player: Player, memory: AIMemory,
@@ -21,6 +22,14 @@ class StrategySelector:
         self.logger = logger
 
     def select(self, ctx: AIContext) -> Card:
+        if len(ctx.playable) == 1:
+            card = ctx.playable[0]
+            if self.logger:
+                self.logger.log_strategy(
+                    self.player.name, "FORCED_SINGLE_CARD", f"jediná legálna karta: {card}"
+                )
+            return card
+
         active = [s for s in self.strategies if s.is_active(ctx)]
 
         if self.logger:
@@ -39,15 +48,26 @@ class StrategySelector:
     def _select_dump(self, active: list[Strategy],
                      ctx: AIContext) -> Card | None:
         """
-        Dump stratégie v pevnom poradí priority.
-        Berie VŠETKY kandidátov z prvej stratégie ktorá má kandidáta,
+        Dump stratégie v pevnom poradí priority (tier list).
+        Každý tier je (strategy_name, variant_filter) — variant_filter=None
+        znamená ktorýkoľvek variant danej stratégie.
+        Berie VŠETKY kandidátov z prvého tieru ktorý má kandidáta,
         vyberie najlepšieho podľa interného poradia (max rank_order ak viacero).
         """
-        for name in self.DUMP_PRIORITY:
-            strategy = next((s for s in active if s.name == name), None)
+        proposals_cache: dict[str, list[tuple[Card, str, str]]] = {}
+
+        for strategy_name, variant_filter in self.DUMP_PRIORITY:
+            strategy = next((s for s in active if s.name == strategy_name), None)
             if strategy is None:
                 continue
-            proposals = strategy.propose(ctx)
+
+            if strategy_name not in proposals_cache:
+                proposals_cache[strategy_name] = strategy.propose(ctx)
+            proposals = proposals_cache[strategy_name]
+
+            if variant_filter is not None:
+                proposals = [p for p in proposals if p[1] == variant_filter]
+
             if not proposals:
                 continue
 
@@ -59,7 +79,7 @@ class StrategySelector:
                         f"{detail}"
                     )
 
-            # Z kandidátov tejto stratégie vyber najvyšší rank (najhodnotnejší dump)
+            # Z kandidátov tohto tieru vyber najvyšší rank (najhodnotnejší dump)
             best_card, _, _ = max(proposals, key=lambda p: p[0].rank_order)
 
             if self.logger:
@@ -82,6 +102,10 @@ class StrategySelector:
         for strategy in non_dump:
             proposals = strategy.propose(ctx)
             if not proposals:
+                if self.logger:
+                    self.logger.log_strategy(
+                        self.player.name, strategy.name, "žiadna karta"
+                    )
                 continue
             for card, variant, detail in proposals:
                 w = strategy.variant_weight(variant, ctx)

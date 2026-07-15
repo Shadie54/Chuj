@@ -26,6 +26,7 @@ def _load_settings() -> dict:
         "ai2_difficulty": "hard",
         "ai3_difficulty": "hard",
         "table_bg": "table.jpg",
+        "use_new_ai_system": False,
     }
     try:
         with open(SETTINGS_PATH, "r", encoding="utf-8") as f:
@@ -54,7 +55,8 @@ def _create_game(settings: dict) -> tuple:
             difficulty = settings.get(f"ai{i}_difficulty", "hard")
             ai_players.append(
                 AI(player, difficulty=difficulty,
-                   logger=game_state.logger)  # ← pridané
+                   logger=game_state.logger,
+                   use_new_system=settings.get("use_new_ai_system", False))
             )
     return game_state, ai_players
 
@@ -107,6 +109,7 @@ def main():
                 for i, ai in enumerate(active_ai_players):
                     if ai is not None:
                         ai.difficulty = settings.get(f"ai{i}_difficulty", "hard")
+                        ai.use_new_system = settings.get("use_new_ai_system", False)
 
         elif action == "continue" and active_game_state is not None:
             result, active_game_state, active_ai_players = _run_game(

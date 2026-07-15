@@ -17,7 +17,18 @@ class AcceptTrick(Strategy):
             return False
 
         if ctx.trick_outcome == TrickOutcome.CERTAIN:
-            if not self._has_alternative(ctx):
+            if ctx.current_best and ctx.current_best.is_special:
+                non_special = [c for c in ctx.lead_cards if not c.is_special]
+                has_never = any(
+                    card_outcome(
+                        c, ctx.decision.trick,
+                        self.memory, ctx.decision.players_after
+                    ) == TrickOutcome.NEVER
+                    for c in non_special
+                )
+                if not has_never and not self._has_alternative(ctx):
+                    return True
+            elif not self._has_alternative(ctx):
                 return True
 
         if self._can_early_take(ctx):
@@ -76,8 +87,14 @@ class AcceptTrick(Strategy):
                 c, ctx.decision.trick,
                 self.memory, ctx.decision.players_after
             )
-            if outcome != TrickOutcome.CERTAIN:
-                return True
+            if ctx.is_last:
+                if ctx.decision.trick.total_base_points > 2 and outcome == TrickOutcome.NEVER:
+                    return True
+                if outcome == TrickOutcome.UNKNOWN:
+                    return True
+            else:
+                if outcome != TrickOutcome.CERTAIN:
+                    return True
         return False
 
     def _forced_clean(self, ctx: AIContext,

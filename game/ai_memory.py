@@ -87,6 +87,10 @@ class AIMemory:
         for card in my_hand:
             self._remove_from_remaining(card)
 
+        for suit in ("leaf", "acorn"):
+            if not any(c.is_special and c.suit == suit for c in my_hand):
+                self.special_possible_holders[suit].discard(self.player_index)
+
     # ------------------------------------------------------------------
     # Aktualizácia po štichu
     # ------------------------------------------------------------------

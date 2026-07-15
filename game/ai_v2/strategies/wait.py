@@ -40,7 +40,7 @@ class Wait(Strategy):
                 c, ctx.decision.trick,
                 self.memory, ctx.decision.players_after
             )
-            if outcome != TrickOutcome.CERTAIN:
+            if outcome == TrickOutcome.UNKNOWN:
                 candidates.append(c)
         return candidates
 

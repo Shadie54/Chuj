@@ -20,3 +20,5 @@ Documents/
 
 # Tester
 tester_export.txt
+/dist/
+/build/

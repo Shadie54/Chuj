@@ -74,19 +74,24 @@ def compute_trick_outcome(
         return TrickOutcome.CERTAIN
 
     # NEVER — niekto ma určite prebije aj moju najnižšiu
-    my_lowest = min(lead_cards, key=lambda c: c.rank_order)
-    higher_remaining = [
-        c for c in memory.remaining[my_lowest.suit]
-        if c.rank_order > my_lowest.rank_order
-           and c not in lead_cards
-    ]
-    if higher_remaining:
-        non_void_after = [
-            p for p in players_after
-            if my_lowest.suit not in memory.void_suits[p]
+    # (len ak som leader — inak nevieme, či vyššiu kartu drží práve
+    # hráč po mne, alebo niekto kto už do štichu odohral)
+    if not trick.played_cards:
+        my_lowest = min(lead_cards, key=lambda c: c.rank_order)
+        higher_remaining = [
+            c for c in memory.remaining[my_lowest.suit]
+            if c.rank_order > my_lowest.rank_order
+               and c not in lead_cards
         ]
-        if non_void_after:
-            return TrickOutcome.NEVER
+        if higher_remaining:
+            non_void_after = [
+                p for p in players_after
+                if my_lowest.suit not in memory.void_suits[p]
+            ]
+            if non_void_after:
+                return TrickOutcome.NEVER
+
+    return TrickOutcome.UNKNOWN
 
     return TrickOutcome.UNKNOWN
 
@@ -142,15 +147,17 @@ def card_outcome(card: Card, trick: Trick, memory: AIMemory,
         return TrickOutcome.CERTAIN
 
     # Niekto vyšší existuje + hráč po mne nie je void → NEVER
-    non_void_after = [
-        p for p in players_after
-        if card.suit not in memory.void_suits[p]
-    ]
-    if non_void_after:
-        return TrickOutcome.NEVER
+    # (len ak som leader — inak nevieme, či vyššiu kartu drží práve
+    # hráč po mne, alebo niekto kto už do štichu odohral)
+    if not trick.played_cards:
+        non_void_after = [
+            p for p in players_after
+            if card.suit not in memory.void_suits[p]
+        ]
+        if non_void_after:
+            return TrickOutcome.NEVER
 
     return TrickOutcome.UNKNOWN
-
 
 # ------------------------------------------------------------------
 # AIContext — zabalenie všetkých kontextov pre stratégie

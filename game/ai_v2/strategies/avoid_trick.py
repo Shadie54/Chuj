@@ -57,7 +57,7 @@ class AvoidTrick(Strategy):
             if card_outcome(
                 c, ctx.decision.trick,
                 self.memory, ctx.decision.players_after
-            ) != TrickOutcome.CERTAIN
+            ) == TrickOutcome.UNKNOWN
         ]
         for card in valid_risk:
             results.append((card, "RISK_PICK", f"{card}"))
@@ -126,12 +126,13 @@ class AvoidTrick(Strategy):
         return [c for c in high if c.rank_order == max_rank]
 
     def _can_risk_pick(self, ctx: AIContext) -> bool:
+        if ctx.is_last:
+            return False
         suit = ctx.lead_suit
         if suit is None:
             return False
         if suit in self.memory.suits_led:
             return False
-
         if ctx.current_best:
             my_highest = max(
                 (c for c in ctx.lead_cards if not c.is_special),
@@ -140,7 +141,6 @@ class AvoidTrick(Strategy):
             )
             if my_highest and my_highest.rank_order < ctx.current_best.rank_order:
                 return False
-
         remaining = len(self.memory.remaining[suit])
         return remaining >= 5
 
@@ -161,6 +161,9 @@ class AvoidTrick(Strategy):
             c for c in self.player.hand.cards
             if c.suit == suit and not c.is_special
         ])
+        if my_count <= 1:
+            return []
+
         remaining = len(self.memory.remaining[suit])
         all_in_hand = [
             c for c in self.player.hand.cards
