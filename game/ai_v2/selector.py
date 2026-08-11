@@ -18,6 +18,7 @@ class StrategySelector:
         ("DumpSpecial", None),
         ("DumpDangerous", "TRAP"),
         ("DumpHigh", None),
+        ("DumpDangerous", "DANGER_TRAP"),  # posledná záchrana, nič lepšie nenašli
     ]
 
     def __init__(self, player: Player, memory: AIMemory,

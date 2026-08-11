@@ -230,10 +230,6 @@ class DeclarationAdvisor:
             suit_cards = [c for c in hand if c.suit == suit]
             if len(suit_cards) == 0:
                 void_suits.append(suit)
-            elif len(suit_cards) == 1:
-                # 1 karta — len ak je nízka (nie A/K/Q)
-                if suit_cards[0].rank not in ("ace", "king", "over"):
-                    void_suits.append(suit)
         if void_suits:
             breakdown["void"] = void_suits
         if position == 3:

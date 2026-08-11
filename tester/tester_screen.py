@@ -99,7 +99,7 @@ SB_INNER_W = SIDEBAR_WIDTH - SB_PAD * 2  # vnútorná šírka
 
 
 class TesterScreen:
-    def __init__(self, scenario: Scenario):
+    def __init__(self, scenario, findings_playlist=None):
         pygame.init()
         self.screen = pygame.display.set_mode((WIN_WIDTH, WIN_HEIGHT))
         pygame.display.set_caption(f"Chuj Tester — {scenario.name}")
@@ -128,6 +128,18 @@ class TesterScreen:
 
         self.seed_input: str = ""  # aktuálny text v inpute
         self.seed_input_active: bool = False  # či je input aktívny
+
+        # Findings playlist (--findings mód)
+        self.findings_playlist = findings_playlist
+        self.finding_prev_btn = pygame.Rect(
+            LOG_X + LOG_WIDTH - 95, LOG_Y + LOG_HEIGHT - 40, 40, 30
+        )
+        self.finding_next_btn = pygame.Rect(
+            LOG_X + LOG_WIDTH - 50, LOG_Y + LOG_HEIGHT - 40, 40, 30
+        )
+        if self.findings_playlist:
+            self._load_finding(self.findings_playlist.current)
+
     # ------------------------------------------------------------------
     # Load assets
     # ------------------------------------------------------------------
@@ -228,6 +240,15 @@ class TesterScreen:
         self.autoplay_next_time = now + AUTOPLAY_DELAY_MS
 
     def _handle_click(self, pos: tuple[int, int]):
+        # Findings playlist — ◄ ► tlačidlá
+        if self.findings_playlist:
+            if self.finding_prev_btn.collidepoint(pos):
+                self._load_finding(self.findings_playlist.prev())
+                return
+            if self.finding_next_btn.collidepoint(pos):
+                self._load_finding(self.findings_playlist.next())
+                return
+
         # Sidebar kliky
         if pos[0] < SIDEBAR_WIDTH:
             self._handle_sidebar_click(pos)
@@ -491,6 +512,13 @@ class TesterScreen:
         new_scenario = random_scenario()
         seed = int(new_scenario.name.split("_")[-1])
         save_last_seed(seed)
+        self._reload_engine(new_scenario)
+
+    def _load_finding(self, finding: dict):
+        from tester.findings_playlist import build_scenario
+        self.autoplay_mode = None
+        new_scenario = build_scenario(finding)
+        save_last_seed(finding["deal_seed"])
         self._reload_engine(new_scenario)
 
     def _on_export_clicked(self):
@@ -916,6 +944,32 @@ class TesterScreen:
                 "Klikni 'Next' (alebo Space) na ďalší ťah", True, T_TEXT_DIM
             )
             self.screen.blit(info, (x, y))
+
+        self._draw_findings_bar()
+
+    def _draw_findings_bar(self):
+        if not self.findings_playlist:
+            return
+        bar_h = 44
+        bar_rect = pygame.Rect(
+            LOG_X, LOG_Y + LOG_HEIGHT - bar_h, LOG_WIDTH, bar_h
+        )
+        pygame.draw.rect(self.screen, T_PANEL_BG, bar_rect)
+        pygame.draw.line(
+            self.screen, T_BORDER,
+            (bar_rect.left, bar_rect.top), (bar_rect.right, bar_rect.top), 1
+        )
+        label = self.findings_playlist.label
+        surf = self.font_small.render(label, True, T_TEXT)
+        self.screen.blit(surf, surf.get_rect(
+            left=LOG_X + 10, centery=self.finding_prev_btn.centery
+        ))
+        for rect, txt in [(self.finding_prev_btn, "◄"),
+                          (self.finding_next_btn, "►")]:
+            pygame.draw.rect(self.screen, T_PANEL_BG, rect)
+            pygame.draw.rect(self.screen, T_BORDER, rect, 1)
+            s = self.font_small.render(txt, True, T_TEXT)
+            self.screen.blit(s, s.get_rect(center=rect.center))
 
     def _draw_log_entries(self, entries: list[LogEntry],
                           x: int, y: int, max_width: int) -> int:

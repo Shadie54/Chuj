@@ -16,6 +16,10 @@ class AvoidTrick(Strategy):
         if not ctx.lead_cards:
             return False
 
+        dump_ak, _ = self._dump_ak_free(ctx)
+        if dump_ak:
+            return True
+
         non_certain = [
             c for c in ctx.lead_cards
             if not c.is_special
@@ -47,9 +51,9 @@ class AvoidTrick(Strategy):
     def propose(self, ctx: AIContext) -> list[tuple[Card, str, str]]:
         results = []
 
-        dump_ak = self._dump_ak_free(ctx)
+        dump_ak, dump_ak_variant = self._dump_ak_free(ctx)
         for card in dump_ak:
-            results.append((card, "DUMP_AK_FREE", f"{card}"))
+            results.append((card, dump_ak_variant, f"{card}"))
 
         risk = self._risk_pick_cards(ctx)
         valid_risk = [
@@ -89,41 +93,69 @@ class AvoidTrick(Strategy):
 
         return results
 
-    def _dump_ak_free(self, ctx: AIContext) -> list[Card]:
-        if ctx.lead_suit not in ("leaf", "acorn"):
-            return []
-        if self.memory.is_special_gone(ctx.lead_suit):
-            return []
+    def _dump_ak_free(self, ctx: AIContext) -> tuple[list[Card], str]:
+        """
+        Vráti (karty, variant_label) pre bezpečný dump A/K vo farbe
+        s aktívnym horníkom. Dva nezávislé prípady:
+        - DUMP_AK_FREE_OPPONENT: cudzí vysvietený horník už zahral v tomto
+          štichu, žiadny súper po mne nemôže mať ten druhý horník
+        - DUMP_AK_FREE_OWN: ja mám vlastného živého horníka v ruke →
+          objektívne v bezpečí (nikto po mne ho nemôže mať), bez ohľadu
+          na vysvietenie. Pri málo rezervách (<=3) je lepšie uvoľniť sa
+          z vysokej karty teraz namiesto podliezania.
+        """
+        suit = ctx.lead_suit
+        if suit not in ("leaf", "acorn"):
+            return [], ""
+        if self.memory.is_special_gone(suit):
+            return [], ""
 
-        illuminator = self.memory.illuminated_by[ctx.lead_suit]
-        if illuminator is None or illuminator == self.player.index:
-            return []
+        illuminator = self.memory.illuminated_by[suit]
 
-        played_indices = {idx for idx, _ in ctx.decision.trick.played_cards}
-        if illuminator not in played_indices:
-            return []
+        # Prípad A — súperov vysvietený horník, illuminator už zahral
+        if illuminator is not None and illuminator != self.player.index:
+            played_indices = {idx for idx, _ in ctx.decision.trick.played_cards}
+            if illuminator in played_indices:
+                special_in_trick = any(c.is_special for c in ctx.trick_cards)
+                if not special_in_trick:
+                    other_suit = "acorn" if suit == "leaf" else "leaf"
+                    blocked = False
+                    if not self.memory.is_special_gone(other_suit):
+                        other_holders = ctx.decision.special_holders.get(other_suit, set())
+                        for player_idx in ctx.decision.players_after:
+                            is_void_lead = suit in self.memory.void_suits[player_idx]
+                            could_have_other = player_idx in other_holders
+                            if is_void_lead and could_have_other:
+                                blocked = True
+                                break
+                    if not blocked:
+                        high = [
+                            c for c in ctx.lead_cards
+                            if c.rank in ("ace", "king") and not c.is_special
+                        ]
+                        if high:
+                            max_rank = max(c.rank_order for c in high)
+                            return [c for c in high if c.rank_order == max_rank], \
+                                   "DUMP_AK_FREE_OPPONENT"
 
-        special_in_trick = any(c.is_special for c in ctx.trick_cards)
-        if special_in_trick:
-            return []
+        # Prípad B — mám vlastného živého horníka, som objektívne v bezpečí
+        hand = self.player.hand.cards
+        has_my_special = any(c.is_special and c.suit == suit for c in hand)
+        if has_my_special:
+            all_reserves_in_hand = [
+                c for c in hand if c.suit == suit and not c.is_special
+            ]
+            if len(all_reserves_in_hand) <= 3:
+                high = [
+                    c for c in ctx.lead_cards
+                    if c.rank in ("ace", "king") and not c.is_special
+                ]
+                if high:
+                    max_rank = max(c.rank_order for c in high)
+                    return [c for c in high if c.rank_order == max_rank], \
+                        "DUMP_AK_FREE_OWN"
 
-        other_suit = "acorn" if ctx.lead_suit == "leaf" else "leaf"
-        if not self.memory.is_special_gone(other_suit):
-            other_holders = ctx.decision.special_holders.get(other_suit, set())
-            for player_idx in ctx.decision.players_after:
-                is_void_lead = ctx.lead_suit in self.memory.void_suits[player_idx]
-                could_have_other = player_idx in other_holders
-                if is_void_lead and could_have_other:
-                    return []
-
-        high = [
-            c for c in ctx.lead_cards
-            if c.rank in ("ace", "king") and not c.is_special
-        ]
-        if not high:
-            return []
-        max_rank = max(c.rank_order for c in high)
-        return [c for c in high if c.rank_order == max_rank]
+        return [], ""
 
     def _can_risk_pick(self, ctx: AIContext) -> bool:
         if ctx.is_last:
@@ -219,3 +251,8 @@ class AvoidTrick(Strategy):
 
     def weight(self, ctx: AIContext) -> float:
         return 5.0
+
+    def variant_weight(self, variant: str, ctx: AIContext) -> float:
+        if variant in ("DUMP_AK_FREE_OPPONENT", "DUMP_AK_FREE_OWN"):
+            return 6.0
+        return self.weight(ctx)

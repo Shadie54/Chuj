@@ -35,6 +35,13 @@ class Menu:
             self.logo = pygame.transform.scale(self.logo, (280, 280))
         except FileNotFoundError:
             self.logo = None
+        try:
+            self.logo = pygame.image.load("assets/graphics/chuj_logo.png").convert_alpha()
+            logo_w = 500
+            logo_h = int(logo_w * (self.logo.get_height() / self.logo.get_width()))
+            self.logo = pygame.transform.scale(self.logo, (logo_w, logo_h))
+        except FileNotFoundError:
+            self.logo = None
 
         self.bg_cards = self._generate_bg_cards()
 
@@ -153,24 +160,43 @@ class Menu:
         for card in self.bg_cards:
             self.screen.blit(card["image"], (card["x"], card["y"]))
 
-        center_overlay = pygame.Surface((500, SCREEN_HEIGHT), pygame.SRCALPHA)
+        overlay_w = max(500, (self.logo.get_width() if self.logo else 0) + 60)
+        center_overlay = pygame.Surface((overlay_w, SCREEN_HEIGHT), pygame.SRCALPHA)
         center_overlay.fill((0, 0, 0, 140))
-        self.screen.blit(center_overlay, (SCREEN_WIDTH // 2 - 250, 0))
+        self.screen.blit(center_overlay, (SCREEN_WIDTH // 2 - overlay_w // 2, 0))
 
         self._draw_logo()
         self._draw_buttons()
 
     def _draw_logo(self):
+        logo_bottom_padding = 60
+        first_btn_y = self.buttons[0]["rect"].top
+
         if self.logo:
             logo_rect = self.logo.get_rect(
-                center=(SCREEN_WIDTH // 2, 200)
+                centerx=SCREEN_WIDTH // 2,
+                bottom=first_btn_y - logo_bottom_padding
             )
+
+            # ← NOVÉ: Tmavý podklad pod logo
+            pad = 20
+            bg_rect = pygame.Rect(
+                logo_rect.x - pad, logo_rect.y - pad,
+                logo_rect.width + pad * 2, logo_rect.height + pad * 2
+            )
+            overlay = pygame.Surface((bg_rect.width, bg_rect.height), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 160))
+            self.screen.blit(overlay, (bg_rect.x, bg_rect.y))
+
             self.screen.blit(self.logo, logo_rect)
         else:
-            font_title = get_font( 120)
+            font_title = get_font(120)
             shadow = font_title.render("CHUJ", True, (0, 0, 0))
             title = font_title.render("CHUJ", True, COLOR_GOLD)
-            rect = title.get_rect(center=(SCREEN_WIDTH // 2, 300))
+            rect = title.get_rect(
+                centerx=SCREEN_WIDTH // 2,
+                bottom=first_btn_y - logo_bottom_padding
+            )
             self.screen.blit(shadow, (rect.x + 3, rect.y + 3))
             self.screen.blit(title, rect)
 

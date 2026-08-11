@@ -12,6 +12,8 @@ class LeadSafe(Strategy):
         if not ctx.is_leader:
             return False
 
+        if self._force_take_special_candidates(ctx):
+            return True
         if ctx.is_high_score and self._surplus_low_hearts(ctx):
             return True
         if self._bell_escape_cards(ctx):
@@ -27,6 +29,13 @@ class LeadSafe(Strategy):
 
     def propose(self, ctx: AIContext) -> list[tuple[Card, str, str]]:
         results = []
+
+        force_take = self._force_take_special_candidates(ctx)
+        for card in force_take:
+            results.append((card, "FORCE_TAKE_SPECIAL",
+                            f"jediná zvyšná karta vyššia, garantovane prehrá: {card}"))
+        if force_take:
+            return results
 
         if ctx.is_high_score:
             cards = self._surplus_low_hearts(ctx)
@@ -55,7 +64,6 @@ class LeadSafe(Strategy):
         if not results:
             suit_picks = self._protected_last_resort(ctx)
             if suit_picks:
-                # Farba s viac rezervami = primárna (vyššia váha)
                 best_suit = max(suit_picks, key=lambda s: self._last_resort_reserves[s])
                 for suit, cards in suit_picks.items():
                     variant = "PROTECTED_ESCAPE_PRIMARY" if suit == best_suit else "PROTECTED_ESCAPE_SECONDARY"
@@ -64,6 +72,29 @@ class LeadSafe(Strategy):
                             (card, variant, f"núdzovo {suit} (rezervy={self._last_resort_reserves[suit]}): {card}"))
 
         return results
+
+    def _force_take_special_candidates(self, ctx: AIContext) -> list[Card]:
+        """
+        Mám horníka v ruke a jediná zvyšná karta danej farby u súperov
+        je vyššia než on → ten, kto ju drží, je nútený ju zahrať (nemá
+        inú kartu tej farby na výber), horník tak garantovane prehráva
+        a plné body idú súperovi. Vzácny druh forcingu vlastným horníkom.
+        """
+        candidates = []
+        for suit in ("leaf", "acorn"):
+            if self.memory.is_special_gone(suit):
+                continue
+            special = next(
+                (c for c in ctx.playable if c.is_special and c.suit == suit), None
+            )
+            if special is None:
+                continue
+            remaining = self.memory.remaining[suit]
+            if not remaining:
+                continue
+            if all(c.rank_order > special.rank_order for c in remaining):
+                candidates.append(special)
+        return candidates
 
     def _worst_case_dangerous(self, suit: str, ctx: AIContext) -> bool:
         """
@@ -234,8 +265,6 @@ class LeadSafe(Strategy):
                and c.rank in ("ace", "king") and self._is_trap(c, ctx)
         ]
 
-        # Veto má zmysel len ak okrem horníka existuje ešte aspoň jedna
-        # iná karta vonku — inak je horník neodvrátiteľný a trap je irelevantný
         other_cards_outside = [
             c for c in self.memory.remaining[suit]
             if not c.is_special
@@ -285,7 +314,6 @@ class LeadSafe(Strategy):
             if n % 2 == 1:
                 idx = n // 2
             else:
-                # párny počet: aggressive → horný medián, inak dolný
                 idx = n // 2 if aggressive else n // 2 - 1
             target_rank = sorted_cards[idx].rank_order
             return [c for c in sorted_cards if c.rank_order == target_rank]
@@ -317,10 +345,6 @@ class LeadSafe(Strategy):
 
     @staticmethod
     def _simple_median(cards: list[Card]) -> list[Card]:
-        """
-        Jednoduchý medián zo všetkých kariet danej farby (bell, heart).
-        Žiadne trap/escape rozlišovanie, žiadny worst-case posun.
-        """
         if not cards:
             return []
         sorted_cards = sorted(cards, key=lambda c: c.rank_order)
@@ -333,6 +357,8 @@ class LeadSafe(Strategy):
         return 6.0
 
     def variant_weight(self, variant: str, ctx: AIContext) -> float:
+        if variant == "FORCE_TAKE_SPECIAL":
+            return 15.0
         if variant == "BELL_ESCAPE":
             if ctx.decision.hand_eval.tricks_remaining == 8:
                 return 8.0
