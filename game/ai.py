@@ -9,6 +9,7 @@ from game.ai_hand_eval import HandEvaluator, GameContext, DecisionContext
 from game.ai_situation import SituationDetector
 from game.ai_card_select import CardSelector
 from game.ai_sweep import SweepPipeline, SweepDecision
+from game.ai_sweep_v2.engine import SweepEngineV2
 from game.ai_declaration import DeclarationAdvisor
 from game.ai_play_none import NonePlayer
 from game.ai_play_all import AllPlayer
@@ -17,12 +18,14 @@ from game.ai_v2.engine import AIEngine
 
 class AI:
     def __init__(self, player: Player, difficulty: str = "hard",
-                 logger=None, use_new_system: bool = False):  # ← nový parameter
+                 logger=None, use_new_system: bool = False,  # ← nový parameter
+                 use_new_sweep: bool = False):  # ← nový parameter (sweep v2)
         self.player = player
         self.difficulty = difficulty
         self.logger = logger
         self.player_name = player.name
         self.use_new_system = use_new_system
+        self.use_new_sweep = use_new_sweep
 
         self.memory = AIMemory(player.index)
 
@@ -32,6 +35,7 @@ class AI:
 
         # Sweep
         self.sweep_pipeline = SweepPipeline(player, self.memory, logger)
+        self.sweep_engine_v2 = SweepEngineV2(player, self.memory, logger)
         self.sweep_confidence = None
         self.sweep_attempt = None
 
@@ -116,15 +120,27 @@ class AI:
             return self.all_player.decide(playable, hand_eval)
 
         # --- SWEEP (platí pre oba systémy) ---
-        sweep_result = self.sweep_pipeline.evaluate(hand_eval, trick_number)
-        if self.logger:
-            self.logger.log_sweep_pipeline(
-                self.player_name, sweep_result, trick_number + 1
+        if self.use_new_sweep:
+            sweep_plan = self.sweep_engine_v2.decide(
+                playable, current_trick, trick_number
             )
-        if sweep_result.decision == SweepDecision.YES:
-            if sweep_result.recommended_card in playable:
-                self._log("SWEEP_COMMIT", str(sweep_result.recommended_card))
-                return sweep_result.recommended_card
+            if sweep_plan.decision == "COMMIT" and sweep_plan.card is not None:
+                if sweep_plan.card in playable:
+                    self._log("SWEEP_V2_COMMIT", str(sweep_plan.card))
+                    return sweep_plan.card
+            # COMMIT bez konkrétnej karty (Tier A: všetko už zaistené),
+            # WATCH (Tier B/C zatiaľ neriešia) alebo ABANDON — vo všetkých
+            # prípadoch necháme normálny výber karty pokračovať nižšie.
+        else:
+            sweep_result = self.sweep_pipeline.evaluate(hand_eval, trick_number)
+            if self.logger:
+                self.logger.log_sweep_pipeline(
+                    self.player_name, sweep_result, trick_number + 1
+                )
+            if sweep_result.decision == SweepDecision.YES:
+                if sweep_result.recommended_card in playable:
+                    self._log("SWEEP_COMMIT", str(sweep_result.recommended_card))
+                    return sweep_result.recommended_card
 
         # --- ROUTER: nový vs starý systém ---
         if self.use_new_system:
@@ -174,6 +190,7 @@ class AI:
         self.sweep_attempt = False
         self.sweep_confidence = None
         self.sweep_pipeline.reset()
+        self.sweep_engine_v2.reset()  # ← nové (sweep v2)
         self.engine_v2.reset()  # ← nové
 
 
