@@ -119,6 +119,7 @@ class TesterEngine:
 
         # 2. Vytvor 4 AI inštancie s TesterLogger
         use_new = getattr(self.scenario, '_use_new_system', True)
+        use_new_sweep = getattr(self.scenario, '_use_new_sweep', False)
         self.ais = {}
         for i in range(NUM_PLAYERS):
             ai = AI(
@@ -126,6 +127,7 @@ class TesterEngine:
                 difficulty="hard",
                 logger=self.logger,
                 use_new_system=use_new,
+                use_new_sweep=use_new_sweep,
             )
             self.ais[i] = ai
 

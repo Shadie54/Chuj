@@ -288,6 +288,8 @@ class TesterScreen:
             self._on_back_clicked()
         elif rects["ai_toggle"].collidepoint(pos):  # ← pridať
             self._on_ai_toggle_clicked()  # ← pridať
+        elif rects["sweep_toggle"].collidepoint(pos):
+            self._on_sweep_toggle_clicked()
         elif rects["override"].collidepoint(pos):
             self._on_override_clicked()
         elif rects["override"].collidepoint(pos):
@@ -390,7 +392,11 @@ class TesterScreen:
         section("akcie")
         btn("next")
         btn("back")
-        btn("ai_toggle")
+        # AI toggle + Sweep toggle vedľa seba (obe polovičná šírka)
+        toggle_half = (SB_INNER_W - SB_BTN_GAP) // 2
+        rects["ai_toggle"] = pygame.Rect(x, y, toggle_half, SB_BTN_H)
+        rects["sweep_toggle"] = pygame.Rect(x + toggle_half + SB_BTN_GAP, y, toggle_half, SB_BTN_H)
+        y += SB_BTN_H + SB_BTN_GAP
         btn("override")
         # Štich + Kolo vedľa seba
         half = (SB_INNER_W - SB_BTN_GAP) // 2
@@ -483,6 +489,15 @@ class TesterScreen:
         self.scenario._use_new_system = new_value
 
         # Reštartuj engine
+        self.engine.reset()
+
+    def _on_sweep_toggle_clicked(self):
+        """Prepne starý/nový sweep systém pre všetkých hráčov a reštartuje scenár."""
+        current = getattr(self.engine.ais[0], 'use_new_sweep', False)
+        new_value = not current
+
+        self.scenario._use_new_sweep = new_value
+
         self.engine.reset()
 
     def _on_override_clicked(self):
@@ -633,11 +648,16 @@ class TesterScreen:
         self._draw_sb_button(rects["next"], "Next →", next_color)
         self._draw_sb_button(rects["back"], "← Back", T_BUTTON_BG)
 
-        # AI systém toggle
+        # AI systém toggle + Sweep systém toggle (vedľa seba)
         use_new = getattr(self.engine.ais[0], 'use_new_system', False)
-        ai_label = "AI: NOVÝ" if use_new else "AI: STARÝ"
+        ai_label = "AI v2" if use_new else "AI v1"
         ai_color = T_BUTTON_SUCCESS if use_new else T_BUTTON_BG
         self._draw_sb_button(rects["ai_toggle"], ai_label, ai_color)
+
+        use_new_sweep = getattr(self.engine.ais[0], 'use_new_sweep', False)
+        sweep_label = "SWEEP v2" if use_new_sweep else "SWEEP v1"
+        sweep_color = T_BUTTON_SUCCESS if use_new_sweep else T_BUTTON_BG
+        self._draw_sb_button(rects["sweep_toggle"], sweep_label, sweep_color)
 
         override_color = T_HIGHLIGHT if self.override_mode else T_BUTTON_BG
         self._draw_sb_button(
