@@ -7,6 +7,8 @@ from game.trick import Trick
 from game.ai_memory import AIMemory
 from game.ai_hand_eval import HandEvaluator, GameContext
 from game.ai_sweep import SweepPipeline, SweepDecision
+from game.ai_sweep_v2.engine import SweepEngineV2
+from game.ai_sweep_v2.pipeline import SweepDecision as SweepDecisionV2
 from game.ai_declaration import DeclarationAdvisor
 from game.ai_play_none import NonePlayer
 from game.ai_play_all import AllPlayer
@@ -14,18 +16,23 @@ from game.ai_v2.engine import AIEngine
 
 
 class AIv2:
-    def __init__(self, player: Player, difficulty: str = "hard", logger=None):
+    def __init__(self, player: Player, difficulty: str = "hard", logger=None,
+                 use_new_sweep: bool = False):
         self.player = player
         self.difficulty = difficulty
         self.logger = logger
         self.player_name = player.name
+        self.use_new_sweep = use_new_sweep
 
         self.memory = AIMemory(player.index)
 
         self.declaration_player: int | None = None
         self.declaration_type: str | None = None
 
+        # Oba sweep systémy sa vytvárajú vždy (rovnaký vzor ako game/ai.py),
+        # `use_new_sweep` len rozhoduje, ktorý sa použije v decide_card().
         self.sweep_pipeline = SweepPipeline(player, self.memory, logger)
+        self.sweep_engine_v2 = SweepEngineV2(player, self.memory, logger)
         self.sweep_confidence = None
         self.sweep_attempt = None
 
@@ -87,20 +94,38 @@ class AIv2:
         if my_declaration == "all":
             return self.all_player.decide(playable, hand_eval)
 
-        sweep_result = self.sweep_pipeline.evaluate(hand_eval, trick_number)
-        if self.logger:
-            self.logger.log_sweep_pipeline(
-                self.player_name, sweep_result, trick_number + 1
+        if self.use_new_sweep:
+            sweep_result = self.sweep_engine_v2.evaluate(
+                hand_eval, trick_number, current_trick, playable
             )
-        if sweep_result.decision == SweepDecision.YES:
-            if sweep_result.recommended_card in playable:
-                self.last_strategy = "SWEEP_COMMIT"
-                if self.logger:
-                    self.logger.log_strategy(
-                        self.player_name, "SWEEP_COMMIT",
-                        str(sweep_result.recommended_card)
-                    )
-                return sweep_result.recommended_card
+            if self.logger:
+                self.logger.log_sweep_pipeline(
+                    self.player_name, sweep_result, trick_number + 1
+                )
+            if sweep_result.decision == SweepDecisionV2.YES:
+                if sweep_result.recommended_card in playable:
+                    self.last_strategy = "SWEEP_V2_COMMIT"
+                    if self.logger:
+                        self.logger.log_strategy(
+                            self.player_name, "SWEEP_V2_COMMIT",
+                            str(sweep_result.recommended_card)
+                        )
+                    return sweep_result.recommended_card
+        else:
+            sweep_result = self.sweep_pipeline.evaluate(hand_eval, trick_number)
+            if self.logger:
+                self.logger.log_sweep_pipeline(
+                    self.player_name, sweep_result, trick_number + 1
+                )
+            if sweep_result.decision == SweepDecision.YES:
+                if sweep_result.recommended_card in playable:
+                    self.last_strategy = "SWEEP_COMMIT"
+                    if self.logger:
+                        self.logger.log_strategy(
+                            self.player_name, "SWEEP_COMMIT",
+                            str(sweep_result.recommended_card)
+                        )
+                    return sweep_result.recommended_card
 
         card = self.engine_v2.decide(
             playable, current_trick, trick_number,
@@ -130,6 +155,7 @@ class AIv2:
         self.sweep_attempt = False
         self.sweep_confidence = None
         self.sweep_pipeline.reset()
+        self.sweep_engine_v2.reset()
         self.engine_v2.reset()
 
     def __repr__(self) -> str:

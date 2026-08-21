@@ -1,4 +1,21 @@
-# game/ai_sweep.py
+# game/ai_sweep_v2/pipeline.py
+"""
+1:1 kópia game/ai_sweep.py (starý, osvedčený sweep systém — 85.3%
+úspešnosť pri 136 pokusoch na 200 hrách, seed 777) urobená 2026-08-20
+ako základ pre rework, namiesto pokračovania v novom systéme postavenom
+od nuly (ten dosahoval len ~17-18% úspešnosť pri ~2000 pokusoch na tých
+istých hrách — pozri claude/03_SWEEP_V2_HANDOFF.md).
+
+game/ai_sweep.py OSTÁVA nezmenené ako záloha (use_new_sweep=False stále
+naň ukazuje) — tento súbor (`pipeline.py`, use_new_sweep=True) je ten,
+ktorý budeme postupne upravovať: rekalibrovať prahy pomocou simulátora
+(boli 4 mesiace staré, z prvého modelu, nikdy netuningované), doplniť
+chýbajúce nuansy/stratégie, vyčistiť drobný duplicitný kód.
+
+Orchestrácia (game/ai_sweep_v2/engine.py) pred týmto pipeline navyše
+skúša Tier B (solver.py) — presné AND-OR vyhľadávanie pre koncovku,
+niečo, čo starý systém nikdy nemal (je celý heuristický).
+"""
 
 from __future__ import annotations
 from dataclasses import dataclass, field
@@ -973,10 +990,23 @@ class SweepPipeline:
                     event=f"horník {suit} musí padnúť (unknown owner)",
                     event_type="card_falls"
                 ))
-            elif suit_eval.hornik_owner == "me" and not suit_eval.hornik_capturable:
-                # Držím horníka, ale nemám A/K v tej farbe na jeho ochranu —
-                # ak budem nútený ho zahrať, súper s A/K ho môže prebiť
-                # a sweep sa zlomí. Predtým sa toto riziko ignorovalo.
+            elif (suit_eval.hornik_owner == "me" and not suit_eval.hornik_capturable
+                    and timelines[suit].guaranteed_wins == 0):
+                # Držím horníka, nemám A/K v ruke na jeho ochranu A horník
+                # ešte NIE JE garantovaná výhra (guaranteed_wins==0 pre túto
+                # farbu) — teda niekto iný v hre môže mať vyššiu kartu.
+                #
+                # Pozor: hornik_capturable sám osebe len hovorí "mám A/K vo
+                # svojej ruke" — nekontroluje, či A/K (a ostatné vyššie karty)
+                # už boli odohrané zo hry. Ak áno, horník je top-run víťaz
+                # (control/guaranteed_wins v _evaluate_suit/_suit_timeline to
+                # už správne počíta cez memory.remaining, ktoré odohrané karty
+                # vylučuje) a je bezpečný bez ohľadu na to, čo držím ja osobne.
+                # Bez guaranteed_wins==0 podmienky sa horník v tejto situácii
+                # falošne označoval za nechránený (seed 216902, T7: AI_1 malo
+                # Q♣ ako jedinú zostávajúcu acorn kartu nad 9♣/7♣, teda istú
+                # výhru, ale L3 tvrdil P=0.5 → AI zahodilo horníka namiesto
+                # jeho odohratia).
                 critical_events.append(CriticalEvent(
                     event=f"vlastný horník {suit} nie je chránený (bez A/K)",
                     event_type="card_falls"

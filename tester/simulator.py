@@ -5,7 +5,8 @@ Headless simulátor — hromadné odohranie hier (4x AIv2) a zber nálezov.
 Spustenie:
     python -m tester.simulator --games 100
     python -m tester.simulator --games 500 --seed 42
-    python -m tester.simulator --games 50 --no-sweep-watch
+    python -m tester.simulator --games 50 --new-sweep
+    python -m tester.simulator --games 50 --no-sweep-failed-watch
 
 Výstup (Documents/Chuj/sim_output/):
     sim_summary.txt    — agregátny prehľad
@@ -39,11 +40,19 @@ class SimConfig:
     num_games: int = 100
     seed: int | None = None
 
+    # Sweep systém nezávisle od "AI systém" (starý/nový) prepínača —
+    # ten rieši celkovú AI logiku, toto len sweep rozhodovanie
+    # (ai_sweep.py vs ai_sweep_v2/engine.py), na priame porovnanie.
+    use_new_sweep: bool = False
+
     watch_illuminated_and_caught: bool = True
     illuminated_exclude_high_score: bool = True  # vylúč 90+ prípady (zámerne OK)
     watch_none_declaration_failed: bool = True
     watch_global_fallback: bool = True
-    watch_sweep_result: bool = True  # sweep aktivovaný → zobral/nezobral všetko
+    # Sweep aktivovaný → zobral/nezobral všetko. Samostatné flagy, aby sa
+    # dalo sledovať len úspešné, len neúspešné, alebo oboje naraz.
+    watch_sweep_success: bool = True
+    watch_sweep_failed: bool = True
 
 
 # ------------------------------------------------------------------
@@ -92,7 +101,7 @@ class SimLogger:
     def log_strategy(self, player_name: str, strategy: str, details: str = ""):
         if self.config.watch_global_fallback and strategy == "GLOBAL_FALLBACK":
             self._record("global_fallback", player_name, strategy, details)
-        if strategy == "SWEEP_COMMIT":
+        if strategy in ("SWEEP_COMMIT", "SWEEP_V2_COMMIT"):
             self.sweep_committers.add(player_name)
 
     def _record(self, finding_type: str, player_name: str,
@@ -125,7 +134,8 @@ def _run_single_game(game_index: int, config: SimConfig,
     sim_logger = SimLogger(config, findings)
 
     ai_players = [
-        AIv2(p, difficulty="hard", logger=sim_logger)
+        AIv2(p, difficulty="hard", logger=sim_logger,
+             use_new_sweep=config.use_new_sweep)
         for p in game_state.players
     ]
 
@@ -291,11 +301,18 @@ def _round_end_watchers(config: SimConfig, findings: Findings,
             })
 
     # 3) Sweep aktivovaný → zobral/nezobral všetky bodované karty
-    if config.watch_sweep_result and sim_logger.sweep_committers:
+    #    (watch_sweep_success/watch_sweep_failed sú samostatné flagy —
+    #    dá sa sledovať len úspešné, len neúspešné, alebo oboje naraz)
+    if (config.watch_sweep_success or config.watch_sweep_failed) \
+            and sim_logger.sweep_committers:
         sweep_winner_idx = rnd._check_sweep()
         for name in sim_logger.sweep_committers:
             pidx = int(name.split("_")[-1])
             success = (sweep_winner_idx == pidx)
+            if success and not config.watch_sweep_success:
+                continue
+            if not success and not config.watch_sweep_failed:
+                continue
             findings.add({
                 "type": "sweep_success" if success else "sweep_failed",
                 **sim_logger.round_context,
@@ -360,25 +377,31 @@ def main():
     parser = argparse.ArgumentParser(description="CHUJ headless simulátor")
     parser.add_argument("--games", type=int, default=100)
     parser.add_argument("--seed", type=int, default=None)
+    parser.add_argument("--new-sweep", action="store_true",
+                        help="použi Sweep v2 (ai_sweep_v2) namiesto starého "
+                             "systému (ai_sweep.py); nezávislé od AI systému")
     parser.add_argument("--no-illuminated-watch", action="store_true")
     parser.add_argument("--include-high-score-illuminated", action="store_true",
                         help="zahrň aj 90+ prípady schytania vlastného horníka")
     parser.add_argument("--no-none-watch", action="store_true")
     parser.add_argument("--no-fallback-watch", action="store_true")
-    parser.add_argument("--no-sweep-result-watch", action="store_true")
+    parser.add_argument("--no-sweep-success-watch", action="store_true")
+    parser.add_argument("--no-sweep-failed-watch", action="store_true")
     args = parser.parse_args()
 
     config = SimConfig(
         num_games=args.games,
         seed=args.seed,
+        use_new_sweep=args.new_sweep,
         watch_illuminated_and_caught=not args.no_illuminated_watch,
         illuminated_exclude_high_score=not args.include_high_score_illuminated,
         watch_none_declaration_failed=not args.no_none_watch,
         watch_global_fallback=not args.no_fallback_watch,
-        watch_sweep_result=not args.no_sweep_result_watch,
+        watch_sweep_success=not args.no_sweep_success_watch,
+        watch_sweep_failed=not args.no_sweep_failed_watch,
     )
     print(f"Spúšťam simuláciu: {config.num_games} hier "
-          f"(seed={config.seed})")
+          f"(seed={config.seed}, sweep={'nový' if config.use_new_sweep else 'starý'})")
     run(config)
 
 
