@@ -14,9 +14,36 @@ Výstup (Documents/Chuj/sim_output/):
                          so seedom na reprodukciu v testeri
 """
 
+import os
+import sys
+
+# PYTHONHASHSEED musí byť nastavený PRED štartom interpretera — inak sa
+# medzi behmi náhodne mení poradie iterácie cez set/dict s reťazcovými
+# kľúčmi (napr. AIMemory.void_suits), čo robí --seed nereprodukovateľným
+# aj keď je samotné rozdanie kariet už deterministické (pozri
+# game/round.py). Reštartuje sa raz s fixovaným PYTHONHASHSEED=0, ak ešte
+# nebol nastavený. Platí len pri samostatnom spustení (python -m
+# tester.simulator) — pri importe (napr. z tester/sim_screen.py) sa guard
+# rieši na úrovni toho vstupného bodu.
+#
+# Reštart ide cez subprocess.run vo forme "-m tester.simulator" (presne
+# ako v hlavičkovom docstringu), nie cez os.execv so sys.orig_argv —
+# sys.orig_argv pri spustení cez IDE (napr. PyCharm run/debug) obsahuje
+# IDE/debug launcher namiesto tohto skriptu, takže reštart cezeň potichu
+# zlyhá bez pripojeného debug serveru a proces skončí s "exit code 0"
+# bez výstupu. Nájdené 2026-09-04 pri prvom nasadení pôvodného guardu.
+if __name__ == "__main__" and os.environ.get("PYTHONHASHSEED") != "0":
+    import subprocess
+    env = os.environ.copy()
+    env["PYTHONHASHSEED"] = "0"
+    result = subprocess.run(
+        [sys.executable, "-m", "tester.simulator"] + sys.argv[1:],
+        env=env,
+    )
+    sys.exit(result.returncode)
+
 import argparse
 import json
-import os
 import random
 import time
 from dataclasses import dataclass, field

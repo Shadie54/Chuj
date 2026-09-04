@@ -1,5 +1,6 @@
 # game/round.py
 
+import random
 from game.card import Card
 from game.deck import Deck
 from game.player import Player
@@ -42,8 +43,23 @@ class Round:
     # ------------------------------------------------------------------
 
     def deal(self):
-        """Rozdá karty hráčom."""
-        hands, self.deal_seed = self.deck.deal(NUM_PLAYERS)
+        """Rozdá karty hráčom.
+
+        Seed pre rozdanie sa ťahá z globálneho `random` modulu (nie z
+        `Deck.shuffle`-ovho vlastného time.time() fallbacku) — vďaka tomu
+        `random.seed(...)` volané zvonka (napr. tester/simulator.py pri
+        --seed X) skutočne ovplyvní aj samotné rozdanie, nielen ostatné
+        náhodné rozhodnutia v hre. Predtým `deck.deal(NUM_PLAYERS)` bez
+        seed argumentu vždy spadlo na Deck.shuffle()'s čas-based fallback
+        (vlastná lokálna random.Random inštancia, nezávislá od globálneho
+        random stavu) — takže --seed v bulkovom simulátore v skutočnosti
+        neriadil rozdanie vôbec, len ostatné random volania v hre. Opravené
+        2026-09-04 (nález pri overovaní regresného testu — dva behy s tým
+        istým --seed 777 dávali rôzne výsledky).
+        """
+        hands, self.deal_seed = self.deck.deal(
+            NUM_PLAYERS, seed=random.randint(0, 2 ** 31)
+        )
         for i, player in enumerate(self.players):
             player.receive_cards(hands[i])
         self.phase = "preparation"

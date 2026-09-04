@@ -14,6 +14,26 @@ import subprocess
 import pygame
 
 if __name__ == "__main__":
+    # PYTHONHASHSEED musí byť nastavený PRED štartom interpretera — inak sa
+    # medzi behmi náhodne mení poradie iterácie cez set/dict s reťazcovými
+    # kľúčmi, čo robí --seed nereprodukovateľným (pozri rovnaký guard v
+    # tester_main.py a tester/simulator.py, kde je aj plné vysvetlenie).
+    #
+    # Reštart ide cez subprocess.run vo forme "-m tester.sim_screen"
+    # (presne ako v hlavičkovom docstringu), nie cez os.execv so
+    # sys.orig_argv — pri spustení cez IDE (napr. PyCharm run/debug)
+    # sys.orig_argv obsahuje IDE/debug launcher namiesto tohto skriptu,
+    # takže reštart cezeň potichu zlyhá bez pripojeného debug servera a
+    # proces skončí s "exit code 0" bez výstupu. Nájdené 2026-09-04 pri
+    # prvom nasadení pôvodného guardu.
+    if os.environ.get("PYTHONHASHSEED") != "0":
+        env = os.environ.copy()
+        env["PYTHONHASHSEED"] = "0"
+        result = subprocess.run(
+            [sys.executable, "-m", "tester.sim_screen"] + sys.argv[1:],
+            env=env,
+        )
+        sys.exit(result.returncode)
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from tester.simulator import (

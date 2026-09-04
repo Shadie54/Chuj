@@ -1,3 +1,33 @@
+# PYTHONHASHSEED musí byť nastavený PRED štartom interpretera (nedá sa
+# zmeniť za behu) — inak Python defaultne randomizuje poradie iterácie
+# cez set/dict s reťazcovými kľúčmi (napr. AIMemory.void_suits: dict[int,
+# set[str]]) pri každom spustení procesu. Ak niečo v AI rozhodovaní také
+# poradie číta, --seed X potom nereprodukuje vždy tú istú hru — nájdené
+# 2026-09-04 pri overovaní regresného testu (dva behy s tým istým
+# --seed 777 dávali rôzne výsledky, aj keď samotné rozdanie bolo už
+# opravené na deterministické — pozri game/round.py). Tento guard sa
+# reštartuje raz s fixovaným PYTHONHASHSEED=0, ak ešte nebol nastavený.
+#
+# Reštart ide cez subprocess.run (nie os.execv) a berie argumenty z
+# sys.argv (logické argumenty skriptu), nie zo sys.orig_argv (surový
+# príkazový riadok interpretera). Dôvod: pri spustení cez IDE (napr.
+# PyCharm run/debug) sys.orig_argv obsahuje IDE/debug launcher, nie
+# tento skript priamo — jeho opätovné spustenie cez os.execv potichu
+# zlyhá bez pripojeného debug serveru a proces skončí s "exit code 0"
+# bez akéhokoľvek výstupu. Nájdené 2026-09-04 pri prvom nasadení
+# pôvodného os.execv guardu.
+import os
+import sys
+if __name__ == "__main__" and os.environ.get("PYTHONHASHSEED") != "0":
+    import subprocess
+    env = os.environ.copy()
+    env["PYTHONHASHSEED"] = "0"
+    result = subprocess.run(
+        [sys.executable, os.path.abspath(__file__)] + sys.argv[1:],
+        env=env,
+    )
+    sys.exit(result.returncode)
+
 import argparse
 from tester.tester_screen import TesterScreen
 from tester.random_scenario import random_scenario, save_last_seed, load_last_seed
