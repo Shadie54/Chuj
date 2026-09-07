@@ -1,7 +1,7 @@
 # tester/tester_logger.py
 
 from dataclasses import dataclass, field
-from game.ai_sweep import SweepResult
+from game.ai_sweep.pipeline import SweepResult
 
 
 # ------------------------------------------------------------------

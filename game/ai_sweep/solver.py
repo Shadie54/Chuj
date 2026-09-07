@@ -1,4 +1,4 @@
-# game/ai_sweep_v2/solver.py
+# game/ai_sweep/solver.py
 """
 Tier B — presné vyhľadávanie pre koncovku.
 
@@ -6,16 +6,26 @@ Keď Tier A nevie dokázať istotu (napr. horník je u súpera a treba ho
 vynútiť cez discard), skúsime to dokázať presným prehľadávaním zvyšného
 stromu hry — podobne ako "double dummy" solver v bridge.
 
-Keďže úplne kompletný dôkaz "pre VŠETKY možné rozloženia neznámych
-kariet" je kombinatoricky drahý, používame pragmatický, stále 100%
-deterministický kompromis: vygenerujeme niekoľko REPREZENTATÍVNYCH
-NAJHORŠÍCH rozložení (pre každého súpera skúsime "tento súper dostal
-všetky nebezpečné karty čo mohol"), a hľadáme JEDNU kartu, ktorá prežije
-ÚPLNE VŠETKY tieto hypotézy naraz — nie že každá hypotéza má vlastnú
-víťaznú kartu (to by nebolo robustné, lebo v skutočnosti neviem vopred
-ktorá hypotéza platí).
+2026-09-04: pôvodná verzia testovala len 2-3 RUČNE VYBRANÉ "najhoršie"
+hypotézy (pre každého súpera "čo keby dostal všetky nebezpečné karty čo
+mohol") a výsledok vyhlasovala za PROVEN_CERTAIN/confidence=1.0. To NEBOL
+skutočný dôkaz — rozdelenie nebezpečných kariet MEDZI viacerých súperov
+naraz (napr. každý dostane jednu) nie je pokryté žiadnou z tých 2-3
+"koncentrovaných" hypotéz, a pritom môže poraziť kartu, ktorá "prežila"
+všetky testované scenáre. To vysvetľovalo katastrofálnu reálnu úspešnosť
+(3.8% na 200 hrách/seed 777, viď claude/03_SWEEP_V2_HANDOFF.md §5) — Tier
+B "dokazoval" veci, ktoré neboli doopravdy dokázané, vo veľkom objeme
+(oveľa viac pokusov než opatrná pipeline).
 
-V rámci jednej hypotézy (= plne známe rozdanie) je vyhľadávanie presný
+Teraz namiesto vzorky testujeme ÚPLNE VŠETKY platné rozdelenia zvyšných
+neznámych kariet (rešpektujúc void_suits a presné veľkosti rúk) —
+skutočný kompletný dôkaz, nie odhad. Toto je výpočtovo zvládnuteľné len
+pri malom počte zvyšných kariet, preto MAX_SEARCH_TRICKS drží tento
+rozsah nízko (štartujeme na 2 kolá — presne rozsah, ktorý sme predtým
+riešili ručne cez pipeline.py opravy §6.3 a "posledná karta u súpera" —
+neskôr možno opatrne rozšíriť na 3+, ak to výkonovo zvládne).
+
+V rámci jedného rozdelenia (= plne known rozdanie) je vyhľadávanie presný
 AND-OR strom:
 - môj ťah = OR uzol (stačí JEDNA karta ktorá vedie k úspechu)
 - súperov ťah = AND uzol (súper hrá nepriateľsky — VŠETKY jeho voľby
@@ -24,15 +34,22 @@ AND-OR strom:
 """
 
 from __future__ import annotations
+import itertools
 from game.card import Card
 from game.player import Player
 from game.ai_memory import AIMemory
 from game.trick import Trick
-from game.ai_sweep_v2.models import SweepPlan
+from game.ai_sweep.models import SweepPlan
 from config import SUITS, NUM_PLAYERS
 
-MAX_SEARCH_TRICKS = 5   # nespúšťať keď zostáva viac štichov (príliš drahé)
-MAX_SEARCH_NODES = 200_000  # bezpečnostný strop na jednu hypotézu
+MAX_SEARCH_TRICKS = 2   # nespúšťať keď zostáva viac štichov (príliš drahé
+                        # pre ÚPLNÉ vyčerpanie priestoru rozložení — pozri
+                        # docstring vyššie; zvyšovať postupne a opatrne)
+MAX_SEARCH_NODES = 200_000  # bezpečnostný strop na jedno rozdelenie
+MAX_DISTRIBUTIONS = 20_000  # bezpečnostný strop na počet vygenerovaných
+                            # rozložení (obranné opatrenie — pri
+                            # MAX_SEARCH_TRICKS=2/3 by sa nemal reálne
+                            # nikdy vyčerpať, priestor je malý)
 
 
 class _SearchBudgetExceeded(Exception):
@@ -127,60 +144,55 @@ def _search(hands: dict[int, list[Card]],
     return all(outcomes) if not is_me else any(outcomes)
 
 
-def _danger_score(card: Card) -> tuple:
-    """Zoradenie kariet od najnebezpečnejšej (pre priradenie súperovi)."""
-    return (
-        1 if card.is_special else 0,
-        1 if card.suit == "heart" else 0,
-        card.rank_order,
-    )
-
-
-def _generate_hypothesis(target_opponent: int,
-                          opponents: list[int],
-                          hand_sizes: dict[int, int],
-                          void_suits: dict[int, set[str]],
-                          pool: list[Card]) -> dict[int, list[Card]] | None:
+def _generate_all_distributions(opponents: list[int],
+                                 hand_sizes: dict[int, int],
+                                 void_suits: dict[int, set[str]],
+                                 pool: list[Card]
+                                 ) -> list[dict[int, list[Card]]]:
     """
-    Postaví jedno "najhoršie rozloženie" — target_opponent dostane
-    prednostne čo najviac nebezpečných kariet, zvyšok sa rozdelí medzi
-    ostatných. Vracia None ak sa nepodarilo nájsť platné priradenie
-    (konflikt s void_suits/kapacitou rúk).
+    Vygeneruje ÚPLNE VŠETKY platné rozdelenia `pool` medzi `opponents`,
+    rešpektujúc presné veľkosti rúk (`hand_sizes`) a známe voids
+    (`void_suits`) — skutočné kompletné vyčerpanie priestoru, nie len
+    vzorka "najhorších" scenárov (pozri modulový docstring prečo je toto
+    dôležité pre to, aby PROVEN_CERTAIN bol naozaj dôkaz).
+
+    Backtracking: pridelí kartám prvého súpera v `opponents`, potom
+    rekurzívne pokračuje na ďalšieho so zvyšným poolom, atď. Pri
+    MAX_SEARCH_TRICKS=2-3 je pool malý (rádovo jednotky kariet), takže
+    toto je lacné — orezané cez MAX_DISTRIBUTIONS ako obranné poistenie.
     """
-    remaining_slots = dict(hand_sizes)
-    assignment = {i: [] for i in opponents}
-    remaining_pool = sorted(pool, key=_danger_score, reverse=True)
+    def backtrack(remaining_pool: list[Card],
+                  remaining_opponents: list[int]):
+        if not remaining_opponents:
+            if not remaining_pool:
+                yield {}
+            return
 
-    # 1. Cieľový súper dostane prednosť na nebezpečné karty
-    still_unassigned = []
-    for card in remaining_pool:
-        if remaining_slots[target_opponent] > 0 and card.suit not in void_suits[target_opponent]:
-            assignment[target_opponent].append(card)
-            remaining_slots[target_opponent] -= 1
-        else:
-            still_unassigned.append(card)
+        opp = remaining_opponents[0]
+        size = hand_sizes[opp]
+        eligible = [c for c in remaining_pool if c.suit not in void_suits[opp]]
+        if len(eligible) < size:
+            return  # nedá sa splniť veľkosť ruky pri danom void obmedzení
 
-    # 2. Zvyšok — greedy medzi ostatnými (preferuj toho s najviac voľnými slotmi)
-    for card in still_unassigned:
-        eligible = [
-            i for i in opponents
-            if remaining_slots[i] > 0 and card.suit not in void_suits[i]
-        ]
-        if not eligible:
-            return None  # nedá sa validne priradiť — táto hypotéza je nekonzistentná
-        best = max(eligible, key=lambda i: remaining_slots[i])
-        assignment[best].append(card)
-        remaining_slots[best] -= 1
+        rest_opponents = remaining_opponents[1:]
+        for combo in itertools.combinations(eligible, size):
+            combo_set = set(combo)
+            new_remaining = [c for c in remaining_pool if c not in combo_set]
+            for rest_assignment in backtrack(new_remaining, rest_opponents):
+                rest_assignment[opp] = list(combo)
+                yield rest_assignment
 
-    if any(remaining_slots[i] != 0 for i in opponents):
-        return None  # niekomu ostali prázdne sloty — pool a hand_sizes nesedia
-
-    return assignment
+    distributions = []
+    for assignment in backtrack(pool, opponents):
+        distributions.append(assignment)
+        if len(distributions) >= MAX_DISTRIBUTIONS:
+            break
+    return distributions
 
 
 def _generate_hypotheses(player: Player, memory: AIMemory, current_trick: Trick,
                           trick_number: int) -> list[dict[int, list[Card]]]:
-    """Vygeneruje reprezentatívne najhoršie rozloženia (max 1 na súpera)."""
+    """Vygeneruje úplne všetky platné rozdelenia zvyšných kariet."""
     already_played = {c for _, c in current_trick.played_cards}
     pool = [
         c for suit in SUITS for c in memory.remaining[suit]
@@ -200,28 +212,65 @@ def _generate_hypotheses(player: Player, memory: AIMemory, current_trick: Trick,
 
     # Konzistentnosť: súčet veľkostí rúk musí sedieť s poolom (defenzívna
     # kontrola — ak nesedí, niečo je vo AIMemory desynchronizované a
-    # Tier B by generoval nesprávne hypotézy).
+    # Tier B by generoval nesprávne rozdelenia).
     if sum(hand_sizes.values()) != len(pool):
         return []  # niečo nesedí — radšej Tier B vôbec neskúšať
 
     void_suits = memory.void_suits
 
-    hypotheses = []
-    for target in opponents:
-        hyp = _generate_hypothesis(target, opponents, hand_sizes, void_suits, pool)
-        if hyp is not None:
-            hypotheses.append(hyp)
-    return hypotheses
+    return _generate_all_distributions(opponents, hand_sizes, void_suits, pool)
+
+
+def _opponent_already_has_penalty(player: Player, memory: AIMemory) -> int:
+    """
+    Rovnaká kontrola ako pipeline.py `_gate1_no_opponent_penalty` —
+    koľko trestných kariet už NEODVOLATEĽNE drží niekto iný (zo štichov
+    odohraných PRED týmto rozhodnutím, v tomto kole).
+
+    Kriticky dôležité pre Tier B: `_search` je čisto FORWARD-looking (rieši
+    len štichy od `trick_number` do konca kola) — nič nevie o tom, či
+    sweep nebol už dávno stratený kvôli skoršiemu štichu v tomto istom
+    kole. Bez tejto kontroly vie Tier B "dokázať" PROVEN_CERTAIN aj vtedy,
+    keď je celkový sweep matematicky nemožný — presne to spôsobovalo
+    masívny výbuch neúspešných pokusov po opravení vzorkovania hypotéz
+    (nájdené 2026-09-04 pri regresnom teste: sweep_failed vyskočilo na
+    ~4900 namiesto očakávaného zlepšenia).
+    """
+    hand = player.hand.cards
+    my_hand_penalty = sum(
+        1 for c in hand
+        if c.suit == "heart" or (c.is_special and c.suit in ("leaf", "acorn"))
+    )
+    remaining_penalty = len(memory.remaining["heart"])
+    if not memory.is_special_gone("leaf"):
+        if not any(c.is_special and c.suit == "leaf" for c in hand):
+            remaining_penalty += 1
+    if not memory.is_special_gone("acorn"):
+        if not any(c.is_special and c.suit == "acorn" for c in hand):
+            remaining_penalty += 1
+    my_taken_penalty = len(player.penalty_cards)
+    total_accounted = my_hand_penalty + remaining_penalty + my_taken_penalty
+    return 10 - total_accounted
 
 
 def solve(player: Player, memory: AIMemory, trick_number: int,
           current_trick: Trick, playable: list[Card]) -> SweepPlan:
     """
     Tier B hlavný vstupný bod. Vracia SweepPlan — buď PROVEN_CERTAIN
-    s konkrétnou kartou (ak existuje ťah čo prežije všetky testované
-    najhoršie hypotézy), alebo UNRESOLVED (neoverené, necháva sa na
-    Tier C).
+    s konkrétnou kartou (ak existuje ťah, ktorý prežije ÚPLNE VŠETKY
+    platné rozdelenia zvyšných neznámych kariet — skutočný kompletný
+    dôkaz, pozri modulový docstring), alebo UNRESOLVED (neoverené,
+    necháva sa na Tier C).
     """
+    already_taken = _opponent_already_has_penalty(player, memory)
+    if already_taken > 0:
+        return SweepPlan(
+            certainty="PROVEN_IMPOSSIBLE", decision="ABANDON",
+            reasoning=[f"Tier B: súper už má {already_taken} trestných "
+                       f"kariet zo skoršieho štichu — sweep nemožný "
+                       f"(forward search by to nevidel)"],
+        )
+
     tricks_remaining = 8 - trick_number
     if tricks_remaining > MAX_SEARCH_TRICKS:
         return SweepPlan(
@@ -234,10 +283,10 @@ def solve(player: Player, memory: AIMemory, trick_number: int,
     if not hypotheses:
         return SweepPlan(
             certainty="UNRESOLVED", decision="WATCH",
-            reasoning=["Tier B: nepodarilo sa zostaviť žiadnu platnú hypotézu rozloženia"],
+            reasoning=["Tier B: nepodarilo sa zostaviť žiadne platné rozdelenie kariet"],
         )
 
-    reasoning = [f"Tier B: {len(hypotheses)} hypotéz(a) najhoršieho rozloženia"]
+    reasoning = [f"Tier B: {len(hypotheses)} možných rozložení (úplné vyčerpanie priestoru)"]
 
     for candidate in playable:
         survives_all = True

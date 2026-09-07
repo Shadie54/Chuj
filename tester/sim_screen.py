@@ -96,10 +96,6 @@ class SimSetupScreen:
         self.seed_enabled = False
         self.seed_value = 42
         self.system = "new"
-        # Sweep systém — nezávislý od "AI systém" vyššie (ten rieši
-        # celkovú AI logiku, toto len sweep rozhodovanie). Default "old",
-        # aby sa správanie nezmenilo pre nikoho, kto si toto nevšimne.
-        self.sweep_system = "old"
 
         self.watches = {k: True for k, _, _ in WATCHES}
 
@@ -123,11 +119,6 @@ class SimSetupScreen:
         self.sys_y = y
         self.sys_new_rect = pygame.Rect(self.CTRL_X, y - 14, 80, 28)
         self.sys_old_rect = pygame.Rect(self.CTRL_X + 88, y - 14, 80, 28)
-        y += 44
-
-        self.sweep_sys_y = y
-        self.sweep_new_rect = pygame.Rect(self.CTRL_X, y - 14, 80, 28)
-        self.sweep_old_rect = pygame.Rect(self.CTRL_X + 88, y - 14, 80, 28)
         y += 54
 
         self.watch_header_y = y
@@ -162,7 +153,6 @@ class SimSetupScreen:
         for k, _, _ in WATCHES:
             setattr(cfg, k, self.watches[k])
         cfg._use_old_system = (self.system == "old")
-        cfg.use_new_sweep = (self.sweep_system == "new")
         return cfg
 
     # -------------------- eventy --------------------
@@ -212,10 +202,6 @@ class SimSetupScreen:
             self.system = "new"
         if self.sys_old_rect.collidepoint(pos):
             self.system = "old"
-        if self.sweep_new_rect.collidepoint(pos):
-            self.sweep_system = "new"
-        if self.sweep_old_rect.collidepoint(pos):
-            self.sweep_system = "old"
         for k, (cb, y, label, indent) in self.watch_rects.items():
             if cb.collidepoint(pos):
                 if (k == "illuminated_exclude_high_score"
@@ -275,20 +261,6 @@ class SimSetupScreen:
         for label, rect, key in [("NOVÝ", self.sys_new_rect, "new"),
                                   ("STARÝ", self.sys_old_rect, "old")]:
             active = self.system == key
-            pygame.draw.rect(self.screen, C_PANEL, rect)
-            pygame.draw.rect(self.screen,
-                             C_ACCENT if active else C_BORDER, rect,
-                             2 if active else 1)
-            _text(self.screen, self.font, label,
-                  C_ACCENT if active else C_TEXT,
-                  centerx=rect.centerx, centery=rect.centery)
-
-        # Sweep systém — nezávislý od AI systému vyššie
-        _text(self.screen, self.font, "Sweep systém:", C_TEXT,
-              left=self.LEFT, centery=self.sweep_sys_y)
-        for label, rect, key in [("NOVÝ", self.sweep_new_rect, "new"),
-                                  ("STARÝ", self.sweep_old_rect, "old")]:
-            active = self.sweep_system == key
             pygame.draw.rect(self.screen, C_PANEL, rect)
             pygame.draw.rect(self.screen,
                              C_ACCENT if active else C_BORDER, rect,

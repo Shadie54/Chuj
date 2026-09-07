@@ -1,4 +1,18 @@
-# game/ai_sweep.py
+# game/ai_sweep/pipeline.py
+"""
+Sweep pipeline (Tier A) — 7-vrstvová AND-gate kaskáda pre rozhodovanie
+o sweepe ("beriem všetko"). Vznikla 2026-08-20 ako 1:1 kópia vtedajšieho
+game/ai_sweep.py (85.3% úspešnosť pri 136 pokusoch na 200 hrách, seed
+777), namiesto pokračovania v systéme postavenom od nuly (ten dosahoval
+len ~17-18% úspešnosť — pozri claude/03_SWEEP_V2_HANDOFF.md). Odvtedy sa
+priebežne opravuje a je to jediný sweep systém v hre — pôvodný
+jednosúborový game/ai_sweep.py bol po overení zhody zmazaný 2026-09-06,
+a balík bol následne premenovaný z ai_sweep_v2/ na ai_sweep/ (2026-09-07)
+— "v2" už nedávalo zmysel, keď žiadne "v1" neexistuje.
+
+Orchestrácia (game/ai_sweep/engine.py) pred týmto pipeline navyše
+skúša Tier B (solver.py) — presné AND-OR vyhľadávanie pre koncovku.
+"""
 
 from __future__ import annotations
 from dataclasses import dataclass, field
@@ -65,6 +79,10 @@ class Layer2Result:
     weaknesses: list[str] = field(default_factory=list)
     strengths: list[str] = field(default_factory=list)
     recommended_state: str = "NIE"  # "NIE" | "WATCHING" | "pokračuj"
+    capacity_ratio: float = 1.0  # capacity/to_capture — sila OSTATNÝCH farieb
+    # voči tomu, čo ešte treba chytiť. Používa L3/L4 pre "void_dependency"
+    # critical events (napr. som void v srdciach — pozri _layer3).
+    heart_killers: int = 0  # hearts v ruke ktoré nevyhrávajú (pesimisticky)
 
 
 @dataclass
@@ -215,7 +233,8 @@ class SweepPipeline:
         # --- VRSTVA 2 ---
         l2 = self._layer2(hand_eval)
         reasoning.append(
-            f"L2: strength={l2.strength}, profile={l2.profile}"
+            f"L2: strength={l2.strength}, profile={l2.profile}, "
+            f"ratio={l2.capacity_ratio:.2f}, heart_killers={l2.heart_killers}"
         )
         if not l2.passed:
             target = (SweepState.WATCHING
@@ -410,13 +429,9 @@ class SweepPipeline:
         total_in_game = 10  # 8 hearts + 2 horníci
         already_taken_by_others = total_in_game - total_accounted
 
-        if self.logger:
-            self.logger.log_strategy(
-                self.player.name,
-                "SWEEP_GATE1_DEBUG",
-                f"hand_penalty={my_hand_penalty}, remaining={remaining_penalty}, "
-                f"my_taken={my_taken_penalty}, already_taken={already_taken_by_others}"
-            )
+        # POZN: SWEEP_GATE1_DEBUG zmazané 2026-09-04 — vypisovalo sa aj pri
+        # PASS (zbytočné) a pri FAIL je dôvod už v L1 riadku reasoning_chain
+        # ("gate1: súper má X trestných kariet"), pozri return nižšie.
 
         if already_taken_by_others > 0:
             return False, f"gate1: súper má {already_taken_by_others} trestných kariet"
@@ -508,7 +523,7 @@ class SweepPipeline:
         for suit in SUITS:
             per_suit[suit] = self._evaluate_suit(suit, hand)
 
-        strength, profile, weaknesses, strengths = \
+        strength, profile, weaknesses, strengths, capacity_ratio, heart_killers = \
             self._hand_summary(per_suit)
 
         if strength == "WEAK":
@@ -519,7 +534,9 @@ class SweepPipeline:
                 per_suit=per_suit,
                 weaknesses=weaknesses,
                 strengths=strengths,
-                recommended_state="NIE"
+                recommended_state="NIE",
+                capacity_ratio=capacity_ratio,
+                heart_killers=heart_killers
             )
 
         if strength == "MEDIUM":
@@ -534,7 +551,9 @@ class SweepPipeline:
                 per_suit=per_suit,
                 weaknesses=weaknesses,
                 strengths=strengths,
-                recommended_state="WATCHING"
+                recommended_state="WATCHING",
+                capacity_ratio=capacity_ratio,
+                heart_killers=heart_killers
             )
 
         # STRONG → pokračuj
@@ -545,7 +564,9 @@ class SweepPipeline:
             per_suit=per_suit,
             weaknesses=weaknesses,
             strengths=strengths,
-            recommended_state="pokračuj"
+            recommended_state="pokračuj",
+            capacity_ratio=capacity_ratio,
+            heart_killers=heart_killers
         )
 
     def _evaluate_suit(self, suit: str, hand: list[Card]) -> SuitEval:
@@ -728,12 +749,8 @@ class SweepPipeline:
             if acorn_control == 0:
                 acorn_pts = 8 if acorn_lit else 4
 
-        if self.logger:
-            self.logger.log_strategy(
-                self.player.name, "SWEEP_RTC_DEBUG",
-                f"hearts_pts={hearts_pts}, leaf_pts={leaf_pts}, "
-                f"acorn_pts={acorn_pts}, total={hearts_pts + leaf_pts + acorn_pts}"
-            )
+        # POZN: SWEEP_RTC_DEBUG zmazané 2026-09-04 — súčet (to_capture) je
+        # už viditeľný cez ratio v L2 riadku reasoning_chain.
 
         return hearts_pts + leaf_pts + acorn_pts
 
@@ -830,36 +847,13 @@ class SweepPipeline:
             remaining = self.memory.remaining[suit]
             non_heart_wins += self._suit_extended_wins(my_cards, remaining)
         non_heart_coverage = non_heart_wins * 2
-        heart_wins = self._suit_extended_wins(
-            [c for c in hand if c.suit == "heart"],
-            self.memory.remaining["heart"],
-        )
-        bell_wins = self._suit_extended_wins(
-            [c for c in hand if c.suit == "bell"],
-            self.memory.remaining["bell"],
-        )
-        leaf_wins = self._suit_extended_wins(
-            [c for c in hand if c.suit == "leaf"],
-            self.memory.remaining["leaf"],
-        )
-        acorn_wins = self._suit_extended_wins(
-            [c for c in hand if c.suit == "acorn"],
-            self.memory.remaining["acorn"],
-        )
-        if self.logger:
-            self.logger.log_strategy(
-                self.player.name, "SWEEP_CAP_DEBUG",
-                f"remaining_bell={self.memory.remaining['bell']}, "
-                f"hand_bell={[c for c in hand if c.suit == 'bell']}, "
-                f"hand_acorn={[c for c in hand if c.suit == 'acorn']}, "
-                
-                f"remaining_leaf={self.memory.remaining['leaf']}, "
-                f"remaining_acorn={self.memory.remaining['acorn']}, "
-                f"remaining_heart={self.memory.remaining['heart']}"
-                
-                f"heart_wins={heart_wins}, bell_wins={bell_wins}, "
-                f"leaf_wins={leaf_wins}, acorn_wins={acorn_wins}"
-            )
+
+        # POZN: SWEEP_CAP_DEBUG zmazané 2026-09-04 — vypisovalo ruku/remaining
+        # po farbách, čo je 100% duplicita s --- RUKY --- a --- AIMemory ---
+        # v exporte. Predtým navyše kvôli tomuto logu prepočítavalo
+        # heart_wins/bell_wins/leaf_wins/acorn_wins druhýkrát zbytočne —
+        # zmazané aj to.
+
         return hearts_coverage + non_heart_coverage
 
     def _hand_summary(self, per_suit: dict[str, SuitEval]) -> tuple:
@@ -875,7 +869,7 @@ class SweepPipeline:
         MEDIUM: ratio >= 1.0 a <= 1 heart killer
         WEAK: inak
 
-        Vracia (strength, profile, weaknesses, strengths).
+        Vracia (strength, profile, weaknesses, strengths, ratio, heart_killers).
         """
         weaknesses = []
         strengths = []
@@ -894,13 +888,12 @@ class SweepPipeline:
         else:
             ratio = capacity / to_capture
 
-        if self.logger:
-            self.logger.log_strategy(
-                self.player.name, "SWEEP_L2_DEBUG",
-                f"capacity={capacity}, to_capture={to_capture}, "
-                f"heart_killers={heart_killers}, ratio={ratio:.2f} | "
-                f"hearts_pts=?, leaf_pts=?, acorn_pts=?"
-            )
+        # POZN: capacity/to_capture/ratio/heart_killers sa už nevypisujú
+        # samostatne (SWEEP_L2_DEBUG, zmazané 2026-09-04) — ratio a
+        # heart_killers idú namiesto toho priamo do L2 riadku v
+        # reasoning_chain (evaluate()), nech je debug output na jednom
+        # mieste. capacity/to_capture ostávajú len lokálne (odvodené z
+        # ratio, netreba ich vypisovať zvlášť).
 
         # --- Strength rozhodnutie ---
         if ratio >= 1.5 and heart_killers == 0:
@@ -934,7 +927,7 @@ class SweepPipeline:
         else:
             profile = "HORNIK_BAIT"
 
-        return strength, profile, weaknesses, strengths
+        return strength, profile, weaknesses, strengths, ratio, heart_killers
 
     # ------------------------------------------------------------------
     # VRSTVA 3: SUIT CONTROL ANALYSIS
@@ -973,10 +966,23 @@ class SweepPipeline:
                     event=f"horník {suit} musí padnúť (unknown owner)",
                     event_type="card_falls"
                 ))
-            elif suit_eval.hornik_owner == "me" and not suit_eval.hornik_capturable:
-                # Držím horníka, ale nemám A/K v tej farbe na jeho ochranu —
-                # ak budem nútený ho zahrať, súper s A/K ho môže prebiť
-                # a sweep sa zlomí. Predtým sa toto riziko ignorovalo.
+            elif (suit_eval.hornik_owner == "me" and not suit_eval.hornik_capturable
+                    and timelines[suit].guaranteed_wins == 0):
+                # Držím horníka, nemám A/K v ruke na jeho ochranu A horník
+                # ešte NIE JE garantovaná výhra (guaranteed_wins==0 pre túto
+                # farbu) — teda niekto iný v hre môže mať vyššiu kartu.
+                #
+                # Pozor: hornik_capturable sám osebe len hovorí "mám A/K vo
+                # svojej ruke" — nekontroluje, či A/K (a ostatné vyššie karty)
+                # už boli odohrané zo hry. Ak áno, horník je top-run víťaz
+                # (control/guaranteed_wins v _evaluate_suit/_suit_timeline to
+                # už správne počíta cez memory.remaining, ktoré odohrané karty
+                # vylučuje) a je bezpečný bez ohľadu na to, čo držím ja osobne.
+                # Bez guaranteed_wins==0 podmienky sa horník v tejto situácii
+                # falošne označoval za nechránený (seed 216902, T7: AI_1 malo
+                # Q♣ ako jedinú zostávajúcu acorn kartu nad 9♣/7♣, teda istú
+                # výhru, ale L3 tvrdil P=0.5 → AI zahodilo horníka namiesto
+                # jeho odohratia).
                 critical_events.append(CriticalEvent(
                     event=f"vlastný horník {suit} nie je chránený (bez A/K)",
                     event_type="card_falls"
@@ -984,11 +990,31 @@ class SweepPipeline:
 
         # Hearts distribution event len ak mám conditional wins
         hearts_tl = timelines["heart"]
+        hearts_outside = l2.per_suit["heart"].cards_outside
+        my_hearts = [c for c in hand if c.suit == "heart"]
+
         if hearts_tl.conditional_wins > 0:
-            hearts_outside = l2.per_suit["heart"].cards_outside
             critical_events.append(CriticalEvent(
                 event=f"hearts rozdelené — {hearts_outside} vonku",
                 event_type="distribution"
+            ))
+        elif not my_hearts and hearts_outside > 0:
+            # Som VOID v srdciach — nemám ani jednu kartu tejto farby,
+            # takže srdcia nemôžem nikdy viesť ani vyhrať priamo. Jediná
+            # cesta ako ešte zvyšné srdcia získať: súper, ktorý je void v
+            # niečom čo VEDIEM (inou, mojou silnou farbou), ich tam zahodí
+            # a ja ten štich vyhrám. Toto je horšie než len "rozdelenie"
+            # (conditional_wins>0 vetva vyššie) — tam aspoň viem srdcia
+            # sám dobiť; tu som na 100% závislý na tom, čo urobia súperi.
+            # Predtým sa v tomto prípade nepridal žiadny critical event
+            # (conditional_wins je pri 0 mojich hearts vždy 0), takže L5
+            # počítal P(sweep) ako prázdny súčin = 1.0 (falošná istota) —
+            # seed 530543, T3: AI_1 malo 0 sŕdc a len slabú guľovú (9,7)
+            # ako "inú farbu", napriek tomu COMMITTED_FULL s P=1.0.
+            critical_events.append(CriticalEvent(
+                event=f"som void v srdciach — {hearts_outside} musí "
+                      f"prísť cez inú farbu",
+                event_type="void_dependency"
             ))
 
         # --- C. Cross-suit analysis ---
@@ -1257,7 +1283,8 @@ class SweepPipeline:
         updated_events = []
         for event in l3.critical_events:
             prob = self._estimate_critical_event_prob(
-                event, card_locations, distribution_probs
+                event, card_locations, distribution_probs,
+                l2.capacity_ratio
             )
             updated_events.append(CriticalEvent(
                 event=event.event,
@@ -1445,7 +1472,8 @@ class SweepPipeline:
     def _estimate_critical_event_prob(
             event: CriticalEvent,
             card_locations: dict[str, CardLocationProb],
-            distribution_probs: dict[str, DistributionProb]) -> float:
+            distribution_probs: dict[str, DistributionProb],
+            capacity_ratio: float = 1.0) -> float:
         """
         Odhadne pravdepodobnosť critical eventu.
         """
@@ -1475,6 +1503,18 @@ class SweepPipeline:
         elif event.event_type == "order":
             # Order events sú najťažšie odhadnúť → konzervatívny odhad
             return 0.5
+
+        elif event.event_type == "void_dependency":
+            # Som void v danej farbe — karty musia prísť cez INÚ (moju)
+            # silnú farbu (súper void v nej → discard → ja vyhrám štich).
+            # Pravdepodobnosť viažeme na capacity_ratio z L2 (rovnaká
+            # metrika ako STRONG/MEDIUM/WEAK klasifikácia) — slabé ostatné
+            # farby → nízka šanca zachytiť blúdiace karty, silné → vyššia.
+            # Hodnoty zatiaľ odhadnuté (nie tuningované cez simulátor),
+            # budú sa ladiť ďalej — pozri claude/03_SWEEP_V2_HANDOFF.md.
+            if capacity_ratio >= 1.5:
+                return 0.6
+            return 0.35
 
         return 0.5
 
@@ -1726,6 +1766,35 @@ class SweepPipeline:
             ]
             if suit_cards:
                 card = min(suit_cards, key=lambda c: c.rank_order)
+
+                # Ak je candidate.first_card SÁM horníkom tejto farby,
+                # jeho zachytenie je týmto ťahom garantované (musel mať
+                # guaranteed_wins>0, inak by nebol kandidátom) — takže
+                # žiadny horník tejto farby už "nevisí vo vzduchu" a
+                # zvyšná nízka karta nenesie žiadne dodatočné riziko.
+                # is_special_gone(suit) by na to prišlo tiež, ale až PO
+                # zahraní (record_trick) — v momente tohto rozhodovania
+                # (pred zahraním) je ešte False, aj keď práve TEĽTO ťah
+                # horníka rieši. Nájdené 2026-09-04, seed 470070105,
+                # štich 7: AI_1 malo v ruke [7♠, Q♠(horník)], Q♠ bola
+                # garantovaná výhra, ale _find_escape ju vyhodnotil ako
+                # MESSY (damage=8) namiesto bezstratovej — pipeline preto
+                # horníka neviedol, AI zahrala 7♠, prehrala štich a
+                # horníka neskôr stratila vynúteným odhodom. Pozri
+                # claude/03_SWEEP_V2_HANDOFF.md §6.3.
+                hornik_resolved_by_candidate = (
+                    candidate.first_card.suit == suit
+                    and candidate.first_card.is_special
+                )
+                if hornik_resolved_by_candidate:
+                    return EscapeRoute(
+                        card=candidate.first_card,
+                        quality="NOT_NEEDED",
+                        damage=0,
+                        description=(f"{candidate.first_card} je garantovaný "
+                                      f"horník-capture, bezstratový"),
+                    )
+
                 quality = ("CONTAINED"
                            if self.memory.is_special_gone(suit)
                            else "MESSY")

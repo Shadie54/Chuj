@@ -1,6 +1,6 @@
-# game/ai_sweep_v2/models.py
+# game/ai_sweep/models.py
 """
-Dátový model pre nový sweep systém (v2).
+Dátový model pre sweep systém.
 
 Kľúčový rozdiel oproti starému systému: stav hovorí o ISTOTE
 (certainty), nie len o akcii — pri debugovaní je hneď vidno, či AI
