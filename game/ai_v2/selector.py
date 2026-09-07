@@ -147,6 +147,41 @@ class StrategySelector:
         non_special = [c for c in ctx.playable if not c.is_special]
         pool = non_special if non_special else ctx.playable
         card = min(pool, key=lambda c: c.rank_order)
+
+        # Úzko vymedzený prípad: leader a VŠETKY hrateľné karty (vrátane
+        # prípadných horníkov) sú zvonka netknuteľné — nič u súperov ani v
+        # aktuálnom štichu ich neprebije. Zámerne NEPOUŽÍVA
+        # DumpDangerous-štýl _is_trap (tá naviac kontroluje aj vlastné iné
+        # karty tej istej farby — zmysluplné pre reagovanie, kde ide o to,
+        # ktorá JEDNA z mojich kariet je natrvalo "zaseknutá", ale zavádzajúce
+        # pri vedení, kde vyberám len jednu kartu naraz a vlastné ostatné
+        # karty danej farby sú irelevantné). Príklad, prečo je to dôležité:
+        # ak držím CELÝ zvyšok jednej farby (napr. 10♣,8♣,7♣ a nič iné z
+        # acorn už nikde neexistuje), z pohľadu súperov je KAŽDÁ z nich
+        # rovnako netknuteľná — pôvodná (DumpDangerous) definícia by
+        # nesprávne označila len 10♣ ako "trap" (8♣/7♣ by "zlyhali" na
+        # vlastnom vyššom 10♣), a `all(...)` by nikdy nebolo True.
+        # Karta sa nemení oproti GLOBAL_FALLBACK vyššie — mení sa len label,
+        # aby sa tieto (väčšinou už správne) prípady dali oddeliť od
+        # skutočne vylepšiteľných nálezov. Zámerne mimo zoznamu stratégií v
+        # selector.strategies — nesúťaží cez _select_by_weight, takže
+        # nemôže ovplyvniť žiadnu inú situáciu.
+        is_pure_trap_lead = (
+            ctx.is_leader
+            and bool(ctx.playable)
+            and all(self._is_unbeatable_by_opponent(c, ctx) for c in ctx.playable)
+        )
+
+        if is_pure_trap_lead:
+            self.last_variant = "FORCED_LEAD_TRAP"
+            if self.logger:
+                self.logger.log_strategy(
+                    self.player.name, "FORCED_LEAD_TRAP",
+                    f"leader, všetky hrateľné karty (vrátane prípadných "
+                    f"horníkov) sú trap: {card}"
+                )
+            return card
+
         self.last_variant = "GLOBAL_FALLBACK"
         if self.logger:
             self.logger.log_strategy(
@@ -154,6 +189,27 @@ class StrategySelector:
                 f"žiadna stratégia nemala kandidáta: {card}"
             )
         return card
+
+    def _is_unbeatable_by_opponent(self, card: Card, ctx: AIContext) -> bool:
+        """
+        Na rozdiel od Strategy._is_trap (base.py) NEKONTROLUJE vlastné iné
+        karty tej istej farby (higher_own) — pre vedenie je relevantné len
+        to, či kartu môže prebiť súper (remaining) alebo už rozohraný štich,
+        nie moje ostatné karty. Príklad: ak držím CELÝ zvyšok jednej farby
+        (napr. 10♣,8♣,7♣ a nič iné z acorn už nikde neexistuje), z pohľadu
+        súperov je KAŽDÁ z nich rovnako netknuteľná — pôvodná definícia by
+        nesprávne označila len 10♣ ako "trap" (8♣/7♣ by "zlyhali" na
+        vlastnom vyššom 10♣).
+        """
+        higher_remaining = [
+            c for c in self.memory.remaining[card.suit]
+            if c.rank_order > card.rank_order
+        ]
+        higher_in_trick = [
+            c for c in ctx.trick_cards
+            if c.suit == card.suit and c.rank_order > card.rank_order
+        ]
+        return not higher_remaining and not higher_in_trick
 
     def _log_active(self, active: list[Strategy]):
         if not self.logger:

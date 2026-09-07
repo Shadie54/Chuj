@@ -129,6 +129,12 @@ class TesterScreen:
         self.seed_input: str = ""  # aktuálny text v inpute
         self.seed_input_active: bool = False  # či je input aktívny
 
+        # Krátky "flash" Export tlačidla po kliknutí (napr. "Uložené ✓")
+        self.status_message: str = ""
+        self.status_label: str = ""
+        self.status_message_color = T_BUTTON_SUCCESS
+        self.status_message_until: int = 0  # pygame.time.get_ticks(), 0 = neaktívne
+
         # Findings playlist (--findings mód)
         self.findings_playlist = findings_playlist
         self.finding_prev_btn = pygame.Rect(
@@ -529,8 +535,17 @@ class TesterScreen:
             with open("tester_export.txt", "w", encoding="utf-8") as f:
                 f.write(text)
             print("[Export] Uložené do tester_export.txt")
+            self._set_status("Uložené ✓", "Export uložený → tester_export.txt", T_BUTTON_SUCCESS)
         except Exception as e:
             print(f"[Export] CHYBA: {type(e).__name__}: {e}")
+            self._set_status("Chyba!", f"Export zlyhal: {e}", T_BUTTON_DANGER)
+
+    def _set_status(self, label: str, message: str, color=T_BUTTON_SUCCESS, duration_ms: int = 2500):
+        """Nastaví krátky 'flash' Export tlačidla (label+farba) po kliknutí."""
+        self.status_label = label
+        self.status_message = message
+        self.status_message_color = color
+        self.status_message_until = pygame.time.get_ticks() + duration_ms
 
     def _on_seed_load_clicked(self):
         try:
@@ -663,7 +678,10 @@ class TesterScreen:
         self.screen.blit(surf, surf.get_rect(center=seed_rect.center))
         self._draw_sb_button(rects["seed_load"], "Load", T_BUTTON_PRIMARY)
 
-        self._draw_sb_button(rects["export"], "Export", T_BUTTON_BG)
+        export_flash = self.status_message and pygame.time.get_ticks() < self.status_message_until
+        export_label = self.status_label if export_flash else "Export"
+        export_color = self.status_message_color if export_flash else T_BUTTON_BG
+        self._draw_sb_button(rects["export"], export_label, export_color)
         self._draw_sb_button(rects["quit"], "Quit", T_BUTTON_BG)
 
         # --- SETUP ---
@@ -1147,6 +1165,6 @@ class TesterScreen:
                 rem = mem.remaining[suit]
                 rem_str = " ".join(str(c) for c in rem) if rem else "(žiadne)"
                 lines.append(f"  Remaining {suit}: {rem_str}")
-            lines.append(f"  Sweep state: {ai.sweep_pipeline.state.value}")
+            lines.append(f"  Sweep state: {ai.sweep_engine_v2.pipeline.state.value}")
 
         return "\n".join(lines)

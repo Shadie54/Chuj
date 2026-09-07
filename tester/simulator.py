@@ -70,10 +70,14 @@ class SimConfig:
     illuminated_exclude_high_score: bool = True  # vylúč 90+ prípady (zámerne OK)
     watch_none_declaration_failed: bool = True
     watch_global_fallback: bool = True
+    watch_forced_lead_trap: bool = True
     # Sweep aktivovaný → zobral/nezobral všetko. Samostatné flagy, aby sa
     # dalo sledovať len úspešné, len neúspešné, alebo oboje naraz.
     watch_sweep_success: bool = True
     watch_sweep_failed: bool = True
+    # Výskum §14 (90+ pravidlo vs. sweep pipeline) — čisto pozorovací watcher,
+    # zaznamená KAŽDÉ vyhodnotenie sweep pipeline pri hráčovi s 90+ bodmi.
+    watch_sweep_90_eval: bool = True
 
 
 # ------------------------------------------------------------------
@@ -122,6 +126,10 @@ class SimLogger:
     def log_strategy(self, player_name: str, strategy: str, details: str = ""):
         if self.config.watch_global_fallback and strategy == "GLOBAL_FALLBACK":
             self._record("global_fallback", player_name, strategy, details)
+        if self.config.watch_forced_lead_trap and strategy == "FORCED_LEAD_TRAP":
+            self._record("forced_lead_trap", player_name, strategy, details)
+        if self.config.watch_sweep_90_eval and strategy == "SWEEP_90_EVAL":
+            self._record("sweep_90_eval", player_name, strategy, details)
         if strategy == "SWEEP_COMMIT":
             self.sweep_committers.add(player_name)
 
@@ -384,9 +392,22 @@ def _write_output(config: SimConfig, findings: Findings,
                     f"{sum(final_scores) / len(final_scores):.1f}\n")
         for i in range(NUM_PLAYERS):
             f.write(f"Prehry AI_{i}: {stats.get(f'loser_AI_{i}', 0)}\n")
-        f.write("\nNÁLEZY\n" + "-" * 50 + "\n")
+        # Okrem surového počtu výskytov aj počet KÔL, kde sa daný nález
+        # objavil aspoň raz — jedno kolo môže vyprodukovať viac výskytov
+        # toho istého typu (napr. viac fallbackov za kolo), čo vie
+        # nafúknuť dojem z počtu výskytov oproti tomu, ako často sa to
+        # v hre reálne stane. Kľúč kola = (game_index, round_number),
+        # aby sa nezliali kolá z rôznych hier s rovnakým číslom.
+        rounds_with_finding: dict[str, set] = {}
+        for rec in findings.records:
+            key = (rec.get("game_index"), rec.get("round_number"))
+            rounds_with_finding.setdefault(rec["type"], set()).add(key)
+
+        f.write("\nNÁLEZY (výskytov spolu | kôl s aspoň 1 výskytom)\n"
+                + "-" * 50 + "\n")
         for ftype, count in sorted(findings.counts.items()):
-            f.write(f"{ftype}: {count}\n")
+            rounds_affected = len(rounds_with_finding.get(ftype, set()))
+            f.write(f"{ftype}: {count} | {rounds_affected}\n")
         f.write(f"\nDetaily: {findings_path}\n")
 
     print(f"\nHotovo. Súhrn: {summary_path}")
@@ -402,8 +423,10 @@ def main():
                         help="zahrň aj 90+ prípady schytania vlastného horníka")
     parser.add_argument("--no-none-watch", action="store_true")
     parser.add_argument("--no-fallback-watch", action="store_true")
+    parser.add_argument("--no-forced-lead-trap-watch", action="store_true")
     parser.add_argument("--no-sweep-success-watch", action="store_true")
     parser.add_argument("--no-sweep-failed-watch", action="store_true")
+    parser.add_argument("--no-sweep-90-eval-watch", action="store_true")
     args = parser.parse_args()
 
     config = SimConfig(
@@ -413,8 +436,10 @@ def main():
         illuminated_exclude_high_score=not args.include_high_score_illuminated,
         watch_none_declaration_failed=not args.no_none_watch,
         watch_global_fallback=not args.no_fallback_watch,
+        watch_forced_lead_trap=not args.no_forced_lead_trap_watch,
         watch_sweep_success=not args.no_sweep_success_watch,
         watch_sweep_failed=not args.no_sweep_failed_watch,
+        watch_sweep_90_eval=not args.no_sweep_90_eval_watch,
     )
     print(f"Spúšťam simuláciu: {config.num_games} hier (seed={config.seed})")
     run(config)

@@ -42,6 +42,30 @@ class AIv2:
 
         self.last_strategy: str = ""
 
+    def _log_sweep_90_eval(self, sweep_result, trick_number: int):
+        """
+        Čisto pozorovací log (výskum 90+ pravidla vs. sweep pipeline,
+        claude/03_SWEEP_V2_HANDOFF.md §14) — NEOVPLYVŇUJE žiadne
+        rozhodnutie, len zaznamená KAŽDÉ vyhodnotenie sweep pipeline,
+        keď má hráč (self.player) už 90+ bodov. Pipeline dnes pri
+        výpočte escape damage/EV nerozlišuje, že horníkove body by mu
+        boli 0 (§13/player.py finalize_round) — cieľom je nazbierať dáta,
+        kde presne sa to prejaví, pred akoukoľvek zmenou kódu.
+        """
+        from config import HIGH_SCORE_THRESHOLD
+        if self.player.total_score < HIGH_SCORE_THRESHOLD:
+            return
+        if self.logger:
+            self.logger.log_strategy(
+                self.player_name, "SWEEP_90_EVAL",
+                f"skóre={self.player.total_score} | štich={trick_number + 1} | "
+                f"decision={sweep_result.decision.value} | "
+                f"state={sweep_result.state.value} | "
+                f"P={sweep_result.sweep_probability:.2f} | "
+                f"EV={sweep_result.expected_value:.2f} | "
+                f"{' | '.join(sweep_result.reasoning_chain)}"
+            )
+
     def decide_declaration(self) -> str | None:
         return self.declaration_advisor.decide_declaration()
 
@@ -95,6 +119,7 @@ class AIv2:
             self.logger.log_sweep_pipeline(
                 self.player_name, sweep_result, trick_number + 1
             )
+        self._log_sweep_90_eval(sweep_result, trick_number)
         if sweep_result.decision == SweepDecision.YES:
             if sweep_result.recommended_card in playable:
                 self.last_strategy = "SWEEP_COMMIT"

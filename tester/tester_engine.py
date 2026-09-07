@@ -675,7 +675,8 @@ class TesterEngine:
         # logger inštancie, my chceme aby všetky AI logovali do nášho).
         for ai in self.ais.values():
             ai.logger = self.logger
-            ai.sweep_pipeline.logger = self.logger
+            ai.sweep_engine_v2.logger = self.logger
+            ai.sweep_engine_v2.pipeline.logger = self.logger
             ai.declaration_advisor.logger = self.logger
             ai.selector.logger = self.logger
             ai.situator.logger = self.logger
