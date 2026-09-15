@@ -23,8 +23,6 @@ class AcceptTrick(Strategy):
             return False
 
         if ctx.trick_outcome == TrickOutcome.CERTAIN:
-            print(
-                f"DEBUG: current_best={ctx.current_best}, is_special={ctx.current_best.is_special if ctx.current_best else None}, total_base_points={ctx.decision.trick.total_base_points}, is_last={ctx.is_last}")
             if ctx.current_best and ctx.current_best.is_special:
                 # Horník je current_best — bežne radšej podľahni a nechaj
                 # body pôvodnému hráčovi horníka (netreba ho preberať na seba).

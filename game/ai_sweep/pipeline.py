@@ -21,7 +21,7 @@ from game.card import Card
 from game.player import Player
 from game.ai_memory import AIMemory
 from game.ai_hand_eval import HandEval
-from config import SUITS, NUM_PLAYERS
+from config import SUITS, NUM_PLAYERS, HIGH_SCORE_THRESHOLD
 
 
 # ------------------------------------------------------------------
@@ -223,6 +223,8 @@ class SweepPipeline:
         )
         if not l1.passed:
             self._transition(SweepState.IDLE)
+            if l1.reason == "gate2: žiadny scenár nesplnený":
+                self._log_gate2_audit(hand_eval)
             return SweepResult(
                 decision=SweepDecision.NO,
                 state=SweepState.IDLE,
@@ -508,6 +510,44 @@ class SweepPipeline:
         (Gate 1, Gate 2, Gate 4).
         """
         return False
+
+    def _log_gate2_audit(self, hand_eval: HandEval):
+        """
+        Čisto pozorovací audit (claude/03_SWEEP_V2_HANDOFF.md §16, položka
+        A3) — keď Gate2 (_gate2_min_hand_strength) zablokuje sweep (žiadny
+        z 3 scenárov hearts-driven/control-driven/hornik-bait nesplnený),
+        napriek tomu dopočíta L2 (capacity/to_capture model), aby bolo
+        vidno, či by L2 hodnotil ruku ako STRONG/MEDIUM — teda či bol Gate2
+        blok zbytočný. Nemení žiadne rozhodnutie, len loguje. `_layer2()`
+        je čistá funkcia stavu (nemutuje self.state/self.committed_card),
+        takže je bezpečné ju tu zavolať navyše len kvôli logu.
+
+        Konkrétne cieli na podozrenie z auditu 2026-08-18 (`02_AI_REFERENCE.md`):
+        scenár "control-driven" sa vôbec neskúša, ak mám v ruke ČOKOĽVEK
+        červené (aj bezcennú nízku kartu) — `if not hearts:` na začiatku
+        vetvy — takže ruka so silnou kontrolou v leaf/acorn/bell plus jednou
+        nevýznamnou nízkou červeňou nespadne do žiadneho z 3 scenárov.
+        """
+        if not self.logger:
+            return
+        hand = self.player.hand.cards
+        l2 = self._layer2(hand_eval)
+        hearts = [c for c in hand if c.suit == "heart"]
+        hearts_control = l2.per_suit["heart"].control > 0
+        other_control = any(
+            l2.per_suit[s].control > 0 for s in ("leaf", "acorn", "bell")
+        )
+        if hearts and not hearts_control and other_control:
+            blocked_by = "hearts_block_control"
+        else:
+            blocked_by = "other"
+        self.logger.log_strategy(
+            self.player.name, "GATE2_AUDIT",
+            f"blocked_by={blocked_by} l2_strength={l2.strength} "
+            f"ratio={l2.capacity_ratio:.2f} heart_killers={l2.heart_killers} "
+            f"my_hearts={len(hearts)} hearts_control={hearts_control} "
+            f"other_control={other_control}"
+        )
 
     # ------------------------------------------------------------------
     # VRSTVA 2: HAND EVALUATION
@@ -1638,6 +1678,7 @@ class SweepPipeline:
         """
         hand = self.player.hand.cards
         evaluations = []
+        _audit_rows = []  # (card, P, damage, quality, ev_current) — len §8 EV-znamienko audit
 
         for candidate in l5.candidates:
             if candidate.sweep_probability < 0.5:
@@ -1646,10 +1687,18 @@ class SweepPipeline:
             # Escape routes pre tohto kandidáta
             escape = self._find_escape(candidate, hand, l3)
 
-            # EV = P(sweep) × benefit − (1 − P(sweep)) × damage
+            # EV = P(sweep) × benefit + (1 − P(sweep)) × damage
+            # (opravené znamienko 2026-09-11, claude/03_SWEEP_V2_HANDOFF.md
+            # §8/§16 — pôvodné mínus robilo vyšší damage "lepším" pri
+            # min()-výbere, takže sa systematicky preferoval HORŠÍ escape
+            # pri rovnakej P(sweep); overené auditom SWEEP_EV_AUDIT, 913/915
+            # zasiahnutých prípadov bolo jednosmerne zhoršenie.)
             sweep_benefit = -10  # sweep bonus
             ev = (candidate.sweep_probability * sweep_benefit
-                  - (1 - candidate.sweep_probability) * escape.damage)
+                  + (1 - candidate.sweep_probability) * escape.damage)
+
+            _audit_rows.append((candidate.first_card, candidate.sweep_probability,
+                                 escape.damage, escape.quality, ev))
 
             # Commit type
             commit_type = self._determine_commit_type(
@@ -1673,6 +1722,28 @@ class SweepPipeline:
                 best_candidate=None,
                 recommended_state="NIE",
                 reason="L6: žiadni kandidáti po escape eval"
+            )
+
+        # Čisto pozorovací audit (claude/03_SWEEP_V2_HANDOFF.md §16) —
+        # pôvodne odhalil EV znamienkový bug (opravené 2026-09-11, viď
+        # komentár vyššie pri výpočte `ev`). `current_best`/`fixed_best`
+        # by od opravy mali byť VŽDY identické — ponechané ako trvalý
+        # regresný strážca (divergencia = niekto znova zaviedol bug).
+        # Loguje len keď existuje reálna súťaž medzi 2+ kandidátmi.
+        if self.logger and len(_audit_rows) > 1:
+            current_best_card = min(_audit_rows, key=lambda r: r[4])[0]
+            fixed_best_card = min(
+                _audit_rows,
+                key=lambda r: r[1] * (-10) + (1 - r[1]) * r[2]
+            )[0]
+            rows_str = ", ".join(
+                f"{card}=P{p:.2f}/dmg{dmg}/{q}/ev{ev:.2f}"
+                for card, p, dmg, q, ev in _audit_rows
+            )
+            self.logger.log_strategy(
+                self.player.name, "SWEEP_EV_AUDIT",
+                f"{rows_str} | current_best={current_best_card} "
+                f"fixed_best={fixed_best_card}"
             )
 
         # Vyber best — najnižšie EV (záporné = dobré)
@@ -1799,6 +1870,32 @@ class SweepPipeline:
                            if self.memory.is_special_gone(suit)
                            else "MESSY")
                 damage = 4 if suit == "acorn" else 8
+
+                # 90+ pravidlo (claude/03_SWEEP_V2_HANDOFF.md §14): ak mám
+                # už 90+ bodov, horníkove body sa MNE nepočítajú
+                # (player.py finalize_round) — takže riziko, ktoré MESSY
+                # predstavuje ("môžem si nakoniec sám schytať tohto ešte
+                # živého horníka"), je pre mňa reálne 0b, nie 4/8b. Vlastný
+                # samostatný label (nie reuse "CONTAINED") — aby
+                # reasoning_chain/export jasne ukázal DÔVOD (90+ pravidlo),
+                # nezamieňal si to s pôvodným významom CONTAINED (horník
+                # danej farby už niekde inde padol). Rovnaké prahy ako
+                # CONTAINED (0.6/0.8) v _determine_commit_type — sedia,
+                # keďže damage je v oboch prípadoch reálne 0.
+                # NEDOTÝKA SA hearts rizika — to sa počíta úplne inde
+                # (P(sweep) v L4/L5 cez critical_events, nezávisle od
+                # skóre) a _find_escape() srdcia ako escape kartu nikdy
+                # neuvažuje (vždy trestná karta, nikdy "bezpečná").
+                if quality == "MESSY" and self.player.total_score >= HIGH_SCORE_THRESHOLD:
+                    return EscapeRoute(
+                        card=card,
+                        quality="MESSY_90_FREE",
+                        damage=0,
+                        description=(f"escape cez {card} (MESSY, ale 90+ "
+                                      f"pravidlo → horník {suit} je pre mňa "
+                                      f"0b)"),
+                    )
+
                 return EscapeRoute(
                     card=card,
                     quality=quality,
@@ -1845,6 +1942,16 @@ class SweepPipeline:
             return "WATCHING"
 
         if escape_quality == "CONTAINED":
+            if p_sweep > 0.8:
+                return "COMMITTED_SAFE"
+            if p_sweep > 0.6:
+                return "WATCHING"
+            return "NIE"
+
+        if escape_quality == "MESSY_90_FREE":
+            # 90+ pravidlo: damage je reálne 0 (rovnako ako CONTAINED),
+            # preto rovnaké (miernejšie ako MESSY) prahy — pozri
+            # _find_escape() a claude/03_SWEEP_V2_HANDOFF.md §14.
             if p_sweep > 0.8:
                 return "COMMITTED_SAFE"
             if p_sweep > 0.6:
