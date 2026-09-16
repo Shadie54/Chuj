@@ -24,12 +24,9 @@ from game.ai_v2.strategies.lead_safe import LeadSafe
 
 class AIEngine:
     """
-    Hlavný vstupný bod pre nový AI systém (v2).
+    Hlavný vstupný bod AI systému (v2, jediný systém od zmazania v1).
 
-    Nahrádza pipeline:
-    situácia → mód → CardSelector
-
-    Novým systémom:
+    Pipeline:
     kontext → aktívne stratégie → selector → karta
     """
 

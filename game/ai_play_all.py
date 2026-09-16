@@ -5,7 +5,6 @@ from game.trick import Trick
 from game.player import Player
 from game.ai_memory import AIMemory
 from game.ai_hand_eval import HandEval
-from game.ai_strategies_const import Strategy
 from config import SUITS
 
 
@@ -35,7 +34,7 @@ class AllPlayer:
         if trap_playable:
             # Preferuj farbu kde mám najviac trapov — vyčerpaj farbu
             best = self._best_trap(trap_playable)
-            self._log(Strategy.DECLARATION_ALL, f"trap istý: {best}")
+            self._log("D1-DECLARATION_ALL", f"trap istý: {best}")
             return best
 
         # 2. Žiadna trap — kritická situácia
@@ -46,12 +45,12 @@ class AllPlayer:
         ]
         if escape_playable:
             card = max(escape_playable, key=lambda c: c.rank_order)
-            self._log(Strategy.DECLARATION_ALL, f"escape risk: {card}")
+            self._log("D1-DECLARATION_ALL", f"escape risk: {card}")
             return card
 
         # 3. Fallback — najvyššia karta
         card = max(playable, key=lambda c: c.rank_order)
-        self._log(Strategy.DECLARATION_ALL, f"fallback najvyššia: {card}")
+        self._log("D1-DECLARATION_ALL", f"fallback najvyššia: {card}")
         return card
 
     def _best_trap(self, trap_cards: list[Card]) -> Card:

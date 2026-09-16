@@ -3,11 +3,11 @@
 import pygame, random
 from game.game_state import GameState
 from game.ai import AI
-from game.ai_strategies_const import Strategy
 from gui.card_renderer import CardRenderer
 from gui.scoreboard import Scoreboard
 from gui.deal_animation import DealAnimation
 from gui.trick_animation import TrickAnimation
+from gui.card_throw_animation import CardThrowAnimation
 from gui.speech_bubble import SpeechBubble
 from gui.info_overlay import InfoOverlay
 from gui.chujogram_panel import ChujogramPanel
@@ -69,6 +69,19 @@ class Screen:
         self.trick_display_timer: int = 0
         self._trick_anim_started: bool = False
         self.trick_animation = TrickAnimation(self.screen, self.card_renderer)
+        self.card_throw_animation = CardThrowAnimation(self.screen, self.card_renderer)
+
+        # Rýchlosť animácií — spoločný násobok z nastavení (nastavuje sa
+        # v SettingsScreen), aplikovaný na základnú card_speed oboch tried.
+        # DealAnimation zámerne nie je ovplyvnená.
+        # TrickAnimation (zber štichu k víťazovi) sa smie zrýchliť nad 1.0x,
+        # ale nikdy sa nespomalí pod základnú (1.0x) rýchlosť — pri nižšej
+        # hodnote slidera by bola cesta ku vzdialenejším súperom nepríjemne
+        # pomalá. CardThrowAnimation reaguje na celý rozsah 0.5x–2.0x.
+        anim_speed_mult = self.settings.get("animation_speed", 1.0)
+        trick_speed_mult = max(anim_speed_mult, 1.0)
+        self.trick_animation.card_speed *= trick_speed_mult
+        self.card_throw_animation.card_speed *= anim_speed_mult
 
         # Deal animácia
         self.deal_animation: DealAnimation | None = None
@@ -150,6 +163,7 @@ class Screen:
             else:
                 self._process_waiting_trick()
                 self.trick_animation.update()
+                self.card_throw_animation.update()
                 self._handle_ai_turn()
                 self._draw()
 
@@ -179,6 +193,7 @@ class Screen:
         self.revealing_index = 0
         self.trick_waiting = False
         self._trick_anim_started = False
+        self.card_throw_animation.in_flight = {}
 
         # Log
         current_round = self.game_state.current_round
@@ -305,8 +320,14 @@ class Screen:
             self._show_message("Túto kartu nemôžeš zahrať!")
             return
 
+        throw_start = self.card_renderer.hand_card_center(
+            player_index,
+            self.game_state.players[player_index].hand.cards,
+            clicked_card
+        )
         success = current_round.play_card(player_index, clicked_card)
         if success:
+            self.card_throw_animation.start(player_index, clicked_card, throw_start)
             if current_round.current_trick.is_complete:
                 self.trick_waiting = True
                 self.trick_display_timer = pygame.time.get_ticks() + 1500
@@ -319,6 +340,11 @@ class Screen:
         if self.dealing:
             return
         if self.trick_waiting:
+            return
+        if self.card_throw_animation.in_flight:
+            # Nechaj doletieť kartu vo vzduchu — inak ďalšie AI (a jeho
+            # blokujúci delay() nižšie) zamrazí slučku skôr, než sa táto
+            # animácia stihne prehrať cez viac snímok.
             return
 
         current_round = self.game_state.current_round
@@ -363,8 +389,7 @@ class Screen:
         )
 
         # Bublina pre risk — zahranie odložíme o 2 sekundy
-        if ai.last_strategy in (Strategy.RISK_TRAP, Strategy.RISK_SPECIAL,
-                                "RISK_TRAP", "RISK"):
+        if ai.last_strategy in ("RISK_TRAP", "RISK"):
             texts = ["Risknem to!", "Skúsim šťastie...", "Dúfam že ho nemá..."]
             self.speech_bubble.show_bid(player_index, random.choice(texts), duration_ms=4000)
             self.pending_risk_play = (player_index, card, ai)
@@ -378,7 +403,12 @@ class Screen:
     def _commit_ai_card(self, player_index: int, card):
         """Fyzicky zahrá AI kartu a spracuje koniec štichu."""
         current_round = self.game_state.current_round
+        player = self.game_state.players[player_index]
+        throw_start = self.card_renderer.hand_card_center(
+            player_index, player.hand.cards, card
+        )
         current_round.play_card(player_index, card)
+        self.card_throw_animation.start(player_index, card, throw_start)
 
         if current_round.current_trick.is_complete:
             self.trick_waiting = True
@@ -539,6 +569,7 @@ class Screen:
         self._draw_hands()
         if not self._trick_anim_started:
             self._draw_current_trick()
+        self.card_throw_animation.draw()
         self.trick_animation.draw()
         self.phase_renderer.draw_player_labels()
         self.chujogram.draw(self.game_state.bullet_history,self.game_state.round_scores_history)
@@ -603,7 +634,10 @@ class Screen:
         """Nakreslí karty aktuálneho štichu."""
         current_round = self.game_state.current_round
         if current_round and current_round.current_trick:
-            self.card_renderer.draw_trick(current_round.current_trick)
+            self.card_renderer.draw_trick(
+                current_round.current_trick,
+                exclude_players=set(self.card_throw_animation.in_flight.keys())
+            )
 
     def _draw_last_trick_overlay(self):
         """Nakreslí overlay s posledným štichom."""
@@ -703,6 +737,7 @@ class Screen:
         self._trick_anim_started = False
         self.trick_animation.done = True
         self.trick_animation.cards_in_flight = []
+        self.card_throw_animation.in_flight = {}
         self.waiting_for_ai = False
 
     def _reset_trick_state(self):
@@ -734,6 +769,7 @@ class Screen:
         self._trick_anim_started = False
         self.trick_animation.done = True
         self.trick_animation.cards_in_flight = []
+        self.card_throw_animation.in_flight = {}
         self.waiting_for_ai = False
 
         if (current_round and current_round.phase == "tricks"

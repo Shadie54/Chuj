@@ -118,14 +118,12 @@ class TesterEngine:
         ]
 
         # 2. Vytvor 4 AI inštancie s TesterLogger
-        use_new = getattr(self.scenario, '_use_new_system', True)
         self.ais = {}
         for i in range(NUM_PLAYERS):
             ai = AI(
                 player=self.players[i],
                 difficulty="hard",
                 logger=self.logger,
-                use_new_system=use_new,
             )
             self.ais[i] = ai
 
@@ -678,12 +676,10 @@ class TesterEngine:
             ai.sweep_engine_v2.logger = self.logger
             ai.sweep_engine_v2.pipeline.logger = self.logger
             ai.declaration_advisor.logger = self.logger
-            ai.selector.logger = self.logger
-            ai.situator.logger = self.logger
-            # Nový systém v2
-            if hasattr(ai, 'engine_v2') and ai.engine_v2 is not None:
-                ai.engine_v2.logger = self.logger
-                ai.engine_v2.selector.logger = self.logger
+            ai.none_player.logger = self.logger
+            ai.all_player.logger = self.logger
+            ai.engine_v2.logger = self.logger
+            ai.engine_v2.selector.logger = self.logger
 
         # Sanity check — po restore musí byť round.players[i] is players[i]
         for i in range(NUM_PLAYERS):

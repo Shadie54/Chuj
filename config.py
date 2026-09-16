@@ -118,6 +118,15 @@ COLOR_BONUS = (80, 180, 80)         # bonusové body — zelená
 COLOR_ILLUMINATED = (255, 200, 0)   # vysvietený horník — zlatá
 
 # ------------------------------------------------------------------
+# GUI — Rýchlosť animácií (nastaviteľná v SettingsScreen)
+# ------------------------------------------------------------------
+# Násobok aplikovaný na základnú card_speed TrickAnimation a
+# CardThrowAnimation (nie DealAnimation — tá zostáva na pevnej rýchlosti).
+ANIMATION_SPEED_MIN = 0.5
+ANIMATION_SPEED_MAX = 2.0
+ANIMATION_SPEED_DEFAULT = 1.0
+
+# ------------------------------------------------------------------
 # GUI — Fonty
 # ------------------------------------------------------------------
 FONT_SIZE_SMALL = 18

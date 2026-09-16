@@ -129,6 +129,29 @@ class CardRenderer:
                 else:
                     self._draw_highlight(x, y, CARD_SIZE_MEDIUM, (100, 100, 100, 100))
 
+    def hand_card_center(self, player_index: int, cards: list,
+                         card: Card) -> tuple[int, int]:
+        """
+        Vráti stred karty v ruke hráča — pre throw animáciu.
+        MUSÍ sa volať kým je `card` ešte v `cards` (pred play_card()),
+        rešpektuje rovnaké poradie kreslenia ako draw_hand() (PC2 obrátené).
+        """
+        i = cards.index(card)
+        if player_index == 2:
+            display_index = len(cards) - 1 - i
+        else:
+            display_index = i
+
+        config = self.hand_configs[player_index]
+        x, y = self._card_position(config, display_index)
+
+        if config["direction"] == "vertical":
+            w, h = CARD_SIZE_MEDIUM[1], CARD_SIZE_MEDIUM[0]  # rotované o 90°
+        else:
+            w, h = CARD_SIZE_MEDIUM
+
+        return x + w // 2, y + h // 2
+
     @staticmethod
     def _card_position(config: dict, index: int) -> tuple[int, int]:
         """Vypočíta pozíciu karty v ruke podľa konfigurácie."""
@@ -149,9 +172,16 @@ class CardRenderer:
     # Kreslenie štichu na stole
     # ------------------------------------------------------------------
 
-    def draw_trick(self, trick: Trick):
-        """Nakreslí aktuálny štich na stole."""
+    def draw_trick(self, trick: Trick, exclude_players: set[int] | None = None):
+        """
+        Nakreslí aktuálny štich na stole.
+        exclude_players — hráči, ktorých karta je práve vo throw animácii
+        (nechceme ju kresliť dvakrát, animácia ju dokreslí sama).
+        """
+        exclude_players = exclude_players or set()
         for player_index, card in trick.played_cards:
+            if player_index in exclude_players:
+                continue
             pos = self.trick_positions[player_index]
             img = self._get_card_image(card)
             rect = img.get_rect(center=pos)

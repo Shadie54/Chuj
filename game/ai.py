@@ -5,9 +5,7 @@ from game.player import Player
 from game.card import Card
 from game.trick import Trick
 from game.ai_memory import AIMemory
-from game.ai_hand_eval import HandEvaluator, GameContext, DecisionContext
-from game.ai_situation import SituationDetector
-from game.ai_card_select import CardSelector
+from game.ai_hand_eval import HandEvaluator, GameContext
 from game.ai_sweep.engine import SweepEngineV2
 from game.ai_sweep.pipeline import SweepDecision
 from game.ai_declaration import DeclarationAdvisor
@@ -17,49 +15,32 @@ from game.ai_v2.engine import AIEngine
 
 
 class AI:
-    def __init__(self, player: Player, difficulty: str = "hard",
-                 logger=None, use_new_system: bool = False):  # ← nový parameter
+    def __init__(self, player: Player, difficulty: str = "hard", logger=None):
         self.player = player
         self.difficulty = difficulty
         self.logger = logger
         self.player_name = player.name
-        self.use_new_system = use_new_system
 
         self.memory = AIMemory(player.index)
 
-        # Záväzok
         self.declaration_player: int | None = None
         self.declaration_type: str | None = None
 
-        # Sweep
         self.sweep_engine_v2 = SweepEngineV2(player, self.memory, logger)
         self.sweep_confidence = None
         self.sweep_attempt = None
 
-        # Moduly — normálna hra (starý systém)
         self.evaluator = HandEvaluator(self.memory)
-        self.situator = SituationDetector(player, self.memory, difficulty, logger)
-        self.selector = CardSelector(
-            player, self.memory, logger,
-            on_strategy=lambda s: setattr(self, 'last_strategy', s)
-        )
         self.declaration_advisor = DeclarationAdvisor(
             player, self.memory, difficulty, logger
         )
 
-        # Moduly — vyhlásené hry
         self.none_player = NonePlayer(player, self.memory, logger)
         self.all_player = AllPlayer(player, self.memory, logger)
 
-        # Nový systém v2
         self.engine_v2 = AIEngine(player, self.memory, logger)
 
         self.last_strategy: str = ""
-
-    def _log(self, strategy: str, details: str = ""):
-        self.last_strategy = strategy
-        if self.logger:
-            self.logger.log_strategy(self.player_name, strategy, details)
 
     def _log_sweep_90_eval(self, sweep_result, trick_number: int):
         """
@@ -85,10 +66,6 @@ class AI:
                 f"{' | '.join(sweep_result.reasoning_chain)}"
             )
 
-    # ------------------------------------------------------------------
-    # Záväzok a vysvietenie
-    # ------------------------------------------------------------------
-
     def decide_declaration(self) -> str | None:
         return self.declaration_advisor.decide_declaration()
 
@@ -97,10 +74,6 @@ class AI:
         return self.declaration_advisor.decide_illumination(
             first_player_index, all_scores
         )
-
-    # ------------------------------------------------------------------
-    # Hlavný vstupný bod
-    # ------------------------------------------------------------------
 
     def decide_card(self, playable: list[Card],
                     current_trick: Trick,
@@ -118,7 +91,6 @@ class AI:
         scores = all_scores if all_scores is not None \
             else [self.player.total_score] * 4
 
-        # --- ROUTER: vyhlásené hry (platí pre oba systémy) ---
         hand = self.player.hand.cards
         tricks_remaining = 8 - trick_number
         trick_cards = [c for _, c in current_trick.played_cards]
@@ -140,7 +112,6 @@ class AI:
         if my_declaration == "all":
             return self.all_player.decide(playable, hand_eval)
 
-        # --- SWEEP ---
         sweep_result = self.sweep_engine_v2.evaluate(
             hand_eval, trick_number, current_trick, playable
         )
@@ -151,35 +122,20 @@ class AI:
         self._log_sweep_90_eval(sweep_result, trick_number)
         if sweep_result.decision == SweepDecision.YES:
             if sweep_result.recommended_card in playable:
-                self._log("SWEEP_COMMIT", str(sweep_result.recommended_card))
+                self.last_strategy = "SWEEP_COMMIT"
+                if self.logger:
+                    self.logger.log_strategy(
+                        self.player_name, "SWEEP_COMMIT",
+                        str(sweep_result.recommended_card)
+                    )
                 return sweep_result.recommended_card
 
-        # --- ROUTER: nový vs starý systém ---
-        if self.use_new_system:
-            return self.engine_v2.decide(
-                playable, current_trick, trick_number,
-                scores, my_declaration
-            )
-
-        # --- STARÝ SYSTÉM ---
-        dctx = DecisionContext.build(
-            self.player, self.memory,
-            hand_eval, game_ctx,
-            playable, current_trick
+        card = self.engine_v2.decide(
+            playable, current_trick, trick_number,
+            scores, my_declaration
         )
-        situation = self.situator.determine(dctx)
-        mode = self.situator.to_mode(situation)
-        card = self.selector.select(situation, mode, dctx)
-
-        if self.logger:
-            self.logger.log_strategy(
-                self.player_name, f"{situation} | {mode}", str(card)
-            )
+        self.last_strategy = self.engine_v2.last_strategy
         return card
-
-    # ------------------------------------------------------------------
-    # Verejné rozhranie — pamäť
-    # ------------------------------------------------------------------
 
     def record_trick(self, played_cards: list[tuple[int, Card]],
                      winner_index: int, _trick_number: int):
@@ -202,8 +158,7 @@ class AI:
         self.sweep_attempt = False
         self.sweep_confidence = None
         self.sweep_engine_v2.reset()
-        self.engine_v2.reset()  # ← nové
-
+        self.engine_v2.reset()
 
     def __repr__(self) -> str:
         return f"AI({self.player.name}, difficulty={self.difficulty})"

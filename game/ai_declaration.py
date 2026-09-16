@@ -3,7 +3,6 @@
 from game.card import Card
 from game.player import Player
 from game.ai_memory import AIMemory
-from game.ai_strategies_const import Strategy
 from config import SUITS, NUM_PLAYERS, HIGH_SCORE_THRESHOLD
 
 
@@ -35,7 +34,7 @@ class DeclarationAdvisor:
                 reason
             )
         if can_none:
-            self._log(Strategy.DECLARATION_NONE, reason)
+            self._log("D2-DECLARATION_NONE", reason)
             return "none"
         return None
 

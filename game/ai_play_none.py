@@ -4,7 +4,6 @@ from game.card import Card
 from game.trick import Trick
 from game.player import Player
 from game.ai_hand_eval import HandEval
-from game.ai_strategies_const import Strategy
 from config import NUM_PLAYERS
 
 
@@ -57,7 +56,7 @@ class NonePlayer:
         else:
             pool = playable
         card = min(pool, key=lambda c: c.rank_order)
-        self._log(Strategy.DECLARATION_NONE, f"lead najnižšia: {card}")
+        self._log("D2-DECLARATION_NONE", f"lead najnižšia: {card}")
         return card
 
     # ------------------------------------------------------------------
@@ -76,7 +75,7 @@ class NonePlayer:
             )
             if not can_underplay:
                 card = max(lead_cards, key=lambda c: c.rank_order)
-                self._log(Strategy.DECLARATION_NONE, f"posledný musím brať: {card}")
+                self._log("D2-DECLARATION_NONE", f"posledný musím brať: {card}")
                 return card
         # Bol vyhlasovateľ prebytý?
         decl_beaten = False
@@ -91,7 +90,7 @@ class NonePlayer:
         if decl_beaten:
             # Niekto prebil — hoď najvyššiu
             card = max(lead_cards, key=lambda c: c.rank_order)
-            self._log(Strategy.DECLARATION_NONE, f"prebytý: {card}")
+            self._log("D2-DECLARATION_NONE", f"prebytý: {card}")
             return card
 
         # Nikto neprebil — podliezaj
@@ -103,11 +102,11 @@ class NonePlayer:
             ]
             if underplay:
                 card = max(underplay, key=lambda c: c.rank_order)
-                self._log(Strategy.DECLARATION_NONE, f"podliezam: {card}")
+                self._log("D2-DECLARATION_NONE", f"podliezam: {card}")
                 return card
 
         card = min(lead_cards, key=lambda c: c.rank_order)
-        self._log(Strategy.DECLARATION_NONE, f"donútený najnižšia: {card}")
+        self._log("D2-DECLARATION_NONE", f"donútený najnižšia: {card}")
         return card
 
     # ------------------------------------------------------------------
@@ -116,7 +115,7 @@ class NonePlayer:
 
     def _void(self, playable: list[Card]) -> Card:
         card = max(playable, key=lambda c: c.rank_order)
-        self._log(Strategy.DECLARATION_NONE, f"void najvyššia: {card}")
+        self._log("D2-DECLARATION_NONE", f"void najvyššia: {card}")
         return card
 
     # ------------------------------------------------------------------
