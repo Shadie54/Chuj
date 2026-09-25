@@ -225,7 +225,12 @@ class SpeechBubble:
 
     def show_round_result(self, player_index: int, points: int,
                           is_bidder: bool, fulfilled: bool = True):
-        """Zobrazí výsledok kola ako bublinu."""
+        """Zobrazí výsledok kola ako bublinu.
+
+        is_bidder=False (zatiaľ používa len tutorial/tutorial_screen.py po
+        každom štichu, pozri TODO v gui/screen.py::_process_waiting_trick)
+        vždy ukazuje ČERVENÚ farbu — v CHUJ-i sú body vždy trestné, nikdy
+        nie je "+body" niečo dobré."""
         if is_bidder:
             if fulfilled:
                 text = f"+{points}"
@@ -235,7 +240,7 @@ class SpeechBubble:
                 color = COLOR_RED
         else:
             text = f"+{points}"
-            color = COLOR_GREEN
+            color = COLOR_RED
 
         self._add_bubble(
             player_index=player_index,

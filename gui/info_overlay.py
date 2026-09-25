@@ -147,22 +147,24 @@ class InfoOverlay:
 
         # ── SEKCIA 1: HODNOTY KARIET (plná šírka) ──────────────────────────
         def content_karty(x, y, w, measure_only):
-            ranks = ["ace", "king", "over", "under", "ten", "nine", "eight", "seven"]
-            card_w, card_h = 95, 153
-            gap = 12
-            total_w = len(ranks) * (card_w + gap) - gap
-            x0 = SCREEN_WIDTH // 2 - total_w // 2
+            card_w, card_h = 130, 210
             if not measure_only:
-                for i, rank in enumerate(ranks):
-                    cx = x0 + i * (card_w + gap)
-                    img = self._load_card("heart", rank)
-                    if img:
-                        self.screen.blit(
-                            pygame.transform.scale(img, (card_w, card_h)), (cx, y))
-                    pts = self.font_small.render("1b", True, COLOR_PENALTY)
-                    self.screen.blit(pts, pts.get_rect(
-                        centerx=cx + card_w // 2, top=y + card_h + 4))
-            return card_h + 30
+                bx = x + 14
+                img = self._load_card("heart", "ace")
+                if img:
+                    self.screen.blit(
+                        pygame.transform.scale(img, (card_w, card_h)), (bx, y))
+                tx = bx + card_w + 20
+                ty = y + 40
+                s = self.font_medium.render("1 bod", True, COLOR_PENALTY)
+                self.screen.blit(s, (tx, ty)); ty += 38
+                s = self.font_small.render(
+                    "každá srdcová karta, bez ohľadu na hodnotu", True, COLOR_WHITE)
+                self.screen.blit(s, (tx, ty)); ty += 28
+                s = self.font_small.render(
+                    "2 body, ak sú vysvietení obaja horníci", True, COLOR_ILLUMINATED)
+                self.screen.blit(s, (tx, ty))
+            return card_h + 20
 
         y = draw_section(col_x, y, "HODNOTY KARIET", content_karty, full_w)
 
@@ -170,7 +172,7 @@ class InfoOverlay:
         def content_hornici(x, y, w, measure_only):
             specials = [
                 ("leaf", "over", "8b", "16b pri vysvietení", None),
-                ("acorn", "over", "4b", "8b pri vysvietení", "+ červené = 2b (ak obaja)"),
+                ("acorn", "over", "4b", "8b pri vysvietení", None),
             ]
             card_w, card_h = 130, 210
             if not measure_only:
@@ -196,13 +198,13 @@ class InfoOverlay:
 
         def content_bonusy(x, y, w, measure_only):
             bonuses = [
-                (COLOR_BONUS, "−10b", "Sweep — všetky trestné karty v kole"),
+                (COLOR_BONUS, "−10b", "Zobral si všetky trestné karty v kole"),
                 (COLOR_BONUS, "−10b", "Séria — 5 kôl za sebou bez trestu"),
                 (COLOR_BONUS, "−10b", "Záväzok splnený: Nechytím nič"),
                 (COLOR_BONUS, "−20b", "Záväzok splnený: Beriem všetko"),
                 (COLOR_PENALTY, "+20b", "Nesplnený: Beriem všetko → hráč +20b"),
                 (COLOR_PENALTY, "+10b", "Nesplnený: Nechytím nič → hráč +10b"),
-                (COLOR_GRAY, "Reset", "Presne 100b → resetuje sa na 90b"),
+                (COLOR_GRAY, "100b", "Presne 100 bodov → skóre klesne na 90"),
                 (COLOR_GRAY, "90b+", "Horníci sa nepočítajú nad 90b"),
             ]
             row_h = 30
@@ -340,9 +342,9 @@ class InfoOverlay:
         ])
 
         cy2 = draw_section(col2_x, cy2, "ŠPECIÁLNE PRAVIDLÁ", [
-            "Sweep  — všetky trestné karty → −10b",
+            "Všetky trestné karty naraz → −10b",
             "Séria  — 5 kôl bez trestného bodu → −10b",
-            "Reset  — presne 100b → resetuje sa na 90b",
+            "Presne 100b → skóre klesne na 90b",
             "90b+   — horníci sa nepočítajú (0b)",
         ])
 

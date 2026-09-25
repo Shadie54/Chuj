@@ -124,7 +124,7 @@ COLOR_ILLUMINATED = (255, 200, 0)   # vysvietený horník — zlatá
 # CardThrowAnimation (nie DealAnimation — tá zostáva na pevnej rýchlosti).
 ANIMATION_SPEED_MIN = 0.5
 ANIMATION_SPEED_MAX = 2.0
-ANIMATION_SPEED_DEFAULT = 1.0
+ANIMATION_SPEED_DEFAULT = 1.5
 
 # ------------------------------------------------------------------
 # GUI — Fonty

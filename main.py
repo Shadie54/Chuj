@@ -1,6 +1,6 @@
 # main.py
 
-import ctypes, json, os
+import ctypes
 try:
     ctypes.windll.user32.SetProcessDPIAware()
 except Exception:
@@ -8,55 +8,12 @@ except Exception:
 
 import sys
 import pygame
-from game.game_state import GameState
-from game.ai import AI
 from gui.screen import Screen
 from gui.menu import Menu
 from gui.settings_screen import SettingsScreen
 from gui.game_over_screen import GameOverScreen
 from config import DEBUG_MODE
-
-SETTINGS_PATH = os.path.join(
-    os.path.expanduser("~"), "Documents", "Chuj", "settings.json"
-)
-
-def _load_settings() -> dict:
-    default = {
-        "ai1_difficulty": "hard",
-        "ai2_difficulty": "hard",
-        "ai3_difficulty": "hard",
-        "table_bg": "table.jpg",
-        "animation_speed": 1.0,
-    }
-    try:
-        with open(SETTINGS_PATH, "r", encoding="utf-8") as f:
-            loaded = json.load(f)
-            default.update(loaded)
-            return default
-    except (FileNotFoundError, json.JSONDecodeError):
-        return default
-
-def _save_settings(settings: dict):
-    os.makedirs(os.path.dirname(SETTINGS_PATH), exist_ok=True)
-    with open(SETTINGS_PATH, "w", encoding="utf-8") as f:
-        json.dump(settings, f, ensure_ascii=False, indent=2)
-
-def _create_game(settings: dict) -> tuple:
-    player_names = ["Hráč", "Počítač 1", "Počítač 2", "Počítač 3"]
-    human_index = 0
-    game_state = GameState(player_names, human_index)
-    game_state.setup_first_player()
-
-    ai_players = []
-    for i, player in enumerate(game_state.players):
-        if player.is_human:
-            ai_players.append(None)
-        else:
-            difficulty = settings.get(f"ai{i}_difficulty", "hard")
-            ai_players.append(
-                AI(player, difficulty=difficulty, logger=game_state.logger)
-            )
-    return game_state, ai_players
+from game_setup import load_settings, save_settings, create_game
 
 
 def _run_game(window, game_state, ai_players,
@@ -84,7 +41,7 @@ def main():
     except FileNotFoundError:
         pass
 
-    settings = _load_settings()
+    settings = load_settings()
 
     active_game_state = None
     active_ai_players = None
@@ -101,7 +58,7 @@ def main():
         elif action == "settings":
             settings_screen = SettingsScreen(window, settings)
             settings = settings_screen.run()
-            _save_settings(settings)
+            save_settings(settings)
             # Aktualizuj obtiažnosť ak beží hra
             if active_ai_players is not None:
                 for i, ai in enumerate(active_ai_players):
@@ -126,11 +83,11 @@ def main():
                 active_game_state = None
                 active_ai_players = None
                 if next_action == "new_game":
-                    active_game_state, active_ai_players = _create_game(settings)
+                    active_game_state, active_ai_players = create_game(settings)
 
 
         elif action == "new_game":
-            active_game_state, active_ai_players = _create_game(settings)
+            active_game_state, active_ai_players = create_game(settings)
             result, active_game_state, active_ai_players = _run_game(
                 window, active_game_state, active_ai_players,
                 settings=settings  # ← chýba
@@ -152,7 +109,7 @@ def main():
 
                     if next_action == "new_game":
                         # Rovno spusti novú hru bez menu
-                        active_game_state, active_ai_players = _create_game(settings)
+                        active_game_state, active_ai_players = create_game(settings)
                         result, active_game_state, active_ai_players = _run_game(
                             window, active_game_state, active_ai_players,
                             settings=settings

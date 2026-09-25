@@ -509,6 +509,14 @@ class Screen:
         winner_name = self.game_state.players[winner_index].name
         self._show_message(f"{winner_name} vyhral štich!")
 
+        # TODO (nápad z tutoriálu, páčil sa): ukázať tu aj malú červenú
+        # bublinu s počtom trestných bodov, ktoré víťaz práve štichom
+        # získal (trick.total_base_points), rovnako ako
+        # tutorial/tutorial_screen.py::_finish_trick_collect robí cez
+        # self.speech_bubble.show_round_result(winner_index,
+        # trick.total_base_points, is_bidder=False) — ale len keď
+        # trick.total_base_points > 0.
+
         # Skontroluj zlyhanie záväzku
         if current_round.check_declaration_failed():
 
@@ -693,7 +701,7 @@ class Screen:
 
             # Meno hráča
             name = self.game_state.players[player_idx].name
-            name_surf = self.font_small.render(
+            name_surf = self.font_medium.render(
                 name, True, COLOR_GOLD if is_winner else COLOR_WHITE
             )
             self.screen.blit(name_surf, name_surf.get_rect(
