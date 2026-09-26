@@ -35,6 +35,13 @@ class Player:
         # Chujogram
         self.bullets: int = 0              # počet guličiek v chujograme
 
+        # Čo sa v práve uzavretom kole stalo — nastavuje finalize_round()
+        # a update_streak() tam, kde sa to aj tak počíta, a číta to
+        # game/stats_collector.py (štatistiky profilu). Na herné
+        # rozhodovanie to nemá žiadny vplyv, len sa nezahadzuje
+        # informácia, ktorá už existuje. Maže sa v reset_round().
+        self.round_flags: dict[str, bool] = {}
+
     # ------------------------------------------------------------------
     # Správa kariet
     # ------------------------------------------------------------------
@@ -128,6 +135,7 @@ class Player:
         # --- Sweep (bez záväzku) ---
         elif all_penalty_taken:
             points = SHOOT_MOON_BONUS  # -10b
+            self.round_flags["sweep"] = True
 
         # --- Normálny priebeh ---
         else:
@@ -145,6 +153,7 @@ class Player:
         # Reset na 90 ak má presne 100b
         if self.total_score == WINNING_SCORE:
             self.total_score = RESET_SCORE
+            self.round_flags["reset_100"] = True
 
         return points
 
@@ -158,6 +167,7 @@ class Player:
             if self.no_penalty_streak >= NO_PENALTY_STREAK:
                 self.total_score += NO_PENALTY_BONUS
                 self.no_penalty_streak = 0
+                self.round_flags["streak_bonus"] = True
 
     def reset_round(self):
         """Resetuje stav hráča pre nové kolo."""
@@ -169,6 +179,7 @@ class Player:
         self.declaration_fulfilled = False
         self.illuminated_leaf = False
         self.illuminated_acorn = False
+        self.round_flags = {}
 
     def __repr__(self) -> str:
         return f"Player({self.name}, score={self.total_score})"

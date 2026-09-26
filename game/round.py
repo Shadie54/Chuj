@@ -36,7 +36,8 @@ class Round:
 
         # Seed kola
         self.deal_seed: int | None = None
-        self.illuminated_by: dict[str, int | None] = {"leaf": None, "acorn": None}
+        # Rozdanie tak, ako padlo — pozri deal() a game/savegame.py.
+        self.dealt_hands: list[list[Card]] = []
 
     # ------------------------------------------------------------------
     # FÁZA 1: Rozdávanie
@@ -62,6 +63,11 @@ class Round:
         )
         for i, player in enumerate(self.players):
             player.receive_cards(hands[i])
+        # Snímka rozdania si musí ostať — ruky sa počas kola míňajú, ale
+        # uloženie rozohratej hry (game/savegame.py) ju potrebuje, aby
+        # vedelo kolo zrekonštruovať prehraním od začiatku (len tak sedí
+        # aj pamäť AI).
+        self.dealt_hands = [list(h) for h in hands]
         self.phase = "preparation"
 
     # ------------------------------------------------------------------
@@ -206,6 +212,9 @@ class Round:
                 player.total_score += DECLARATION_FAIL_PENALTY
                 if player.total_score == WINNING_SCORE:
                     player.total_score = RESET_SCORE
+                    # Rovnaký príznak ako vo finalize_round() — reset na 90
+                    # sa deje aj tu, v tejto vetve (pozri player.round_flags).
+                    player.round_flags["reset_100"] = True
                 player.update_streak(actual_points=DECLARATION_FAIL_PENALTY)
 
             elif not is_decl_player and declaration_none_failed:

@@ -15,6 +15,8 @@
 # Táto vrstva je bez pygame — dá sa testovať headless a používajú ju
 # rovnako ostrá hra aj tutoriál (vykreslenie rieši gui/tip_panel.py).
 
+import random
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 
 from game.ai import AI
@@ -69,6 +71,26 @@ class Advisor:
         self.player = player
         self.ai = AI(player, difficulty="hard", logger=logger)
 
+    @staticmethod
+    @contextmanager
+    def _isolated_rng():
+        """
+        Odizoluje radcu od globálneho generátora náhody.
+
+        AI rozhodovanie siaha na globálny random (RiskSpecial si hádže
+        kocku, či zariskuje — game/ai_v2/strategies/risk_special.py).
+        Keby sme sa AI pýtali na tip bez tejto izolácie, každý tip by
+        odčerpal číslo z postupnosti a súperi by odvtedy hrali inak, než
+        keby mal hráč tipy vypnuté. Overené: v 4 zo 40 hier sa priebeh
+        naozaj rozišiel. Stav generátora preto uložíme a po rozhodnutí
+        vrátime späť — tip je tak pre zvyšok hry úplne neviditeľný.
+        """
+        state = random.getstate()
+        try:
+            yield
+        finally:
+            random.setstate(state)
+
     # ------------------------------------------------------------------
     # Pamäť — presne to isté API ako AI (volá sa z gui/screen.py)
     # ------------------------------------------------------------------
@@ -103,9 +125,10 @@ class Advisor:
         if not playable:
             return Tip(kind="card")
 
-        card = self.ai.decide_card(
-            playable, current_trick, trick_number, all_scores
-        )
+        with self._isolated_rng():
+            card = self.ai.decide_card(
+                playable, current_trick, trick_number, all_scores
+            )
 
         trace = self.ai.engine_v2.last_trace
         strategy = trace.strategy if trace else ""
@@ -153,9 +176,13 @@ class Advisor:
         if not held:
             return Tip(kind="illumination")
 
-        leaf_yes, acorn_yes = self.ai.decide_illumination(
-            first_player_index, all_scores
-        )
+        # Rovnaká izolácia ako pri tipe na kartu — dnes síce rozhodovanie
+        # o vysvietení náhodu nepoužíva, ale keby ju niekedy začalo, tip
+        # by opäť ticho menil hru súperom.
+        with self._isolated_rng():
+            leaf_yes, acorn_yes = self.ai.decide_illumination(
+                first_player_index, all_scores
+            )
         debug = self.ai.declaration_advisor.last_illumination_debug or {}
         decisions = {"leaf": leaf_yes, "acorn": acorn_yes}
 
@@ -166,10 +193,11 @@ class Advisor:
         # Stabilné poradie: zelený (drahší) prvý.
         cards.sort(key=lambda c: 0 if c.suit == "leaf" else 1)
 
-        codes, sources = {}, []
+        codes, entries, sources = {}, {}, []
         for suit in held:
-            entry = debug.get(suit)
-            codes[suit] = entry[5] if entry and len(entry) > 5 else ""
+            entry = debug.get(suit) or ()
+            entries[suit] = entry
+            codes[suit] = entry[5] if len(entry) > 5 else ""
             sources.append(
                 f"{suit}:{'yes' if decisions[suit] else 'no'}:{codes[suit]}"
             )
@@ -187,17 +215,30 @@ class Advisor:
             else:
                 headline = f"Sviet len {self._SPECIAL_NAMES[yes_suits[0]][0]}."
 
-        # Ak je dôvod pre oboch rovnaký, netreba ho písať dvakrát — vtedy
-        # sa zmestí plné znenie. Pri dvoch rôznych dôvodoch použijeme
-        # skrátené (v paneli sú vedľa seba už aj dve karty).
-        if len(held) == 2 and codes[held[0]] != codes[held[1]]:
+        # Pri jednom drženom horníkovi je v paneli dosť miesta na plné,
+        # poskladané znenie (krytie + riziko + poistka, ak nejaká je).
+        # Pri dvoch horníkoch (karty nad textom miesto vedľa neho, pozri
+        # gui/tip_panel.py) je miesta podstatne menej — aj samotný
+        # existujúci dlhý text sa tam vedel nezmestiť (overené meraním
+        # cez skutočnú wrap logiku panela), takže tam ide vždy skrátená
+        # verzia, bez ohľadu na to, či majú oba horníky rovnaký dôvod.
+        if len(held) == 1:
+            suit = held[0]
+            entry = entries[suit]
+            reserve_quality = entry[0] if len(entry) > 0 else None
+            risk_level = entry[1] if len(entry) > 1 else None
+            comp_breakdown = entry[4] if len(entry) > 4 else None
+            reasons = [illumination_reason(
+                codes[suit], reserve_quality=reserve_quality,
+                risk_level=risk_level, comp_breakdown=comp_breakdown,
+            )]
+        else:
             symbols = {"leaf": "Q♠", "acorn": "Q♣"}
             reasons = [
-                f"{symbols[s]} — {illumination_reason(codes[s], short=True)}."
+                f"{symbols[s]} — "
+                f"{illumination_reason(codes[s], short=True, reserve_quality=entries[s][0] if entries[s] else None)}."
                 for s in ("leaf", "acorn") if s in held
             ]
-        else:
-            reasons = [illumination_reason(codes[held[0]])]
         return Tip(
             kind="illumination",
             cards=cards,

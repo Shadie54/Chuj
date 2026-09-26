@@ -11,9 +11,16 @@ import pygame
 from gui.screen import Screen
 from gui.menu import Menu
 from gui.settings_screen import SettingsScreen
+from gui.stats_screen import StatsScreen
 from gui.game_over_screen import GameOverScreen
 from config import DEBUG_MODE
+# Nastavenia aj vytvorenie hry sú v game_setup.py, spoločne s
+# tutorial_main.py. Dôležité: create_game() odtiaľ berie meno hráča z
+# aktívneho profilu — lokálna kópia tejto funkcie v main.py by meno
+# opäť natvrdo prepísala na "Hráč" (presne to sa raz už stalo).
 from game_setup import load_settings, save_settings, create_game
+from game import savegame
+from game import profile as profile_store
 
 
 def _run_game(window, game_state, ai_players,
@@ -47,13 +54,21 @@ def main():
     active_ai_players = None
 
     while True:
-        menu = Menu(window, show_continue=active_game_state is not None)
+        # "Pokračovať" sa ponúka aj vtedy, keď v tomto spustení žiadna hra
+        # nebeží, ale na disku čaká rozohratá z minula.
+        menu = Menu(
+            window,
+            show_continue=(active_game_state is not None or savegame.has_save())
+        )
         action = menu.run()
 
         if action == "quit":
             pygame.quit()
             sys.exit()
 
+
+        elif action == "profile":
+            StatsScreen(window).run()
 
         elif action == "settings":
             settings_screen = SettingsScreen(window, settings)
@@ -65,7 +80,20 @@ def main():
                     if ai is not None:
                         ai.difficulty = settings.get(f"ai{i}_difficulty", "hard")
 
-        elif action == "continue" and active_game_state is not None:
+        elif action == "continue":
+            if active_game_state is None:
+                loaded = savegame.load_game()
+                if loaded is None:
+                    # Poškodená alebo zmiznutá uložená hra — savegame si
+                    # ju už zmazal, takže len naspäť do menu.
+                    continue
+                active_game_state, active_ai_players = loaded
+                for i, ai in enumerate(active_ai_players):
+                    if ai is not None:
+                        ai.difficulty = settings.get(
+                            f"ai{i}_difficulty", ai.difficulty
+                        )
+
             result, active_game_state, active_ai_players = _run_game(
                 window, active_game_state, active_ai_players,
                 new_game=False, settings=settings
@@ -87,6 +115,11 @@ def main():
 
 
         elif action == "new_game":
+            # Nová hra zahadzuje rozohratú — až teraz sa tá stará ráta do
+            # štatistík ako nedohratá.
+            if savegame.has_save():
+                profile_store.record_abandoned()
+                savegame.delete_save()
             active_game_state, active_ai_players = create_game(settings)
             result, active_game_state, active_ai_players = _run_game(
                 window, active_game_state, active_ai_players,

@@ -33,6 +33,20 @@ class GameState:
         self.logger = GameLogger()
         #hráč, ktorý zobral všetky trestné karty
         self.last_sweep_player: int | None = None
+
+        # Voliteľný zberač štatistík profilu (game/stats_collector.py).
+        # Vešia sa sem, a nie na Screen, z dvoch dôvodov: finish_round()
+        # má tri volacie miesta v GUI (na jedno by sa skôr či neskôr
+        # zabudlo), a GameState prežíva medzi obrazovkami — pri odchode
+        # do menu a návrate cez "Pokračovať" tak štatistika nezmizne.
+        # None = nezbiera sa (tester, simulátor).
+        self.stats_collector = None
+
+        # Radca pre tipy hráčovi (game/advisor.py). Z rovnakého dôvodu
+        # ako zberač vyššie žije tu, nie na Screen: jeho pamäť musí
+        # prežiť odchod do menu aj znovuotvorenie hry, inak by po návrate
+        # do rozohratého kola radil naslepo (nevedel by, čo už padlo).
+        self.advisor = None
     # ------------------------------------------------------------------
     # Inicializácia hry
     # ------------------------------------------------------------------
@@ -75,6 +89,11 @@ class GameState:
         self._record_round_history()
         self._update_chujogram()
         self.round_scores_history.append([p.total_score for p in self.players])
+        # Štatistiky musia čítať AŽ TERAZ — po score_round() a po
+        # _update_chujogram() (guličky), ale ešte pred ďalším
+        # start_new_round(), ktoré stav hráčov vynuluje.
+        if self.stats_collector is not None:
+            self.stats_collector.record_round(self)
         self._advance_first_player()
         if self._check_game_over():
             self.phase = "game_over"

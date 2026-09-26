@@ -53,10 +53,17 @@ class Menu:
         if show_continue:
             buttons_data.append(("Pokračovať", "continue", COLOR_BUTTON_PRIMARY))
         buttons_data.append(("Nová hra", "new_game", COLOR_BUTTON_PRIMARY))
+        buttons_data.append(("Profil", "profile", COLOR_BUTTON_SECONDARY))
         buttons_data.append(("Nastavenia", "settings", COLOR_BUTTON_SECONDARY))
         buttons_data.append(("Koniec", "quit", COLOR_BUTTON_SECONDARY))
 
         start_y = 420
+        # Po pribudnutí tlačidla "Profil" je v menu až 5 položiek — na
+        # nižšom rozlíšení by posledná vypadla pod okraj, preto blok v
+        # takom prípade posunieme nahor. Na 1080p sa nič nemení.
+        last_bottom = start_y + (len(buttons_data) - 1) * 85 + btn_h
+        if last_bottom > SCREEN_HEIGHT - 40:
+            start_y -= last_bottom - (SCREEN_HEIGHT - 40)
 
         self.buttons = []
         for i, (label, action, color) in enumerate(buttons_data):

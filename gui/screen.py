@@ -16,6 +16,9 @@ from gui.phase_renderer import PhaseRenderer
 from gui.preparation_handler import PreparationHandler
 from gui.tip_panel import TipPanel
 from game.advisor import Advisor
+from game.stats_collector import StatsCollector
+from game import profile as profile_store
+from game import savegame
 from config import (
     SCREEN_WIDTH, SCREEN_HEIGHT, FPS, DEBUG_MODE,
     COLOR_BG,
@@ -132,16 +135,37 @@ class Screen:
         # kŕmi vlastnými volaniami record_* na tých istých miestach, kde
         # sa kŕmia súperi (_start_round, _process_waiting_trick,
         # _reset_trick_state, preparation_handler).
-        self.advisor = Advisor(
-            game_state.players[game_state.human_index],
-            logger=None,   # tipy nezahlcujú herný log
-        ) if game_state.human_index >= 0 else None
+        # Radca žije na GameState (pozri komentár tam) — pri návrate do
+        # rozohratej hry musí mať pamäť toho, čo už v kole padlo, inak by
+        # radil naslepo. Nový zakladáme len ak ešte žiadny nie je.
+        if game_state.human_index >= 0 and game_state.advisor is None:
+            game_state.advisor = Advisor(
+                game_state.players[game_state.human_index],
+                logger=None,   # tipy nezahlcujú herný log
+            )
+        self.advisor = game_state.advisor
         self.tips_enabled: bool = bool(self.settings.get("tips_enabled", False))
         self.tip_panel = TipPanel(self.screen)
         self.current_tip = None
+
+        # ------------------------------------------------------------------
+        # Štatistiky profilu (game/profile.py, game/stats_collector.py)
+        # ------------------------------------------------------------------
+        # Zberač žije na GameState, nie tu — pozri komentár tam. Ak už
+        # existuje (návrat do rozohratej hry cez "Pokračovať"), necháme
+        # ho, inak založíme nový.
+        if game_state.human_index >= 0 and game_state.stats_collector is None:
+            game_state.stats_collector = StatsCollector(game_state.human_index)
+        # Aby sa tá istá hra nezapísala dvakrát (koniec hry sa v kóde
+        # vyhodnocuje na viacerých miestach) ani sa nezapísala ako
+        # nedohratá potom, čo už riadne skončila.
+        self._game_recorded = False
         # Kľúč situácie, pre ktorú je current_tip spočítaný — tip sa
         # neprepočítava každú snímku, ale len keď sa zmení štich/ruka.
         self._tip_key = None
+        # Chybu v tipoch vypíšeme do konzoly len raz za hru, nech
+        # nezaplaví výstup 60× za sekundu (pozri _safe_update_tip).
+        self._tip_error_logged = False
 
     # ------------------------------------------------------------------
     # Hlavná slučka
@@ -187,11 +211,25 @@ class Screen:
                 self.trick_animation.update()
                 self.card_throw_animation.update()
                 self._handle_ai_turn()
-                self._update_tip()
+                self._safe_update_tip()
                 self._draw()
 
             pygame.display.flip()
-        if self.game_state.phase == "game_over":
+
+        # Jediné miesto, kde sa hra uzatvára — slučka sa končí buď
+        # dohratou hrou, alebo odchodom hráča (Menu/zavretie okna).
+        finished = self.game_state.phase == "game_over"
+        if finished:
+            self._record_game_result()
+            savegame.delete_save()
+        else:
+            # Rozohratú hru uložíme, nech sa dá dohrať aj po zatvorení
+            # programu. Do štatistík ako "nedohratá" sa zapíše až vtedy,
+            # keď ju hráč naozaj zahodí novou hrou (pozri main.py) —
+            # samotný odchod do menu ešte nič nevzdáva.
+            savegame.save_game(self.game_state, self.ai_players)
+
+        if finished:
             return "game_over"
         return "menu"
 
@@ -210,6 +248,13 @@ class Screen:
                 ai.memory.init_with_hand(
                     self.game_state.players[ai.player.index].hand.cards
                 )
+
+        # Obtiažnosti sa čítajú z bežiacich AI, nie z nastavení — hráč ich
+        # smie prepnúť aj počas hry a zberač si tak všimne, že sa menili.
+        if self.game_state.stats_collector is not None:
+            self.game_state.stats_collector.note_difficulties(
+                self._current_difficulties()
+            )
 
         # Rovnaký reset pre radcu hráča (tipy) — vidí len vlastnú ruku,
         # nič navyše oproti tomu, čo vidí hráč.
@@ -805,6 +850,47 @@ class Screen:
     # Tipy od AI
     # ------------------------------------------------------------------
 
+    # ------------------------------------------------------------------
+    # Štatistiky profilu
+    # ------------------------------------------------------------------
+
+    def _current_difficulties(self) -> list[str]:
+        """Obtiažnosti súperov v poradí, ako sedia za stolom. Číta sa z
+        bežiacich AI, lebo tie odrážajú aj zmenu počas hry."""
+        return [
+            getattr(ai, "difficulty", "?")
+            for ai in self.ai_players if ai is not None
+        ]
+
+    def _record_game_result(self):
+        """
+        Zapíše DOHRATÚ hru do profilu.
+
+        Nedohraté hry sa sem nedostanú — tie sa ukladajú na disk a do
+        štatistík pribudnú až vtedy, keď ich hráč zahodí novou hrou
+        (main.py volá profile.record_abandoned()). Odchod do menu sa dá
+        vrátiť, takže sám o sebe ešte nič nevzdáva.
+
+        Zlyhanie zápisu nesmie zhodiť hru — štatistika je bonus, nie
+        herná logika.
+        """
+        if self._game_recorded:
+            return
+        collector = self.game_state.stats_collector
+        if collector is None:
+            return
+        self._game_recorded = True
+        try:
+            prof = profile_store.load_active_profile()
+            prof.add_game(
+                collector.to_record(
+                    self.game_state, self._current_difficulties()
+                )
+            )
+            profile_store.save_active_profile(prof)
+        except Exception:
+            pass
+
     def _save_tips_setting(self):
         """Zapamätá voľbu tipov do settings.json (rovnaký súbor ako
         ostatné nastavenia hry). Zlyhanie zápisu nesmie zhodiť hru —
@@ -816,6 +902,25 @@ class Screen:
             save_settings(stored)
         except Exception:
             pass
+
+    def _safe_update_tip(self):
+        """
+        Obal okolo _update_tip pre hernú slučku.
+
+        Tip je pomôcka, nie herná logika — nech sa v ňom pokazí čokoľvek
+        (chybne prepísaný text, nová AI stratégia, hocičo), nesmie to
+        zhodiť rozohratú hru. Pri chybe sa tip len skryje a pokračuje sa
+        ďalej; hráč nanajvýš príde o radu, nie o rozohratú partiu.
+        """
+        try:
+            self._update_tip()
+        except Exception:
+            self.current_tip = None
+            self._tip_key = None
+            if not self._tip_error_logged:
+                self._tip_error_logged = True
+                import traceback
+                traceback.print_exc()
 
     def _update_tip(self):
         """

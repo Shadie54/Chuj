@@ -45,7 +45,17 @@ def save_settings(settings: dict):
 
 
 def create_game(settings: dict) -> tuple:
-    player_names = ["Hráč", "Počítač 1", "Počítač 2", "Počítač 3"]
+    # Meno hráča berieme z aktívneho profilu (game/profile.py), nech ho
+    # vidno na stole aj v Chujograme. Ak profil ešte neexistuje alebo sa
+    # nedá načítať, ostáva predvolené "Hráč" — štatistiky nesmú byť
+    # podmienkou pre spustenie hry.
+    try:
+        from game.profile import load_active_profile
+        human_name = load_active_profile().name or "Hráč"
+    except Exception:
+        human_name = "Hráč"
+
+    player_names = [human_name, "Počítač 1", "Počítač 2", "Počítač 3"]
     human_index = 0
     game_state = GameState(player_names, human_index)
     game_state.setup_first_player()
