@@ -1,8 +1,32 @@
+from dataclasses import dataclass, field
+
 from game.card import Card
 from game.player import Player
 from game.ai_memory import AIMemory
 from game.ai_v2.context import AIContext, TrickOutcome
 from game.ai_v2.strategies.base import Strategy
+
+
+@dataclass
+class DecisionTrace:
+    """
+    Záznam o tom, PREČO selector vybral danú kartu — presne tie údaje,
+    ktoré si už aj tak počíta a dnes ich len zaloguje a zahodí.
+
+    Nepoužíva sa pri rozhodovaní (AI beží rovnako, či sa trace zbiera
+    alebo nie) — slúži len ako zdroj pre tipy hráčovi
+    (game/advisor.py) a pre diagnostiku.
+
+    - strategy/variant/detail: víťazná stratégia a jej vlastný popis
+    - alternatives: [(karta, váha, "Strategy.VARIANT"), ...] zostupne;
+      pri dump vetve sú to ostatní kandidáti daného tieru (bez váh, 0.0)
+    """
+    card: Card | None = None
+    strategy: str = ""
+    variant: str = ""
+    detail: str = ""
+    alternatives: list[tuple[Card, float, str]] = field(default_factory=list)
+    path: str = ""          # "single" / "dump" / "weight" / "fallback"
 
 
 class StrategySelector:
@@ -28,11 +52,18 @@ class StrategySelector:
         self.strategies = strategies
         self.logger = logger
         self.last_variant: str = ""
+        # Posledný DecisionTrace — pozri triedu vyššie. Prepisuje sa pri
+        # každom select(), takže platí vždy pre naposledy vybranú kartu.
+        self.last_trace: DecisionTrace = DecisionTrace()
 
     def select(self, ctx: AIContext) -> Card:
         if len(ctx.playable) == 1:
             card = ctx.playable[0]
             self.last_variant = "FORCED_SINGLE_CARD"
+            self.last_trace = DecisionTrace(
+                card=card, strategy="", variant="FORCED_SINGLE_CARD",
+                detail=f"jediná legálna karta: {card}", path="single"
+            )
             if self.logger:
                 self.logger.log_strategy(
                     self.player.name, "FORCED_SINGLE_CARD", f"jediná legálna karta: {card}"
@@ -83,8 +114,26 @@ class StrategySelector:
                     )
 
             # Z kandidátov tohto tieru vyber najvyšší rank (najhodnotnejší dump)
-            best_card, best_variant, _ = max(proposals, key=lambda p: p[0].rank_order)
+            best_card, best_variant, best_detail = max(
+                proposals, key=lambda p: p[0].rank_order
+            )
             self.last_variant = best_variant
+            self.last_trace = DecisionTrace(
+                card=best_card,
+                strategy=strategy.name,
+                variant=best_variant,
+                detail=best_detail,
+                # Ostatní kandidáti toho istého tieru — váhy sa tu
+                # nepoužívajú (rozhoduje priorita tieru + rank), preto 0.0.
+                alternatives=[
+                    (c, 0.0, f"{strategy.name}.{v}")
+                    for c, v, _ in sorted(
+                        proposals, key=lambda p: p[0].rank_order, reverse=True
+                    )
+                    if c != best_card
+                ],
+                path="dump",
+            )
 
             if self.logger:
                 self.logger.log_strategy(
@@ -102,6 +151,9 @@ class StrategySelector:
 
         card_scores: dict[Card, float] = {}
         card_sources: dict[Card, list[str]] = {}
+        # Len pre DecisionTrace (tipy/diagnostika) — najlepší (najvyššie
+        # vážený) návrh na kartu aj s textom, ktorý k nemu stratégia dala.
+        card_best_proposal: dict[Card, tuple[float, str, str, str]] = {}
 
         for strategy in non_dump:
             proposals = strategy.propose(ctx)
@@ -123,6 +175,9 @@ class StrategySelector:
                 card_sources.setdefault(card, []).append(
                     f"{strategy.name}.{variant}({w})"
                 )
+                prev = card_best_proposal.get(card)
+                if prev is None or w > prev[0]:
+                    card_best_proposal[card] = (w, strategy.name, variant, detail)
 
         if not card_scores:
             return None
@@ -137,6 +192,29 @@ class StrategySelector:
             self.last_variant = variant_part
         else:
             self.last_variant = ""
+
+        _, best_strategy, best_variant, best_detail = card_best_proposal.get(
+            best_card, (0.0, "", self.last_variant, "")
+        )
+        self.last_trace = DecisionTrace(
+            card=best_card,
+            strategy=best_strategy,
+            variant=best_variant,
+            detail=best_detail,
+            alternatives=[
+                (
+                    c,
+                    card_scores[c],
+                    ".".join(card_best_proposal[c][1:3])
+                    if c in card_best_proposal else "",
+                )
+                for c in sorted(
+                    card_scores, key=lambda c: card_scores[c], reverse=True
+                )
+                if c != best_card
+            ],
+            path="weight",
+        )
 
         if self.logger:
             self._log_scores(card_scores, card_sources, best_card)
@@ -174,6 +252,11 @@ class StrategySelector:
 
         if is_pure_trap_lead:
             self.last_variant = "FORCED_LEAD_TRAP"
+            self.last_trace = DecisionTrace(
+                card=card, variant="FORCED_LEAD_TRAP",
+                detail="všetky hrateľné karty sú netknuteľné (trap)",
+                path="fallback",
+            )
             if self.logger:
                 self.logger.log_strategy(
                     self.player.name, "FORCED_LEAD_TRAP",
@@ -183,6 +266,11 @@ class StrategySelector:
             return card
 
         self.last_variant = "GLOBAL_FALLBACK"
+        self.last_trace = DecisionTrace(
+            card=card, variant="GLOBAL_FALLBACK",
+            detail="žiadna stratégia nemala kandidáta",
+            path="fallback",
+        )
         if self.logger:
             self.logger.log_strategy(
                 self.player.name, "GLOBAL_FALLBACK",

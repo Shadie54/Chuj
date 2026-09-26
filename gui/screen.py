@@ -14,11 +14,14 @@ from gui.chujogram_panel import ChujogramPanel
 from gui.round_status import RoundStatus
 from gui.phase_renderer import PhaseRenderer
 from gui.preparation_handler import PreparationHandler
+from gui.tip_panel import TipPanel
+from game.advisor import Advisor
 from config import (
     SCREEN_WIDTH, SCREEN_HEIGHT, FPS, DEBUG_MODE,
     COLOR_BG,
     FONT_SIZE_MEDIUM, FONT_SIZE_LARGE, FONT_SIZE_SMALL,
-    get_font, CARD_SIZE_MEDIUM, COLOR_GOLD, COLOR_GRAY, COLOR_WHITE
+    get_font, CARD_SIZE_MEDIUM, COLOR_GOLD, COLOR_GRAY, COLOR_WHITE,
+    TIP_PANEL_X
 )
 
 
@@ -121,6 +124,25 @@ class Screen:
         self.declaration_failed_timer: int = 0
         self.show_last_trick = False
 
+        # ------------------------------------------------------------------
+        # Tipy od AI (game/advisor.py)
+        # ------------------------------------------------------------------
+        # Advisor je zámerne MIMO self.ai_players — ten zoznam znamená
+        # "kto hrá sám za seba" a hráč tam patriť nemá. Advisor sa preto
+        # kŕmi vlastnými volaniami record_* na tých istých miestach, kde
+        # sa kŕmia súperi (_start_round, _process_waiting_trick,
+        # _reset_trick_state, preparation_handler).
+        self.advisor = Advisor(
+            game_state.players[game_state.human_index],
+            logger=None,   # tipy nezahlcujú herný log
+        ) if game_state.human_index >= 0 else None
+        self.tips_enabled: bool = bool(self.settings.get("tips_enabled", False))
+        self.tip_panel = TipPanel(self.screen)
+        self.current_tip = None
+        # Kľúč situácie, pre ktorú je current_tip spočítaný — tip sa
+        # neprepočítava každú snímku, ale len keď sa zmení štich/ruka.
+        self._tip_key = None
+
     # ------------------------------------------------------------------
     # Hlavná slučka
     # ------------------------------------------------------------------
@@ -165,6 +187,7 @@ class Screen:
                 self.trick_animation.update()
                 self.card_throw_animation.update()
                 self._handle_ai_turn()
+                self._update_tip()
                 self._draw()
 
             pygame.display.flip()
@@ -187,6 +210,16 @@ class Screen:
                 ai.memory.init_with_hand(
                     self.game_state.players[ai.player.index].hand.cards
                 )
+
+        # Rovnaký reset pre radcu hráča (tipy) — vidí len vlastnú ruku,
+        # nič navyše oproti tomu, čo vidí hráč.
+        if self.advisor is not None:
+            self.advisor.reset_memory()
+            self.advisor.init_with_hand(
+                self.game_state.players[self.game_state.human_index].hand.cards
+            )
+            self.current_tip = None
+            self._tip_key = None
 
         # Reset stavov
         self.declaration_index = 0
@@ -267,6 +300,15 @@ class Screen:
 
         if self.phase_renderer._button_info_rect().collidepoint(pos):
             self.info_overlay.toggle()
+            return
+
+        if self.phase_renderer._button_tips_rect().collidepoint(pos):
+            self.tips_enabled = not self.tips_enabled
+            self.settings["tips_enabled"] = self.tips_enabled
+            self._save_tips_setting()
+            if not self.tips_enabled:
+                self.current_tip = None
+                self._tip_key = None
             return
 
         if self.phase_renderer._button_menu_rect().collidepoint(pos):
@@ -504,6 +546,10 @@ class Screen:
                     winner_index,
                     current_round.trick_number
                 )
+        if self.advisor is not None:
+            self.advisor.record_trick(
+                trick.played_cards, winner_index, current_round.trick_number
+            )
 
         winner_index = current_round.finish_trick()
         winner_name = self.game_state.players[winner_index].name
@@ -583,6 +629,13 @@ class Screen:
         self.chujogram.draw(self.game_state.bullet_history,self.game_state.round_scores_history)
         self.round_status.draw(self.game_state.players,self.game_state.current_round)
         self.phase_renderer.draw_buttons()
+        # Tip vľavo dole. Chujogram je vysúvací pás cez celú výšku vľavo —
+        # ak je (čo i len čiastočne) vysunutý, posunieme panel doprava za
+        # jeho pravý okraj, nech sa neprekrývajú.
+        if self.current_tip is not None:
+            chuj_right = self.chujogram.panel_x + self.chujogram.panel_w
+            offset = max(0, int(chuj_right + 20 - TIP_PANEL_X))
+            self.tip_panel.draw(self.current_tip, x_offset=offset)
         self.phase_renderer.draw_phase_overlay()
         self.speech_bubble.draw()
         self.phase_renderer.draw_message()
@@ -748,6 +801,94 @@ class Screen:
         self.card_throw_animation.in_flight = {}
         self.waiting_for_ai = False
 
+    # ------------------------------------------------------------------
+    # Tipy od AI
+    # ------------------------------------------------------------------
+
+    def _save_tips_setting(self):
+        """Zapamätá voľbu tipov do settings.json (rovnaký súbor ako
+        ostatné nastavenia hry). Zlyhanie zápisu nesmie zhodiť hru —
+        tip je pomôcka, nie herná logika."""
+        try:
+            from game_setup import load_settings, save_settings
+            stored = load_settings()
+            stored["tips_enabled"] = self.tips_enabled
+            save_settings(stored)
+        except Exception:
+            pass
+
+    def _update_tip(self):
+        """
+        Prepočíta tip, keď je hráč na ťahu a zmenila sa situácia.
+        Volá sa každú snímku, ale AI sa pýtame len pri zmene štichu/ruky
+        (rozhodnutie trvá ~0,1 ms, no nemá zmysel ho opakovať 60× za
+        sekundu pre tú istú pozíciu).
+        """
+        if not self.tips_enabled or self.advisor is None:
+            self.current_tip = None
+            return
+
+        current_round = self.game_state.current_round
+        if current_round is None:
+            self.current_tip = None
+            self._tip_key = None
+            return
+
+        # Príprava kola — radíme, či vysvietiť horníka/horníkov.
+        if current_round.phase == "preparation":
+            self._update_illumination_tip(current_round)
+            return
+
+        if (current_round.phase != "tricks"
+                or current_round.current_trick is None
+                or not self.game_state.is_human_turn
+                or self.trick_waiting
+                or self.card_throw_animation.in_flight
+                or self.trick_animation.cards_in_flight):
+            self.current_tip = None
+            self._tip_key = None
+            return
+
+        human_index = self.game_state.human_index
+        player = self.game_state.players[human_index]
+        trick = current_round.current_trick
+
+        key = (
+            current_round.trick_number,
+            len(trick.played_cards),
+            len(player.hand.cards),
+        )
+        if key == self._tip_key and self.current_tip is not None:
+            return
+
+        playable = player.hand.get_playable_cards(
+            trick.lead_suit,
+            current_round.trick_number,
+            declaration_active=current_round.declaration_type is not None,
+        )
+        scores = [p.total_score for p in self.game_state.players]
+        self.current_tip = self.advisor.tip_card(
+            playable, trick, current_round.trick_number, scores
+        )
+        self._tip_key = key
+
+    def _update_illumination_tip(self, current_round):
+        """Tip pre prípravnú fázu — vysvietiť horníka, či nie. Hráč sa
+        rozhoduje len raz za kolo, takže stačí spočítať raz (kľúč drží aj
+        počet kariet v ruke, nech to sedí aj po rozdaní)."""
+        human_index = self.game_state.human_index
+        player = self.game_state.players[human_index]
+        key = ("illum", self.game_state.round_number, len(player.hand.cards))
+        if key == self._tip_key and self.current_tip is not None:
+            return
+        scores = [p.total_score for p in self.game_state.players]
+        tip = self.advisor.tip_illumination(
+            current_round.first_player_index, scores
+        )
+        # Bez horníka v ruke niet čo radiť — panel sa vôbec neukáže.
+        self.current_tip = None if tip.is_empty else tip
+        self._tip_key = key
+
     def _reset_trick_state(self):
         """Resetuje stav štichu pri odchode."""
         current_round = self.game_state.current_round
@@ -762,6 +903,10 @@ class Screen:
                         winner_index,
                         current_round.trick_number
                     )
+            if self.advisor is not None:
+                self.advisor.record_trick(
+                    trick.played_cards, winner_index, current_round.trick_number
+                )
             current_round.finish_trick()
 
             # Skontroluj zlyhanie záväzku

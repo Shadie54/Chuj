@@ -10,6 +10,22 @@ class PreparationHandler:
         self.s = screen_ref  # referencia na Screen
         self.declaration_delay_timer: int = 0
         self.declaration_pending_index: int = -1
+
+    def _record_advisor(self, kind: str, player_index: int, *args):
+        """
+        Dokŕmi radcu hráča (tipy, game/advisor.py) tou istou verejnou
+        informáciou, akú práve dostali AI súperi. Advisor zámerne nie je
+        v self.s.ai_players (ten zoznam znamená "kto hrá sám za seba"),
+        preto tieto explicitné volania.
+        """
+        advisor = getattr(self.s, "advisor", None)
+        if advisor is None:
+            return
+        if kind == "declaration":
+            advisor.record_declaration(player_index, *args)
+        elif kind == "illumination":
+            advisor.record_illumination(player_index, *args)
+
     # ------------------------------------------------------------------
     # Klikanie
     # ------------------------------------------------------------------
@@ -104,6 +120,7 @@ class PreparationHandler:
         for ai in self.s.ai_players:
             if ai is not None:
                 ai.record_declaration(player_index, self.s.active_declaration)
+        self._record_advisor("declaration", player_index, self.s.active_declaration)
 
         # Vysvietenie
         illuminate_leaf = any(c.is_leaf_over for c in self.s.selected_illumination)
@@ -118,6 +135,9 @@ class PreparationHandler:
         for ai in self.s.ai_players:
             if ai is not None:
                 ai.record_illumination(player_index, illuminate_leaf, illuminate_acorn)
+        self._record_advisor(
+            "illumination", player_index, illuminate_leaf, illuminate_acorn
+        )
 
         # Bubliny
         if illuminate_leaf and illuminate_acorn:
@@ -169,6 +189,7 @@ class PreparationHandler:
             for other_ai in self.s.ai_players:
                 if other_ai is not None:
                     other_ai.record_declaration(i, declaration)
+            self._record_advisor("declaration", i, declaration)
 
             if declaration and not declaration_made:
                 declaration_made = True
@@ -189,6 +210,9 @@ class PreparationHandler:
             for other_ai in self.s.ai_players:
                 if other_ai is not None:
                     other_ai.record_illumination(i, illuminate_leaf, illuminate_acorn)
+            self._record_advisor(
+                "illumination", i, illuminate_leaf, illuminate_acorn
+            )
 
             if illuminate_leaf and illuminate_acorn:
                 self.s.speech_bubble.show_bid(i, "Svietim oboch!")
@@ -272,6 +296,9 @@ class PreparationHandler:
         for other_ai in self.s.ai_players:
             if other_ai is not None:
                 other_ai.record_illumination(current_index, illuminate_leaf, illuminate_acorn)
+        self._record_advisor(
+            "illumination", current_index, illuminate_leaf, illuminate_acorn
+        )
 
         if illuminate_leaf and illuminate_acorn:
             self.s.speech_bubble.show_bid(current_index, "Svietim oboch!")

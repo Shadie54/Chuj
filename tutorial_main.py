@@ -36,13 +36,19 @@ def run_chapter_zaklady() -> str:
 
 
 def run_chapter_trening() -> str:
-    """Kapitola 2 — ostrá tréningová hra. ŽIADNE skriptovanie, žiadne
-    tipy ani texty (zatiaľ) — reálny GameState/AI podľa uložených
-    nastavení (rovnaká obtiažnosť ako "Nová hra" v hlavnom menu),
-    identické s gui/screen.py::Screen. Beží kým hráč neklikne na Menu v
-    hre (alebo nezavrie okno), s možnosťou "Hraj znova" cez
-    GameOverScreen po prekročení 100 bodov."""
-    settings = load_settings()
+    """Kapitola 2 — ostrá tréningová hra. ŽIADNE skriptovanie — reálny
+    GameState/AI podľa uložených nastavení (rovnaká obtiažnosť ako "Nová
+    hra" v hlavnom menu), identické s gui/screen.py::Screen. Beží kým
+    hráč neklikne na Menu v hre (alebo nezavrie okno), s možnosťou "Hraj
+    znova" cez GameOverScreen po prekročení 100 bodov.
+
+    Jediný rozdiel oproti ostrej hre: tipy od AI sú tu zapnuté."""
+    settings = dict(load_settings())
+    # Tipy chceme v tréningovej kapitole vždy, bez ohľadu na to, ako ich
+    # má hráč nastavené v ostrej hre. Meníme len túto lokálnu kópiu — do
+    # settings.json sa nič nezapisuje (prepnutie tlačidlom priamo v hre
+    # áno, to je vedomá voľba hráča).
+    settings["tips_enabled"] = True
     while True:
         game_state, ai_players = create_game(settings)
         screen = Screen(game_state, ai_players, debug=DEBUG_MODE, settings=settings)

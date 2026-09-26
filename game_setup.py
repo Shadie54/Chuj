@@ -23,6 +23,10 @@ def load_settings() -> dict:
         "ai3_difficulty": "hard",
         "table_bg": "table.jpg",
         "animation_speed": 1.5,
+        # Tipy od AI (game/advisor.py) — v ostrej hre predvolene vypnuté,
+        # hráč si ich zapína tlačidlom "Tipy" priamo v hre (voľba sa sem
+        # uloží). Tréningová kapitola tutoriálu si ich zapína natvrdo.
+        "tips_enabled": False,
     }
     try:
         with open(SETTINGS_PATH, "r", encoding="utf-8") as f:

@@ -10,7 +10,8 @@ from config import (
     BUTTON_MENU_X, BUTTON_MENU_Y, BUTTON_MENU_WIDTH, BUTTON_MENU_HEIGHT,
     BUTTON_LAST_TRICK_X, BUTTON_LAST_TRICK_Y, BUTTON_LAST_TRICK_WIDTH, BUTTON_LAST_TRICK_HEIGHT,
     COLOR_BUTTON_PRIMARY, COLOR_BUTTON_SECONDARY,
-    get_font, BUTTON_CHUJOGRAM_X, BUTTON_CHUJOGRAM_Y, BUTTON_CHUJOGRAM_W, BUTTON_CHUJOGRAM_H
+    get_font, BUTTON_CHUJOGRAM_X, BUTTON_CHUJOGRAM_Y, BUTTON_CHUJOGRAM_W, BUTTON_CHUJOGRAM_H,
+    BUTTON_TIPS_X, BUTTON_TIPS_Y, BUTTON_TIPS_WIDTH, BUTTON_TIPS_HEIGHT
 )
 
 
@@ -104,6 +105,12 @@ class PhaseRenderer:
                 self._button_last_trick_rect(), "Posledný štich",
                 COLOR_BUTTON_SECONDARY
             )
+        tips_on = getattr(self.s, "tips_enabled", False)
+        self.draw_button(
+            self._button_tips_rect(),
+            "Tipy: ZAP" if tips_on else "Tipy: VYP",
+            COLOR_BUTTON_PRIMARY if tips_on else COLOR_BUTTON_SECONDARY
+        )
         self.draw_button(self._button_chujogram_rect(), "Chujogram", COLOR_BUTTON_SECONDARY)
         self.draw_button(self._button_sort_rect(), "Zoradiť", COLOR_BUTTON_SECONDARY)
         self.draw_button(self._button_info_rect(), "Pravidlá", COLOR_BUTTON_SECONDARY)
@@ -272,6 +279,11 @@ class PhaseRenderer:
     def _button_last_trick_rect() -> pygame.Rect:
         return pygame.Rect(BUTTON_LAST_TRICK_X, BUTTON_LAST_TRICK_Y,
                            BUTTON_LAST_TRICK_WIDTH, BUTTON_LAST_TRICK_HEIGHT)
+
+    @staticmethod
+    def _button_tips_rect() -> pygame.Rect:
+        return pygame.Rect(BUTTON_TIPS_X, BUTTON_TIPS_Y,
+                           BUTTON_TIPS_WIDTH, BUTTON_TIPS_HEIGHT)
 
     @staticmethod
     def _button_chujogram_rect() -> pygame.Rect:

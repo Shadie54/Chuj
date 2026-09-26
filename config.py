@@ -229,6 +229,27 @@ BUTTON_MENU_Y = SCREEN_HEIGHT - 90
 BUTTON_MENU_WIDTH = BUTTON_W
 BUTTON_MENU_HEIGHT = BUTTON_H
 
+# Prepínač tipov od AI — šieste tlačidlo v tom istom stĺpci, nad
+# "Posledný štich" (pozri gui/tip_panel.py a gui/screen.py).
+BUTTON_TIPS_X = BUTTON_X
+BUTTON_TIPS_Y = SCREEN_HEIGHT - 390
+BUTTON_TIPS_WIDTH = BUTTON_W
+BUTTON_TIPS_HEIGHT = BUTTON_H
+
+# ------------------------------------------------------------------
+# Panel s tipom od AI — ľavý dolný roh
+# ------------------------------------------------------------------
+# Tento obdĺžnik je voľný: ruka Počítača 3 je vľavo hore a končí nad ním
+# (HAND_CONFIGS[3]: y=150 + 7*65 + výška otočenej karty), ruka hráča
+# začína až napravo (HAND_CONFIGS[0]: x=400).
+TIP_PANEL_W = 360
+# Max výška — panel je ukotvený spodnou hranou a rastie nahor len podľa
+# obsahu (pozri gui/tip_panel.py). Horná hranica je daná rukou Počítača 3
+# vľavo, ktorá končí okolo y≈786 pri 1080p.
+TIP_PANEL_H = 270
+TIP_PANEL_X = 20
+TIP_PANEL_Y = SCREEN_HEIGHT - TIP_PANEL_H - 20
+
 # Round status panel — pravý horný roh
 ROUND_STATUS_W = 350
 ROUND_STATUS_H = 260

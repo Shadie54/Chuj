@@ -41,6 +41,10 @@ class AI:
         self.engine_v2 = AIEngine(player, self.memory, logger)
 
         self.last_strategy: str = ""
+        # Posledný výsledok sweep pipeline (má reasoning_chain,
+        # sweep_probability, expected_value, state) — odkladá sa len pre
+        # tipy hráčovi a diagnostiku, rozhodovanie ním neovplyvňujeme.
+        self.last_sweep_result = None
 
     def _log_sweep_90_eval(self, sweep_result, trick_number: int):
         """
@@ -104,17 +108,23 @@ class AI:
         )
 
         if self.declaration_type == "none":
+            # last_strategy sa nastavuje aj tu, aby bolo vždy jasné, ktorá
+            # vetva rozhodla (inak by ostala visieť hodnota z minulého ťahu
+            # — mätúce pre tipy hráčovi aj pre diagnostiku).
+            self.last_strategy = "DECLARATION_NONE"
             return self.none_player.decide(
                 playable, current_trick, hand_eval,
                 declaration_player=self.declaration_player
             )
 
         if my_declaration == "all":
+            self.last_strategy = "DECLARATION_ALL"
             return self.all_player.decide(playable, hand_eval)
 
         sweep_result = self.sweep_engine_v2.evaluate(
             hand_eval, trick_number, current_trick, playable
         )
+        self.last_sweep_result = sweep_result
         if self.logger:
             self.logger.log_sweep_pipeline(
                 self.player_name, sweep_result, trick_number + 1

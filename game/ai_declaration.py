@@ -13,6 +13,12 @@ class DeclarationAdvisor:
         self.memory = memory
         self.difficulty = difficulty
         self.logger = logger
+        # Posledné rozhodnutie o vysvietení aj s rozborom — dnes išiel
+        # rozbor len do logu a zahodil sa. Odkladá sa kvôli tipom pre
+        # hráča (game/advisor.py); na rozhodovanie nemá žiadny vplyv.
+        # Formát: {"leaf": (quality, risk, reason, comp, comp_bd, _),
+        #          "acorn": (...)} + {"decision": (leaf_bool, acorn_bool)}
+        self.last_illumination_debug: dict = {}
 
     def _log(self, strategy: str, details: str = ""):
         if self.logger:
@@ -133,6 +139,11 @@ class DeclarationAdvisor:
             illuminate_acorn, acorn_debug = self._should_illuminate(
                 hand, "acorn", position, is_leader
             )
+            self.last_illumination_debug = {
+                "leaf": leaf_debug,
+                "acorn": acorn_debug,
+                "decision": (illuminate_leaf, illuminate_acorn),
+            }
             if self.logger:
                 rq, rl, reason, comp, cbd, _ = leaf_debug
                 self.logger.log_illumination_decision(

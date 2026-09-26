@@ -117,3 +117,9 @@ class AIEngine:
     @property
     def last_strategy(self) -> str:
         return self.selector.last_variant
+
+    @property
+    def last_trace(self):
+        """DecisionTrace posledného rozhodnutia (pozri selector.py) —
+        zdroj pre tipy hráčovi, na samotné rozhodovanie nemá vplyv."""
+        return self.selector.last_trace
