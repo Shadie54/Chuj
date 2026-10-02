@@ -6,7 +6,8 @@ from config import (
     TABLE_CENTER_X,
     COLOR_WHITE, COLOR_GOLD, COLOR_YELLOW, COLOR_GREEN, COLOR_RED,
     FONT_SIZE_LARGE, FONT_SIZE_MEDIUM,
-    SUIT_ICONS_PATH, SCREEN_WIDTH, SCREEN_HEIGHT, get_font
+    SUIT_ICONS_PATH, SCREEN_WIDTH, SCREEN_HEIGHT, get_font,
+    HAND_CONFIGS, CARD_SIZE_MEDIUM
 )
 
 
@@ -21,12 +22,52 @@ class SpeechBubble:
         # Aktívne bubliny [{player_index, text, suit, timer, color}]
         self.bubbles: list[dict] = []
 
-        # Pozície bublín pre každého hráča
+        # Zastavenie časovačov (pozri update()). Zapína to naskriptovaná
+        # lekcia tutoriálu, kým čaká na hráča; ostrá hra to nikdy nemení.
+        self.frozen: bool = False
+        self._last_update: int = pygame.time.get_ticks()
+
+        # Pozície bublín pre každého hráča.
+        #
+        # Hráč (0) a PC2 (2) sedia na tej istej zvislej osi ako karty
+        # štichu v strede stola (TRICK_START_POSITIONS) — pri pôvodných
+        # hodnotách (820/380) preto bublina po štichu ("+N") zasahovala
+        # priamo do práve zahranej karty (u PC2 dokonca celá bublina
+        # ležala vnútri karty). Nové hodnoty (945/245) sú spočítané tak,
+        # aby sa zmestili do medzery medzi kartou a menovkou hráča
+        # (gui/phase_renderer.py::draw_player_labels) aj pre najvyšší typ
+        # bubliny (TROMF s ikonkou, ~132px vrátane chvosta) — overené
+        # vykreslením oboch prípadov na 1920×1080.
         self.bubble_positions = {
-            0: (TABLE_CENTER_X, 820),  # hráč dole — ok
+            0: (TABLE_CENTER_X, 945),  # hráč dole — medzi kartou a menovkou
             1: (SCREEN_WIDTH - 520, 380),  # PC1 vpravo — viac doľava od kariet (bolo -380)
-            2: (TABLE_CENTER_X, 380),  # PC2 hore — trochu nižšie (bolo 180)
+            2: (TABLE_CENTER_X, 245),  # PC2 hore — medzi kartou a menovkou (bolo 380/180)
             3: (520, 380),  # PC3 vľavo — viac doprava od kariet (bolo 380)
+        }
+
+        # Bodová bublina po štichu (show_round_result) pre hráča (0) a PC2
+        # (2) má VLASTNÚ pozíciu, inú než bubble_positions vyššie. Dôvod:
+        # hráč (0) aj PC2 (2) majú ruku kariet nakreslenú vodorovne presne
+        # na TABLE_CENTER_X (HAND_CONFIGS) — bublina uprostred (945/245)
+        # tak pri plnej ruke (8 kariet) zasahovala priamo do vlastných
+        # kariet hráča (overené vykreslením). PC1 (1) a PC3 (3) majú ruku
+        # zvislú mimo tejto osi, tam k prekryvu nedochádza — pre nich
+        # bodová bublina ostáva na bubble_positions.
+        # Hráč: nad jeho prvou kartou (ľavý koniec ruky) — úplne vľavo
+        # (pred rukou) by zasahovala do panelu TIP (gui/tip_panel.py,
+        # TIP_PANEL_X=20..380 — prvá karta začína až na x=400). O 50px
+        # vyššie než samotný vrch karty (HAND_CONFIGS[0]["y"]), nech nad
+        # ňou ostane viac vzduchu.
+        # PC2: vpravo od jeho (rovnako širokej) ruky hore, tesne pri
+        # kartách — medzera 90px necháva miesto pre chvost (max. šírka
+        # bubliny "+130"/48px polovica + 24px chvost = 72px) aj s
+        # rezervou, bez dotyku poslednej karty.
+        hand0_first_card_center = HAND_CONFIGS[0]["x"] + CARD_SIZE_MEDIUM[0] // 2
+        hand2_right = (HAND_CONFIGS[2]["x"] + 7 * HAND_CONFIGS[2]["offset"]
+                       + CARD_SIZE_MEDIUM[0])  # 7 = posledná z max. 8 kariet
+        self.round_result_positions = {
+            0: (hand0_first_card_center, HAND_CONFIGS[0]["y"] - 50),
+            2: (hand2_right + 90, 190),
         }
 
     # ------------------------------------------------------------------
@@ -83,9 +124,25 @@ class SpeechBubble:
             if b["player_index"] != player_index
         ]
 
+    # Smer chvostu podľa hráča v predvolenom prípade (pozri _draw_tail).
+    _DEFAULT_TAIL_DIRECTION = {0: "down", 1: "right", 2: "up", 3: "left"}
+
     def _add_bubble(self, player_index: int, text: str,
-                    suit: str | None, duration_ms: int, color: tuple):
-        """Pridá bublinu do zoznamu."""
+                    suit: str | None, duration_ms: int, color: tuple,
+                    position: tuple | None = None,
+                    tail_direction: str | None = None):
+        """Pridá bublinu do zoznamu.
+
+        position — voliteľné prebitie štandardnej pozície
+        (self.bubble_positions[player_index]); používa show_round_result()
+        pre hráča (0) a PC2 (2), pozri self.round_result_positions.
+
+        tail_direction — voliteľné prebitie smeru chvostu (inak podľa
+        player_index, pozri _DEFAULT_TAIL_DIRECTION); používa
+        show_round_result() pre PC2 (2), ktorého bodová bublina je vpravo
+        od jeho ruky, takže chvost smeruje doľava (späť k ruke), nie hore
+        ako pri jeho tromfovej/biddingovej bubline.
+        """
         # Odstráň existujúcu bublinu toho istého hráča
         self.bubbles = [
             b for b in self.bubbles
@@ -96,7 +153,9 @@ class SpeechBubble:
             "text": text,
             "suit": suit,
             "timer": pygame.time.get_ticks() + duration_ms,
-            "color": color
+            "color": color,
+            "position": position or self.bubble_positions[player_index],
+            "tail_direction": tail_direction or self._DEFAULT_TAIL_DIRECTION[player_index]
         })
 
     # ------------------------------------------------------------------
@@ -104,8 +163,21 @@ class SpeechBubble:
     # ------------------------------------------------------------------
 
     def update(self):
-        """Odstráni expirované bubliny."""
+        """Odstráni expirované bubliny.
+
+        Keď je self.frozen zapnuté, časovače bublín stoja — o uplynulý
+        čas sa im posunie koniec platnosti. Používa to naskriptovaná
+        lekcia tutoriálu: tá beží na kliky, nie na čas, takže bublina,
+        ktorá má hráčovi niečo povedať, nesmie zmiznúť, kým si číta
+        výklad. V ostrej hre frozen nikdy nie je zapnuté a bubliny miznú
+        po svojom čase presne ako predtým.
+        """
         now = pygame.time.get_ticks()
+        elapsed = now - self._last_update
+        self._last_update = now
+        if self.frozen and elapsed > 0:
+            for bubble in self.bubbles:
+                bubble["timer"] += elapsed
         self.bubbles = [
             b for b in self.bubbles
             if now < b["timer"]
@@ -124,7 +196,7 @@ class SpeechBubble:
     def _draw_bubble(self, bubble: dict):
         """Nakreslí jednu bublinu."""
         player_index = bubble["player_index"]
-        cx, cy = self.bubble_positions[player_index]
+        cx, cy = bubble["position"]
 
         text_surf = self.font_large.render(bubble["text"], True, bubble["color"])
         text_w = text_surf.get_width()
@@ -152,7 +224,8 @@ class SpeechBubble:
         )
 
         # Chvost bubliny (trojuholník)
-        self._draw_tail(cx, by + bubble_h, by, bubble_w, bubble_h, player_index, bubble["color"])
+        self._draw_tail(cx, by + bubble_h, by, bubble_w, bubble_h,
+                        bubble["tail_direction"], bubble["color"])
 
         # Text
         text_rect = text_surf.get_rect(
@@ -172,19 +245,19 @@ class SpeechBubble:
                 self.screen.blit(icon, icon_rect)
 
     def _draw_tail(self, cx: int, base_y: int, by: int, bubble_w: int, bubble_h: int,
-                   player_index: int, color: tuple):
+                   direction: str, color: tuple):
         tail_size = 12
         bx = cx - bubble_w // 2
 
-        if player_index == 0:
-            # Hráč dole — chvost dole (zo spodku bubliny)
+        if direction == "down":
+            # Chvost dole (zo spodku bubliny) — predvolené pre hráča (0)
             points = [
                 (cx - tail_size, base_y),
                 (cx + tail_size, base_y),
                 (cx, base_y + tail_size * 2)
             ]
-        elif player_index == 1:
-            # PC1 vpravo — chvost doprava (z pravého okraja bubliny)
+        elif direction == "right":
+            # Chvost doprava (z pravého okraja bubliny) — predvolené pre PC1
             mid_y = by + bubble_h // 2
             right_x = bx + bubble_w
             points = [
@@ -192,15 +265,17 @@ class SpeechBubble:
                 (right_x, mid_y + tail_size),
                 (right_x + tail_size * 2, mid_y)
             ]
-        elif player_index == 2:
-            # PC2 hore — chvost hore (z vrchného okraja bubliny)
+        elif direction == "up":
+            # Chvost hore (z vrchného okraja bubliny) — predvolené pre PC2
             points = [
                 (cx - tail_size, by),
                 (cx + tail_size, by),
                 (cx, by - tail_size * 2)
             ]
         else:
-            # PC3 vľavo — chvost doľava (z ľavého okraja bubliny)
+            # Chvost doľava (z ľavého okraja bubliny) — predvolené pre PC3;
+            # aj bodová bublina PC2 (show_round_result), lebo tá je vpravo
+            # od jeho ruky a chvost má smerovať späť k nej.
             mid_y = by + bubble_h // 2
             points = [
                 (bx, mid_y - tail_size),
@@ -227,10 +302,10 @@ class SpeechBubble:
                           is_bidder: bool, fulfilled: bool = True):
         """Zobrazí výsledok kola ako bublinu.
 
-        is_bidder=False (zatiaľ používa len tutorial/tutorial_screen.py po
-        každom štichu, pozri TODO v gui/screen.py::_process_waiting_trick)
-        vždy ukazuje ČERVENÚ farbu — v CHUJ-i sú body vždy trestné, nikdy
-        nie je "+body" niečo dobré."""
+        is_bidder=False (po každom štichu, pozri
+        gui/screen.py::_process_waiting_trick) vždy ukazuje ČERVENÚ farbu
+        — v CHUJ-i sú body vždy trestné, nikdy nie je "+body" niečo
+        dobré."""
         if is_bidder:
             if fulfilled:
                 text = f"+{points}"
@@ -247,7 +322,9 @@ class SpeechBubble:
             text=text,
             suit=None,
             duration_ms=3000,
-            color=color
+            color=color,
+            position=self.round_result_positions.get(player_index),
+            tail_direction="left" if player_index == 2 else None
         )
 
     def __repr__(self) -> str:

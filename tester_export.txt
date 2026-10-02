@@ -1,64 +1,63 @@
 ======================================================================
 TESTER EXPORT
 ======================================================================
-Scenár: random_seed_268080741
-Popis: Náhodné rozdanie (seed=268080741)
+Scenár: random_seed_1916170541
+Popis: Náhodné rozdanie (seed=1916170541)
 
 --- STAV ---
 Štich: 5/8
-Na ťahu: AI_3
-First player: AI_1
+Na ťahu: AI_0
+First player: AI_3
 
 --- VYSVIETENIE ---
-  leaf-over: AI_0
+  leaf-over: AI_2
 
 --- SKÓRE ---
-  AI_0: 0b (celkovo: 0b)
-  AI_1: 0b (celkovo: 0b)
-  AI_2: 21b (celkovo: 0b)
+  AI_0: 17b (celkovo: 0b)
+  AI_1: 1b (celkovo: 0b)
+  AI_2: 0b (celkovo: 0b)
   AI_3: 0b (celkovo: 0b)
 
 --- RUKY ---
-  AI_0 (4): 7♣ 7♠ 9♠ 8♣
-  AI_1 (4): A♠ 9♣ Q♣ 8♠
-  AI_2 (3): J♥ K♣ J♣
-  AI_3 (4): 8♥ 7● 10♣ J● ← NA ŤAHU
+  AI_0 (4): 9● 9♣ 8♣ 10♣ ← NA ŤAHU
+  AI_1 (4): K♥ J♠ Q♣ Q♥
+  AI_2 (4): 10♠ 8♠ 9♠ 9♥
+  AI_3 (4): 10♥ 7♣ 7♥ 8♥
 
 --- AKTUÁLNY ŠTICH ---
-Lead: heart
-  AI_2: 7♥
+Lead: bell
+  AI_1: J●
+  AI_2: J♥
+  AI_3: 7●
+  AI_0: Q●
 
 --- HISTÓRIA ---
-  T1: leader=AI_1 | AI_1: J♠  AI_2: K♠  AI_3: 10♠  AI_0: Q♠ → AI_2
-  T2: leader=AI_2 | AI_2: A●  AI_3: Q●  AI_0: A♣  AI_1: K● → AI_2
-  T3: leader=AI_2 | AI_2: 10●  AI_3: 8●  AI_0: A♥  AI_1: 9● → AI_2
-  T4: leader=AI_2 | AI_2: K♥  AI_3: Q♥  AI_0: 10♥  AI_1: 9♥ → AI_2
+  T1: leader=AI_3 | AI_3: 7♠  AI_0: A♠  AI_1: K♠  AI_2: Q♠ → AI_0
+  T2: leader=AI_0 | AI_0: J♣  AI_1: A♣  AI_2: A♥  AI_3: K♣ → AI_1
+  T3: leader=AI_1 | AI_1: A●  AI_2: 8●  AI_3: 10●  AI_0: K● → AI_1
+  T4: leader=AI_1 | AI_1: J●  AI_2: J♥  AI_3: 7●  AI_0: Q● → AI_0
 
 --- POSLEDNÝ ŤAH ---
-Hráč: AI_2
-Karta: 7♥
+Hráč: AI_0
+Karta: Q●
+Štich: vyhral AI_0 (+1b)
 
 --- REASONING ---
-  [AI_2] SWEEP_EV_AUDIT: K♣=P0.60/dmg20/DISASTER/ev2.00, J♥=P0.60/dmg20/DISASTER/ev2.00 | current_best=K♣ fixed_best=K♣
-  [SWEEP AI_2] štich 5: NIE | stav=IDLE | P(sweep)=0.00 | EV=0.0
-    → L1: hearts-driven
-    → L2: strength=STRONG, profile=MIXED, ratio=10.00, heart_killers=0
-    → L3: passed=True, lead_order=['acorn', 'heart', 'bell', 'leaf'], critical_events=2
-    → L4: passed=True, critical_events=[('horník acorn musí padnúť (unknown owner)', 0.6), ('hearts rozdelené — 1 vonku', 1.0)]
-    → L5: passed=True, best_card=K♣, P(sweep)=0.6
-    → L6: passed=False, best=K♣, EV=2.0, escape=DISASTER
-  [AI_2] AI_V2: trick=5 playable=[7♥, J♥, K♣, J♣] outcome=UNKNOWN
-  [AI_2] ACTIVE_STRATEGIES: ['LeadSafe']
-  [AI_2] LeadSafe | ESCAPE: heart: 7♥ (váha=6.0)
-  [AI_2] WEIGHT_SELECTION: 7♥=6.0(LeadSafe.ESCAPE(6.0)) → 7♥
+  [SWEEP AI_0] štich 4: NIE | stav=IDLE | P(sweep)=0.00 | EV=0.0
+    → L1: FAIL — gate1: súper má 1 trestných kariet
+  [AI_0] AI_V2: trick=4 playable=[9●, Q●] outcome=CERTAIN
+  [AI_0] ACTIVE_STRATEGIES: ['AvoidTrick', 'AcceptTrick']
+  [AI_0] AvoidTrick | UNDERPLAY: 9● (váha=5.0)
+  [AI_0] AcceptTrick | FORCED_POINTS: posledný max: Q● (váha=8.0)
+  [AI_0] WEIGHT_SELECTION: Q●=8.0(AcceptTrick.FORCED_POINTS(8.0)), 9●=5.0(AvoidTrick.UNDERPLAY(5.0)) → Q●
 
---- AIMemory (AI_3) ---
-  Tricks taken: {0: 0, 1: 0, 2: 4, 3: 0}
+--- AIMemory (AI_0) ---
+  Tricks taken: {0: 2, 1: 2, 2: 0, 3: 0}
   Specials gone: {'leaf': True, 'acorn': False}
-  Illuminated by: {'leaf': 0, 'acorn': None}
-  Void AI_0: ['bell']
-  Remaining heart: J♥ 7♥
-  Remaining leaf: A♠ 9♠ 8♠ 7♠
-  Remaining acorn: K♣ Q♣ J♣ 9♣ 8♣ 7♣
+  Illuminated by: {'leaf': 2, 'acorn': None}
+  Void AI_2: ['acorn', 'bell']
+  Remaining heart: K♥ Q♥ 10♥ 9♥ 8♥ 7♥
+  Remaining leaf: J♠ 10♠ 9♠ 8♠
+  Remaining acorn: Q♣ 7♣
   Remaining bell: (žiadne)
   Sweep state: IDLE

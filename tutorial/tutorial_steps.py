@@ -72,16 +72,32 @@ def build_tutorial_hands() -> dict[int, list[Card]]:
 
 # Poradie krokov tutoriálu. "kind":
 #   "text"       — len vysvetľujúci text, tlačidlo "Ďalej"
-#   "penalty_overview" — úvodný prehľad trestných kariet ("cards": zoznam
-#                  trojíc (Card, popis, body) — zámerne bez zmienky o
+#   "trick_demo" — úplne prvý krok: privítanie + "čo je štich" na
+#                  najjednoduchšej možnej úrovni, bez rúk/mien hráčov.
+#                  Ako "text" (obyčajný "text" + "title", tlačidlo "Ďalej"),
+#                  navyše sa pod/vedľa panelu v slučke prehráva animácia
+#                  4 kariet, ktoré sa postupne objavia v strede stola a po
+#                  chvíli spolu zmiznú (vykresľuje
+#                  TutorialDirector._draw_trick_demo()).
+#   "penalty_overview" — úvodný prehľad trestných kariet, vycentrovaný
+#                  rovnako ako "trick_demo" (pozri
+#                  TutorialDirector._draw_centered_penalty_overview).
+#                  "cards": zoznam dvojíc (Card, popis, body) pre zeleného
+#                  a žaluďového horníka, každý ako samostatná karta.
+#                  "hearts"/"hearts_label"/"hearts_points": všetkých 8
+#                  sŕdc ako jeden mierne prekrytý vejár so spoločným
+#                  popisom a bodmi pod ním. Zámerne bez zmienky o
 #                  vysvietení, to sa vysvetľuje až neskôr vo vlastnom
-#                  kroku — vykreslený ako riadok obrázkov kariet), plus
-#                  bežný "text"
+#                  kroku. Plus bežný "text".
 #   "bullets"    — stručné body namiesto plynulého textu ("title" nadpis,
 #                  "bullets" zoznam krátkych viet)
 #   "phase_list" — prehľad priebehu kola s bodmi (aktuálny zvýraznený zlato),
 #                  klik na "Ďalej" posunie na ďalší bod (prípadne spustí
-#                  jeho "action", napr. rozdanie kariet)
+#                  jeho "action", napr. rozdanie kariet). Bod "rozdanie" má
+#                  navyše "bullets_after" — "ako štich funguje", zobrazí sa
+#                  v TOM ISTOM bode hneď po doletení kariet, tlačidlo
+#                  "Ďalej" až potom posunie na "Vysvietenie" (pozri
+#                  TutorialDirector.panel_content()/handle_click()).
 #   "ai_play"    — počítač automaticky zahrá kartu pri vstupe do kroku
 #   "human_play" — čaká kým hráč klikne na správnu kartu vo svojej ruke
 #   "trick"      — celý štich naraz: "pre_human" sa zahrá automaticky pri
@@ -104,10 +120,25 @@ def build_tutorial_hands() -> dict[int, list[Card]]:
 #
 # Texty môžu obsahovať odstavce oddelené "\n\n" (dvojitým novým riadkom) —
 # medzi nimi sa pri vykreslení vloží prázdny riadok (pozri
-# tutorial_screen.py::_wrap_paragraphs), vďaka čomu dlhšie texty s viacerými
+# gui/lesson_panel.py::wrap_paragraphs), vďaka čomu dlhšie texty s viacerými
 # udalosťami (napr. "Počítač 2 hrá...", "Počítač 3 hrá...") pôsobia
 # prehľadnejšie než jeden súvislý blok.
 STEPS = [
+    {
+        "kind": "trick_demo",
+        "key": "intro_trick_demo",
+        "title": "VITAJ V HRE CHUJ!",
+        "text": (
+            "Chuj je štichová kartová hra pre 4 hráčov so sedmovými "
+            "kartami. Počas hry sa snažíš vyhnúť trestným kartám – "
+            "srdciam, zelenému horníkovi a žaluďovému horníkovi – a "
+            "nazbierať čo najmenej bodov. Kto ako prvý prekročí 100 "
+            "bodov, prehráva a stáva sa Chujom.\n\n"
+            "Čo je štich?\n\n"
+            "V každom štichu zahrá každý zo štyroch hráčov jednu kartu. "
+            "Hráč, ktorý štich vyhrá, zoberie všetky štyri zahrané karty."
+        ),
+    },
     {
         "kind": "penalty_overview",
         "text": (
@@ -122,22 +153,14 @@ STEPS = [
         "cards": [
             (Card("leaf", "over"), "Zelený horník", "8b"),
             (Card("acorn", "over"), "Žaluďový horník", "4b"),
-            (Card("heart", "seven"), "Každá srdcová karta (×8)", "1b"),
         ],
-    },
-    {
-        "kind": "bullets",
-        "key": "ako_stich_funguje",
-        "title": "AKO ŠTICH FUNGUJE",
-        "bullets": [
-            "Kto je prvý na rade, zahrá ľubovoľnú kartu — tá určí farbu štichu.",
-            "Ostatní musia, ak môžu, priznať farbu (zahrať tú istú).",
-            "Ak farbu nemáš, zahraj čokoľvek.",
-            "Najvyššia karta v hranej farbe štich vyhráva.",
-            "Karty zo štichu patria víťazovi a ten vedie ďalší štich.",
-            "V prvom štichu kola sa nesmie viesť srdciami.",
-            "Karty môžeš aj podliezať — zahrať nižšiu kartu tej istej farby, nie len vyššiu.",
-        ],
+        # Všetkých 8 sŕdc, od esa zostupne (RANKS je už v tomto poradí) —
+        # vykreslia sa ako mierne prekrytý vejár (pozri
+        # TutorialDirector._draw_penalty_cards_row), nie len jedna karta
+        # ako zástupca.
+        "hearts": [Card("heart", rank) for rank in RANKS],
+        "hearts_label": "Každá srdcová karta (×8)",
+        "hearts_points": "1b",
     },
     {
         "kind": "phase_list",
@@ -151,26 +174,46 @@ STEPS = [
                     "rozdanie."
                 ),
                 "action": "deal",
+                # Po rozdaní (karty už doleteli) sa v TOMTO ISTOM bode
+                # "Rozdanie" namiesto textu vyššie zobrazí toto — bez
+                # nového riadku v prehľade hore a bez samostatného kroku
+                # (pozri TutorialDirector.panel_content()/handle_click()).
+                # Skupiny [3, 2, 2] — "" medzi nimi vloží prázdny riadok
+                # bez odrážky (pozri LessonPanel.wrap_bullets).
+                "bullets_after": [
+                    "Hráč, ktorý začína štich, zahrá ľubovoľnú kartu. Tá určí farbu štichu.",
+                    "Ostatní musia priznať farbu – zahrať kartu rovnakej farby.",
+                    "Ak túto farbu nemáš, môžeš zahrať čokoľvek.",
+                    "",
+                    "Štich vyhráva najvyššia karta vo farbe, ktorou sa začínalo.",
+                    "Víťaz zoberie všetky štyri karty a začína ďalší štich.",
+                    "",
+                    "V prvom štichu sa nesmie začínať srdcovou kartou.",
+                    "Nemusíš zahrať vyššiu kartu – môžeš aj podliezť (zahrať nižšiu kartu rovnakej farby).",
+                ],
             },
             {
                 "key": "vysvietenie",
                 "label": "2. Vysvietenie",
                 "text": (
-                    "Po rozdaní môže hráč, ktorý má zeleného alebo "
-                    "žaluďového horníka, vysvietiť — teda ukázať ho "
-                    "ostatným a zdvojnásobiť jeho hodnotu.\n\n"
-                    "Ty máš žaluďového horníka (Q♣).\n\n"
-                    "Počítač 1 má druhého, zeleného horníka (Q♠), a v "
-                    "tejto hre sa ho rozhodol vysvietiť, čím stúpla "
-                    "jeho hodnota z 8b na 16b."
+                    "Pred prvým štichom môžeš zeleného alebo žaluďového "
+                    "horníka vysvietiť, ak ho máš v ruke. Tým ho ukážeš "
+                    "ostatným hráčom a zdvojnásobíš jeho bodovú "
+                    "hodnotu.\n\n"
+                    "Počítač 1 už vysvietil zeleného horníka (Q♠), čím "
+                    "zvýšil jeho hodnotu z 8 na 16 bodov. Ty máš "
+                    "žaluďového horníka (Q♣) a môžeš sa rozhodnúť, či "
+                    "ho vysvietiš tiež."
                 ),
                 "instruction": "Klikni na svojho žaluďového horníka (Q♣).",
                 "text_after": (
-                    "Výborne! Vysvietil si žaluďového horníka (Q♣), "
-                    "takže jeho hodnota stúpla zo 4 na 8 bodov.\n\n"
-                    "A keďže Počítač 1 vysvietil svojho horníka tiež, sú "
-                    "teraz vysvietení obaja horníci. To znamená, že aj "
-                    "srdcia budú v tomto kole za 2 body namiesto 1."
+                    "Vysvietil si žaluďového horníka! Keď sú vysvietení "
+                    "obaja horníci, zdvojnásobí sa aj hodnota sŕdc. "
+                    "Inak zostávajú za 1 bod.\n\n"
+                    "Teraz platí:\n"
+                    "* Zelený horník: 8 → 16 b\n"
+                    "* Žaluďový horník: 4 → 8 b\n"
+                    "* Každé srdce: 1 → 2 b"
                 ),
                 "instruction_after": (
                     "Opätovným kliknutím na horníka môžeš vysvietenie "
@@ -182,14 +225,15 @@ STEPS = [
                 "key": "zavazok",
                 "label": "3. Záväzok",
                 "text": (
-                    "Pred prvým štichom sa hráči môžu zaviazať k "
-                    "„Beriem všetko“ alebo „Nechytím nič“ — obe voľby "
-                    "prinášajú riziko aj odmenu. Záväzky si ešte vysvetlíme neskôr.\n\n"
-                    "Tlačidlá dole sú teraz aktívne a môžeš si ich "
-                    "vyskúšať, v tomto tutoriáli však priebeh neovplyvnia.\n\n"
-                    "Tlačidlom OK by si v ostrej hre naraz potvrdil aj "
-                    "vysvietenie z predošlého kroku aj prípadný záväzok. "
-                    "Hráme bez záväzku."
+                    "Pred prvým štichom si môžeš zvoliť záväzok "
+                    "„Beriem všetko“ alebo „Nechytím nič“. Vybrať "
+                    "môžeš len jeden; opätovným kliknutím ho zrušíš. "
+                    "Pravidlá záväzkov si vysvetlíme neskôr.\n\n"
+                    "V tomto tutoriáli hráme bez záväzku – jeho výber "
+                    "priebeh hry neovplyvní.\n\n"
+                    "Tlačidlom OK definitívne potvrdíš vysvietenie aj "
+                    "prípadný záväzok. Potom už svoje voľby nemôžeš "
+                    "zmeniť."
                 ),
                 "instruction": "Pokračuj kliknutím na tlačidlo OK.",
                 "action": None,
@@ -207,34 +251,32 @@ STEPS = [
         "human_card": Card("acorn", "under"),
         "post_human": [],
         "text_before": (
-            "Toto je jadro kola — postupne odohráme všetkých 8 štichov a "
-            "popritom si ukážeme aj ďalšie dôležité finty.\n\n"
-            "Počítač 1 začína prvý štich žaluďovou sedmičkou (7♣). Tá "
-            "určuje farbu štichu a ostatní ju musia, ak môžu, priznať.\n\n"
-            "Počítač 2 zahral žaluďovú desiatku (10♣) a Počítač 3 "
-            "žaluďovú osmičku (8♣).\n\n"
-            "Ty máš tri žalude — musíš priznať farbu."
+            "Počítač 1 začal žaluďovou sedmičkou (7♣), čím určil farbu "
+            "štichu. Ostatní hráči priznali žalude.\n\n"
+            "Teraz si na rade ty. Keďže máš žalude aj v ruke, musíš "
+            "priznať farbu."
         ),
         "text_after": (
-            "Tvoj žaluďový dolník (J♣) je napokon najvyššia zahraná "
-            "žaluďová karta, takže štich berieš ty.\n\n"
-            "A keďže v štichu neboli žiadne body, táto výhra ťa nič "
-            "nestojí. Keďže si štich vyhral, v ďalšom ideš na rade ako "
-            "prvý ty."
+            "Tvoj dolník (J♣) je najvyššia karta v štichu, takže "
+            "všetky štyri karty berieš ty.\n\n"
+            "V štichu nie sú žiadne trestné body. Keďže si vyhral, "
+            "ďalší štich začínaš ty."
         ),
-        "human_instruction": "Klikni na svojho žaluďového dolníka (J♣) a zahraj ho.",
+        "human_instruction": "Zahraj žaluďového dolníka (J♣).",
     },
     {
         "kind": "text",
         "key": "trick2_last_trick_prompt",
         "text": (
-            "Dôležitým aspektom hry je sledovanie a počítanie kariet. "
-            "Skôr než zahráš ďalšiu kartu, poďme si spočítať, koľko a "
-            "aké žalude už padli."
+            "Sledovať, ktoré karty už padli a ktoré sú ešte v hre, je "
+            "veľmi dôležité. Pomáha ti to odhadnúť, čo môžu zahrať "
+            "súperi, a plánovať ďalšie ťahy.\n\n"
+            "Ak si nepamätáš posledné zahrané karty, môžeš si ich "
+            "kedykoľvek pozrieť cez tlačidlo Posledný štich."
         ),
         "instruction": (
-            "Klikni na tlačidlo Posledný štich vpravo dole a pozri si, "
-            "čo sa práve odohralo."
+            "Klikni na „Posledný štich“ vpravo dole. Spoločne si "
+            "spočítame, ktoré žalude už padli."
         ),
         "requires_last_trick_view": True,
     },
@@ -249,41 +291,63 @@ STEPS = [
             (3, Card("leaf", "ace")),
         ],
         "text_before": (
-            "Žalude, ktoré už padli: sedmička (7♣), desiatka (10♣), "
-            "osmička (8♣) a tvoj dolník (J♣) — štyri z ôsmich.\n\n"
-            "Okrem tvojho horníka (Q♣) a deviatky (9♣) tak v hre "
-            "zostávajú už len eso (A♣) a kráľ (K♣), obe vyššie než tvoj "
-            "horník. Ak teraz zahráš svojho horníka, súperi musia priznať "
-            "farbu, a tvojho horníka prebiť esom či kráľom.\n\n"
-            "A presne o tom je CHUJ: počítať karty a nájsť správny "
-            "okamih, keď sa nebezpečnej karty zbavíš čo najbezpečnejšie."
+            "V prvom štichu padli štyri žalude: 7, 8, 10 a dolník.\n\n"
+            "Ty máš horníka (Q♣) a deviatku (9♣). V hre tak zostávajú "
+            "už len eso a kráľ – obe karty sú vyššie než tvoj "
+            "horník.\n\n"
+            "Teraz môžeš využiť počítanie kariet a bezpečne sa zbaviť "
+            "trestného horníka."
         ),
         # Body ("Všimni si panel KOLO...") sa spomínajú až v samostatnom
         # kroku "trick2_collect" nižšie — v momente, keď hráč zahrá
         # kartu, ešte nebežala ani animácia zberu štichu, takže panel by
         # ukazoval staré (nezmenené) skóre.
         "text_after": (
-            "Počítač 1 už nemá žiadny žaluď, takže túto situáciu "
-            "využíva na to, aby sa zbavil nebezpečnej karty — svojho "
-            "vysvieteného zeleného horníka (Q♠) za 16 bodov.\n\n"
-            "Počítač 3 tiež nemá žaluď a odhadzuje listovým esom (A♠).\n\n"
-            "Počítač 2 musí priznať farbu a má už len eso (A♣) a kráľa "
-            "(K♣). Nech zahrá ktorúkoľvek z nich, tvojho horníka "
-            "prebije — a práve Počítač 2 tak schytá poriadnu dávku "
-            "bodov. Presne podľa výpočtu!"
+            "Počítač 1 už nemal žalude, preto odhodil svojho "
+            "vysvieteného zeleného horníka za 16 bodov. Ani Počítač 3 "
+            "už žalude nemal.\n\n"
+            "Počítač 2 ako jediný mal žalude a zahral kráľa. Tým "
+            "prebil tvojho horníka a zobral celý štich.\n\n"
+            "A kde je posledné žaluďové eso? Keďže ostatní dvaja "
+            "súperi už žalude nemajú, musí ho mať Počítač 2.\n\n"
+            "Vďaka sledovaniu kariet tak dokážeš nielen plánovať svoje "
+            "ťahy, ale aj postupne odhaľovať, čo majú súperi v rukách."
         ),
-        "human_instruction": "Klikni na svojho žaluďového horníka (Q♣) a veď ním.",
+        "human_instruction": "Zahraj žaluďového horníka (Q♣).",
     },
     {
         # Samostatný krok (nie zlúčený do trick2) — panel KOLO smie
         # ukázať pripísané body až TERAZ, po doletení kariet k víťazovi
-        # (_finish_trick_collect ich pripíše skôr, než sa vstúpi do
-        # tohto kroku — pozri _enter_step v tutorial_screen.py).
+        # (body sa pripíšu skôr, než sa vstúpi do tohto kroku — pozri
+        # _enter_step v tutorial/tutorial_director.py).
         "kind": "text",
         "key": "trick2_collect",
-        "text": (
-            "Všimni si panel KOLO vpravo dole: pribudli mu tam prvé "
-            "trestné body, tie inkasuje víťaz štichu za bodované karty."
+        # Koľko bodov Počítač 2 týmto štichom reálne získal, závisí od
+        # toho, či si hráč v kroku "vysvietenie" svojho žaluďového
+        # horníka vysvietil (voliteľné, dá sa aj zrušiť) — vysvietený
+        # je za 8b, nevysvietený za 4b. Horník Počítača 1 je vysvietený
+        # vždy (naskriptovaná odchýlka, pozri 07_TUTORIAL_REFACTOR_
+        # CATALOG.md §6), takže jeho 16b sú isté v oboch vetvách.
+        "text_fn": lambda screen: (
+            (
+                "Vpravo dole sa ti teraz zobrazuje tabuľka KOLO. "
+                "Ukazuje, koľko trestných bodov už jednotliví hráči v "
+                "tomto kole získali.\n\n"
+                "Počítač 2 práve zobral oboch vysvietených horníkov, "
+                "preto mu pribudlo 24 bodov (16 + 8).\n\n"
+                "Ikony pri menách ti počas celého kola pripomínajú, "
+                "kto ktorého horníka vysvietil."
+            ) if Card("acorn", "over") in screen.illuminated_cards else (
+                "Vpravo dole sa ti teraz zobrazuje tabuľka KOLO. "
+                "Ukazuje, koľko trestných bodov už jednotliví hráči v "
+                "tomto kole získali.\n\n"
+                "Počítač 2 práve zobral oboch horníkov — tvojho "
+                "žaluďového aj vysvieteného zeleného od Počítača 1 — "
+                "preto mu pribudlo 20 bodov (16 + 4). Tvoj horník "
+                "nebol vysvietený, takže má nižšiu hodnotu.\n\n"
+                "Ikony pri menách ti počas celého kola pripomínajú, "
+                "kto ktorého horníka vysvietil."
+            )
         ),
     },
     {
@@ -298,21 +362,19 @@ STEPS = [
             (1, Card("leaf", "under")),
         ],
         "text_before": (
-            "Počítač 2 vyhral predošlý štich, takže vedie znova — "
-            "tentoraz listami, deviatkou (9♠).\n\n"
-            "Počítač 3 priznáva kráľom (K♠).\n\n"
-            "Ty máš ešte dve listové karty — priznaj farbu."
+            "Počítač 2 začal listovou deviatkou (9♠) a Počítač 3 "
+            "zahral kráľa (K♠).\n\n"
+            "Máš ešte dve listové karty, takže musíš priznať farbu."
         ),
         "text_after": (
-            "Počítač 1 priznáva farbu dolníkom (J♠), ale na kráľa (K♠) "
-            "Počítača 3 to nestačí. Štich teda berie Počítač 3 a vedie "
-            "ďalej.\n\n"
-            "Zeleného horníka sme už videli v minulom štichu, takže "
-            "tentoraz v štichu nie sú žiadne body."
+            "Počítač 1 zahral listového dolníka (J♠), no najvyšší "
+            "zostáva kráľ Počítača 3. Ten berie štich a začína "
+            "ďalší.\n\n"
+            "V tomto štichu neboli žiadne trestné body."
         ),
         "human_instruction": (
-            "Zahraj jednu zo svojich listových kariet — osmičku (8♠) "
-            "alebo sedmičku (7♠). Obe voľby sú v poriadku."
+            "Zahraj listovú osmičku (8♠) alebo sedmičku (7♠). Obe "
+            "možnosti sú v poriadku."
         ),
     },
     {
@@ -327,38 +389,34 @@ STEPS = [
             (2, Card("bell", "ten")),
         ],
         "text_before": (
-            "Počítač 3 vyhral predošlý štich a začína — dolníkom (J●).\n\n"
-            "V guľových kartách sa nenachádza žiadna bodovaná karta, no "
-            "keby niekto nemal gule, mohol by do štichu odhodiť "
-            "bodovanú kartu — a tú by si zobral ten, kto štich vyhrá. "
-            "Zahranie vysokej karty preto vždy nesie isté riziko. Čím "
-            "viac kariet danej farby už išlo, tým vyššie riziko."
+            "Počítač 3 začal guľovým dolníkom (J●).\n\n"
+            "Gule síce nemajú trestné body, no hráč, ktorý už gule "
+            "nemá, môže do štichu odhodiť trestnú kartu. Preto sa nie "
+            "vždy oplatí zahrať vysoko."
         ),
         "text_after": (
-            "Riskol si vyššiu kartu.\n\n"
-            "Počítač 1 aj tak berie štich svojím esom (A●) — "
-            "najvyššou možnou guľovou kartou, ktorú nikto neprebije. "
-            "Aj tento štich ostáva bez bodov — vedie ďalej "
-            "Počítač 1."
+            "Zvolil si vyššiu kartu, no Počítač 1 zahral guľové eso "
+            "(A●) a štich vyhral.\n\n"
+            "Tentoraz v ňom neboli žiadne trestné body. Ďalší štich "
+            "začína Počítač 1."
         ),
         "text_after_by_card": {
             ("bell", "king"): (
-                "Zahral si vyššiu kartu, ale nič tým nepokazíš.\n\n"
-                "Počítač 1 aj tak berie štich svojím esom (A●) — "
-                "najvyššou možnou guľovou kartou, ktorú nikto neprebije. "
-                "Aj tento štich tak ostáva bez bodov — vedie ďalej "
-                "Počítač 1."
+                "Zvolil si vyššiu kartu, no Počítač 1 zahral guľové "
+                "eso (A●) a štich vyhral.\n\n"
+                "Tentoraz v ňom neboli žiadne trestné body. Ďalší "
+                "štich začína Počítač 1."
             ),
             ("bell", "eight"): (
-                "Podliezol si osmičkou — a tým nič neriskuješ.\n\n"
-                "Počítač 1 berie štich svojím esom (A●), "
-                "najvyššou možnou guľovou kartou, ktorú nikto neprebije. "
-                "Aj tento štich ostáva bez bodov — vedie ďalej "
-                "Počítač 1."
+                "Zvolil si nižšiu kartu a pokúsil sa vyhnúť výhre "
+                "štichu. Počítač 1 zahral guľové eso (A●) a štich "
+                "vyhral.\n\n"
+                "Ani v tomto štichu neboli žiadne trestné body. Ďalší "
+                "štich začína Počítač 1."
             ),
         },
         "human_instruction": (
-            "Podlezieš osmičkou (8●), alebo riskneš aj vyššieho kráľa (K●)?"
+            "Podlezieš osmičkou (8●), alebo skúsiš vyššieho kráľa (K●)?"
         ),
     },
     {
@@ -372,30 +430,28 @@ STEPS = [
         "human_card": Card("heart", "ten"),
         "post_human": [],
         "text_before": (
-            "Počítač 1 vyhral predošlý štich a vedie ďalej — tentoraz "
-            "srdcovou sedmičkou (7♥).\n\n"
-            "Počítač 2 aj Počítač 3 priznávajú srdcia.\n\n"
-            "Tebe ostala už len jedna srdcová karta, takže ju musíš "
-            "zahrať."
+            "Počítač 1 začal srdcovou sedmičkou (7♥). Ostatní hráči "
+            "tiež zahrali srdcia.\n\n"
+            "Tebe zostala jediná srdcová karta, takže ju musíš zahrať."
         ),
         "text_after_fn": lambda screen: (
             (
-                "Počítač 2 zahral najvyššiu srdcovú kartu v štichu — "
-                "srdcového horníka (Q♥) — a štich berie.\n\n"
-                "Vysvietení sú obaja horníci, takže srdcia sú teraz za "
-                "2 body — tento štich je za 8 bodov. Počítač 2 si tak "
-                "pripisuje všetky štyri srdcia zo štichu."
+                "Počítač 2 zahral najvyššiu kartu – srdcového horníka "
+                "(Q♥) – a vyhral štich.\n\n"
+                "Keďže sú vysvietení obaja horníci, každé srdce má "
+                "hodnotu 2 body. Za štyri srdcia si teda Počítač 2 "
+                "pripisuje 8 trestných bodov."
             ) if (
                 screen.players[1].illuminated_leaf
                 and Card("acorn", "over") in screen.illuminated_cards
             ) else (
-                "Počítač 2 zahral najvyššiu srdcovú kartu v štichu — "
-                "srdcového horníka (Q♥) — a štich berie.\n\n"
-                "Srdcia sú za 1 bod, takže tento štich je za 4 "
-                "body, ktoré si pripíše Počítač 2."
+                "Počítač 2 zahral najvyššiu kartu – srdcového horníka "
+                "(Q♥) – a vyhral štich.\n\n"
+                "Každé srdce má hodnotu 1 bod. Za štyri srdcia si teda "
+                "Počítač 2 pripisuje 4 trestné body."
             )
         ),
-        "human_instruction": "Klikni na svoje srdce (10♥) a zahraj ho.",
+        "human_instruction": "Zahraj srdcovú desiatku (10♥).",
     },
     {
         "kind": "trick",
@@ -409,9 +465,10 @@ STEPS = [
             (1, Card("bell", "over")),
         ],
         "text_before": (
-            "Počítač 2 znova začína — deviatkou (9●).\n\n"
-            "Počítač 3 priznáva sedmičkou (7●).\n\n"
-            "Tebe ostala už len jedna guľová karta. Zahraj ju."
+            "Počítač 2 začal guľovou deviatkou (9●) a Počítač 3 "
+            "zahral sedmičku (7●).\n\n"
+            "Zostala ti už len jedna guľová karta, takže ju musíš "
+            "zahrať."
         ),
         # Ktorú z dvoch kariet si nechal na trick6, závisí od toho, ktorú
         # si zahral pri trick4 (presný opak) — a od toho zase závisí, kto
@@ -420,13 +477,14 @@ STEPS = [
         # samostatného "_collect" kroku.
         "text_after_fn": lambda screen: (
             (
-                "Tentoraz štich berieš TY — tvoj kráľ (K●) je v "
-                "guliach vyššia karta než horník Počítača 1 (Q●).\n\n"
-                "Opäť žiadne trestné karty v štichu. Odteraz vedieš ty."
+                "Tvoj kráľ (K●) prebil guľového horníka (Q●) Počítača "
+                "1, takže štich berieš ty.\n\n"
+                "V štichu neboli žiadne trestné body. Ďalší štich "
+                "začínaš ty."
             ) if screen.trick_human_played_card == Card("bell", "king") else (
-                "Počítač 1 berie svojím horníkom (Q●) a štich je znova "
-                "bez bodov.\n\n"
-                "Počítač 1 začína ďalší štich."
+                "Počítač 1 vyhral štich guľovým horníkom (Q●).\n\n"
+                "Ani v tomto štichu neboli trestné body. Ďalší štich "
+                "začína Počítač 1."
             )
         ),
         "human_instruction": "Zahraj svoju poslednú guľovú kartu.",
@@ -444,15 +502,16 @@ STEPS = [
         ],
         "post_human": [],
         "text_before": (
-            "Ty už srdce nemáš, takže si bez farby — môžeš zahrať "
-            "ktorúkoľvek zo svojich dvoch zvyšných kariet, poradie "
-            "nehrá žiadnu rolu."
+            "Počítač 1 začal srdcovou kartou, no ty už žiadne srdce "
+            "nemáš. Môžeš preto zahrať ktorúkoľvek zo svojich "
+            "zostávajúcich kariet."
         ),
         "text_after": (
-            "Počítač 1 zahral najvyššiu srdcovú kartu a štich opäť získava.\n\n"
-            "Na konto mu pribúdajú ďalšie trestné karty."
+            "Počítač 1 zahral najvyššie srdce a vyhral aj tento "
+            "štich.\n\n"
+            "Získava tak ďalšie trestné body."
         ),
-        "human_instruction": "Zahraj ktorúkoľvek zo svojich zvyšných kariet.",
+        "human_instruction": "Zahraj jednu zo svojich dvoch kariet.",
     },
     {
         "kind": "trick",
@@ -467,19 +526,10 @@ STEPS = [
         ],
         "post_human": [],
         "text_before": (
-            "Posledný štich kola — každému ostáva už len jedna karta.\n\n"
-            "Počítač 1 vedie listovou desiatkou (10♠).\n\n"
-            "Počítač 2 aj Počítač 3 odhadzujú svoje posledné karty.\n\n"
-            "Zahraj aj ty svoju poslednú kartu."
+            "Posledný štich kola! Každému hráčovi zostala už len "
+            "jedna karta."
         ),
-        "text_after": (
-            "Počítač 1 berie posledný štich svojou desiatkou (10♠) — "
-            "najvyššou listovou kartou v štichu.\n\n"
-            "Počítač 2 aj Počítač 3 odhodili svoje esá — žaluďové (A♣) "
-            "a srdcové (A♥) — no ani jedno nie je v hranej (listovej) "
-            "farbe, takže štich vyhráva (10♠).\n\n"
-            "Kolo je odohrané — všetci hráči minuli svoje karty."
-        ),
+        "text_after": "Posledný štich vyhral Počítač 1. Kolo sa skončilo.",
         "human_instruction": "Zahraj svoju poslednú kartu.",
         "round_end": True,
     },
@@ -487,39 +537,43 @@ STEPS = [
         "kind": "text",
         "key": "chujogram_wait",
         "text": (
-            "5. BODOVANIE: Po odohraní všetkých 8 štichov sa trestné "
-            "body spočítajú a zapíšu do CHUJOGRAMU — tabuľky s históriou "
-            "celej hry."
+            "Odohrali sme všetkých 8 štichov. Trestné body sa teraz "
+            "zapíšu do Chujogramu, kde môžeš sledovať výsledky celej "
+            "hry."
         ),
-        "instruction": (
-            "Vpravo dole sa práve objavila jeho ikonka — klikni na ňu a "
-            "pozri si tabuľku."
-        ),
+        "instruction": "Klikni na ikonu Chujogramu vpravo dole a otvor tabuľku.",
     },
     {
         "kind": "text",
         "key": "chujogram_explain",
-        # Vedome NEspomíname guličky, históriu odohraných kôl, ani sériový
-        # bonus za čisté kolá — všetko to spolu súvisí (bonus dáva zmysel
-        # len s pochopením histórie/série) a chceme to vysvetliť spolu, až
-        # neskôr (plánovaná krátka precvičovacia hra hneď po tutoriáli).
-        # Bonus preto v tomto tutoriáli ani nespúšťame (pozri __init__,
-        # no_penalty_streak) — text sa drží len toho, čo hráč práve videl.
+        # Guličky, ktoré tento text vysvetľuje, sú priamo v Chujograme
+        # (pri hráčovi s najvyšším skóre v danom kole) — NIE guličky z
+        # panelu KOLO. Históriu odohraných kôl ani sériový bonus za
+        # čisté kolá naďalej zámerne nespomíname — to spolu súvisí
+        # (bonus dáva zmysel len s pochopením histórie/série) a chceme
+        # to vysvetliť spolu, až neskôr (plánovaná krátka precvičovacia
+        # hra hneď po tutoriáli). Bonus preto v tomto tutoriáli ani
+        # nespúšťame (pozri __init__, no_penalty_streak).
         "text": (
-            "Toto je Chujogram — tu sa priebežne zapisuje skóre všetkých "
-            "hráčov.\n\n"
-            "Všimni si posledný stĺpec: v tomto kole si nezískal ani "
-            "jeden trestný bod — presne to je cieľom každého kola CHUJ-u."
+            "Toto je Chujogram – tabuľka, do ktorej sa po každom kole "
+            "zapisujú trestné body všetkých hráčov.\n\n"
+            "Pozri sa na svoje skóre: v tomto kole si nezískal ani "
+            "jeden trestný bod. Presne o to sa v CHUJ-ovi snažíš!\n\n"
+            "Pri hráčovi s najvyšším počtom trestných bodov sa v "
+            "každom kole zobrazí bodka. Tieto bodky sa postupne "
+            "spájajú čiarami a vytvárajú diagram – náš Chujogram."
         ),
     },
     {
         "kind": "result",
         "text": (
-            "Takto vyzerá celé kolo CHUJ-u — od rozdania až po "
-            "bodovanie.\n\n"
-            "V skutočnej hre sa pokračuje ďalšími kolami, kým niekto "
-            "neprekročí 100 bodov a nestane sa Chujom. Týmto sa "
-            "tutoriál končí."
+            "Práve si odohral celé kolo CHUJ-u – od rozdania kariet až "
+            "po záverečné bodovanie.\n\n"
+            "V skutočnej hre pokračujete ďalšími kolami, až kým "
+            "niekto neprekročí 100 trestných bodov a nestane sa "
+            "Chujom.\n\n"
+            "Teraz si pripravený vyskúšať tréningovú hru, v ktorej ti "
+            "bude počas hrania pomáhať poradca."
         ),
     },
 ]
@@ -546,8 +600,8 @@ STEPS = [
 # Kto teda povedie posledný (8.) štich, závisí od tejto voľby — preto má
 # trick8 dve varianty, "trick8_p1" (vedie Počítač 1) a "trick8_p2" (vedie
 # Počítač 2), medzi ktorými sa vyberá dynamicky podľa toho, kto trick7
-# naozaj vyhral (pozri tutorial_screen.py, self.branch_b_trick7_winner a
-# _current_step()).
+# naozaj vyhral (pozri tutorial/tutorial_director.py::step_for_trick(),
+# ktorý víťaza číta priamo z odohratých štichov).
 BRANCH_B_STEPS = {
     "trick7": {
         "kind": "trick",
@@ -565,36 +619,21 @@ BRANCH_B_STEPS = {
             (3, Card("heart", "eight")),
         ],
         "text_before": (
-            "Tento štich si vyhral ty, takže teraz vedieš sám — a máš "
-            "na výber. Ostali ti už len dve karty: posledná listová a "
-            "žaluďová deviatka (9♣).\n\n"
-            "Farba, ktorou povedieš, rozhodne, kto štich vyhrá aj kto "
-            "potom povedie posledný štich kola. Vyskúšaj si to."
+            "Vyhral si predchádzajúci štich, takže teraz začínaš "
+            "ty.\n\n"
+            "Zostali ti dve karty: listová sedmička (7♠) a žaluďová "
+            "deviatka (9♣)."
         ),
         "text_after_fn": lambda screen: (
             (
-                "Počítač 1 má vyššiu listovú kartu — desiatku (10♠) — a "
-                "preto štich berie.\n\n"
-                "Počítač 2 ani Počítač 3 už listy nemajú, takže "
-                "odhadzujú.\n\n"
-                "Počítač 3 pritom odhodil aj srdcovú osmičku (8♥), "
-                "ktorá má svoju hodnotu. Teraz patrí k výhre Počítača "
-                "1. Počítač 1 si spolu so štichom pripisuje aj jedno "
-                "srdce."
+                "Počítač 1 má vyššiu listovú kartu – desiatku (10♠) – "
+                "a preto štich berie."
             ) if screen.trick_human_played_card.suit == "leaf" else (
-                "Viedol si žaluďom — a jediný, kto ešte žaluď má, je "
-                "Počítač 2 so svojím esom (A♣). Musí ho priznať, takže "
-                "štich preberá on namiesto Počítača 1.\n\n"
-                "Počítač 1 nemá žiaden žaluď, a tak odhadzuje bezcennú "
-                "listovú desiatku (10♠). Počítač 3 tiež žaluď nemá a "
-                "odhadzuje bodovanú srdcovú osmičku (8♥) —"
-                "pripadne Počítaču 2"
+                "Počítač 2 zahral žaluďové eso (A♣), ktorým prebil "
+                "tvoju deviatku a vyhral štich."
             )
         ),
-        "human_instruction": (
-            "Vyber si, akou kartou povedieš štich — zvyšnou listovou (7♠), "
-            "alebo žaluďovou deviatkou (9♣)."
-        ),
+        "human_instruction": "Vyber si, ktorou kartou začneš.",
     },
     # Vedie Počítač 1 (hráč pri trick7 viedol listom).
     "trick8_p1": {
@@ -608,21 +647,11 @@ BRANCH_B_STEPS = {
         "human_card": Card("acorn", "nine"),
         "post_human": [],
         "text_before": (
-            "Posledný štich kola — každému ostáva už len jedna karta.\n\n"
-            "Počítač 1 vedie srdcovým kráľom (K♥) a Počítač 2 aj "
-            "Počítač 3 priznávajú srdcia.\n\n"
-            "Ty už žiadne srdce nemáš, takže sa zbav poslednej žaluďovej "
-            "karty, ktorá ti ostala."
+            "Posledný štich kola! Každému hráčovi zostala už len "
+            "jedna karta."
         ),
-        "text_after": (
-            "Počítač 3 zahral najvyššie srdce — eso (A♥) — a preto "
-            "štich berie. Spolu s ním získava aj všetky tri srdcia, "
-            "ktoré v štichu padli.\n\n"
-            "Tvoja žaluďová deviatka (9♣) nemá žiadnu hodnotu, takže na "
-            "bodovanie nemala vplyv.\n\n"
-            "Kolo je odohrané — všetci hráči minuli svoje karty."
-        ),
-        "human_instruction": "Zahraj svoju poslednú kartu — žaluďovú deviatku (9♣).",
+        "text_after": "Posledný štich vyhral Počítač 3. Kolo sa skončilo.",
+        "human_instruction": "Zahraj svoju poslednú kartu.",
         "round_end": True,
     },
     # Vedie Počítač 2 (hráč pri trick7 viedol žaluďom).
@@ -638,20 +667,10 @@ BRANCH_B_STEPS = {
             (1, Card("heart", "king")),
         ],
         "text_before": (
-            "Posledný štich kola — každému ostáva už len jedna karta.\n\n"
-            "Počítač 2 vedie srdcovým dolníkom (J♥) a Počítač 3 hneď "
-            "priznáva najvyššou možnou kartou — esom (A♥).\n\n"
-            "Ty žiadne srdce nemáš, takže sa zbav svojej poslednej karty."
+            "Posledný štich kola! Každému hráčovi zostala už len "
+            "jedna karta."
         ),
-        "text_after": (
-            "Počítač 3 zahral najvyššie srdce — eso (A♥) — a preto "
-            "štich berie. Spolu s ním získava aj všetky tri srdcia, "
-            "ktoré v štichu padli — priznať farbu musel aj Počítač 1, "
-            "ktorý dohral svojím kráľom (K♥).\n\n"
-            "Tvoja karta nemá žiadnu hodnotu, takže na bodovanie nemala "
-            "vplyv.\n\n"
-            "Kolo je odohrané — všetci hráči minuli svoje karty."
-        ),
+        "text_after": "Posledný štich vyhral Počítač 3. Kolo sa skončilo.",
         "human_instruction": "Zahraj svoju poslednú kartu.",
         "round_end": True,
     },

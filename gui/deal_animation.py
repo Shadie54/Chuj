@@ -193,16 +193,23 @@ class DealAnimation:
         self._draw_skip_hint()
 
     def _draw_card(self, card: dict):
-        """Nakreslí jednu kartu (zadná strana)."""
-        img = self.card_renderer._get_card_back()
-
+        """
+        Nakreslí jednu kartu (zadná strana) — uhol pošleme rovno do
+        _get_card_back(), ktoré si otočenú verziu cachuje (pozri
+        CardRenderer._load_image). Predtým sa tu volal
+        pygame.transform.rotate() nanovo pri každej snímke pre každú
+        letiacu kartu.
+        """
         if card["target_player"] == 1:
-            img = pygame.transform.rotate(img, 90)
+            angle = 90
         elif card["target_player"] == 2:
-            img = pygame.transform.rotate(img, 180)  # ← PC2 hore
+            angle = 180  # ← PC2 hore
         elif card["target_player"] == 3:
-            img = pygame.transform.rotate(img, -90)
+            angle = -90
+        else:
+            angle = 0
 
+        img = self.card_renderer._get_card_back(angle=angle)
         self.screen.blit(img, (int(card["x"]), int(card["y"])))
 
     def _draw_skip_hint(self):

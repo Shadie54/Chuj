@@ -95,6 +95,16 @@ class SimConfig:
     # hornik-bait), napriek tomu dopočíta L2 (capacity/to_capture model),
     # aby bolo vidno, či by L2 hodnotil ruku ako STRONG/MEDIUM.
     watch_gate2_audit: bool = True
+    # Všeobecný watcher card-play rozhodnutí podľa (Strategy, variant) —
+    # zaznamená LEN víťazné rozhodnutie (t.j. kartu, ktorá sa naozaj
+    # zahrala), čítaním AIEngine.last_trace (selector.py::DecisionTrace)
+    # priamo, nie parsovaním log_strategy() reťazcov. Rozšíriteľnosť do
+    # budúcna = pridaj dvojicu do zoznamu, žiadny nový kód netreba.
+    # Vznik: 2026-09-29, vyšetrovanie AcceptTrick.FORCED_POINTS prahu
+    # (>2b) pri poslednom hráčovi — pozri claude/05_DIFFICULTY_TUNING.md.
+    watch_decisions: list[tuple[str, str]] = field(
+        default_factory=lambda: [("AcceptTrick", "FORCED_POINTS")]
+    )
 
 
 # ------------------------------------------------------------------
@@ -260,6 +270,28 @@ def _run_preparation(game_state: GameState, ai_players: list):
             break
 
 
+def _watch_decision(sim_logger: SimLogger, ai, player, card):
+    """
+    Watcher pre SimConfig.watch_decisions — pozri komentár pri poli.
+    Číta AIEngine.last_trace PO decide_card(), teda vždy len víťazné
+    rozhodnutie danej stratégie (nie každý zvažovaný návrh).
+    """
+    if not sim_logger.config.watch_decisions:
+        return
+    trace = ai.engine_v2.last_trace
+    if (trace.strategy, trace.variant) not in sim_logger.config.watch_decisions:
+        return
+    sim_logger.findings.add({
+        "type": "decision",
+        **sim_logger.round_context,
+        "trick_number": sim_logger.trick_number + 1,
+        "player": player.name,
+        "strategy": trace.strategy,
+        "variant": trace.variant,
+        "card": str(card),
+    })
+
+
 def _run_tricks(game_state: GameState, ai_players: list,
                 sim_logger: SimLogger):
     """Odohrá štichy kola (s prerušením pri zlyhanom zväzku)."""
@@ -282,6 +314,7 @@ def _run_tricks(game_state: GameState, ai_players: list,
             card = ai.decide_card(
                 playable, rnd.current_trick, rnd.trick_number, all_scores
             )
+            _watch_decision(sim_logger, ai, player, card)
 
             ok = rnd.play_card(player_idx, card)
             if not ok:
@@ -403,7 +436,18 @@ def _round_end_watchers(config: SimConfig, findings: Findings,
 # Hlavný beh + výstup
 # ------------------------------------------------------------------
 
-def run(config: SimConfig):
+def run(config: SimConfig, progress_callback=None):
+    """
+    progress_callback(hra_1_indexovana, num_games, elapsed_s) — voliteľný
+    hook pre GUI (tester/sim_screen.py) na živý progress. Keď je zadaný,
+    NAHRADÍ periodický print() do terminálu (aby sa CLI beh a GUI beh
+    nebili o stdout) — CLI cesta (main() nižšie) ho nepoužíva, takže sa
+    jej správanie touto zmenou vôbec nedotkne.
+
+    Vracia (findings, stats, elapsed) — CLI výstup (main()) to zahadzuje,
+    GUI to použije na vykreslenie súhrnu bez opätovného čítania
+    sim_findings.jsonl zo súboru.
+    """
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     findings = Findings()
     stats: dict = {}
@@ -414,12 +458,16 @@ def run(config: SimConfig):
         # Seed pre random modul (ovplyvní deal aj RiskSpecial rolls)
         random.seed(rng.randint(0, 2 ** 31))
         _run_single_game(game_idx, config, findings, stats)
-        if (game_idx + 1) % 10 == 0 or game_idx + 1 == config.num_games:
-            elapsed = time.time() - start
+        elapsed = time.time() - start
+        if progress_callback:
+            progress_callback(game_idx + 1, config.num_games, elapsed)
+        elif (game_idx + 1) % 10 == 0 or game_idx + 1 == config.num_games:
             print(f"  hra {game_idx + 1}/{config.num_games} "
                   f"({elapsed:.1f}s, nálezov: {len(findings.records)})")
 
-    _write_output(config, findings, stats, time.time() - start)
+    elapsed = time.time() - start
+    _write_output(config, findings, stats, elapsed)
+    return findings, stats, elapsed
 
 
 def _write_output(config: SimConfig, findings: Findings,

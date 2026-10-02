@@ -4,7 +4,6 @@ import pygame, random
 from game.game_state import GameState
 from game.ai import AI
 from gui.card_renderer import CardRenderer
-from gui.scoreboard import Scoreboard
 from gui.deal_animation import DealAnimation
 from gui.trick_animation import TrickAnimation
 from gui.card_throw_animation import CardThrowAnimation
@@ -12,6 +11,7 @@ from gui.speech_bubble import SpeechBubble
 from gui.info_overlay import InfoOverlay
 from gui.chujogram_panel import ChujogramPanel
 from gui.round_status import RoundStatus
+from gui.chapter_banner import ChapterBanner
 from gui.phase_renderer import PhaseRenderer
 from gui.preparation_handler import PreparationHandler
 from gui.tip_panel import TipPanel
@@ -30,8 +30,22 @@ from config import (
 
 class Screen:
     def __init__(self, game_state: GameState, ai_players: list,
-                 debug: bool = DEBUG_MODE, new_game: bool = True, settings=None):
+                 debug: bool = DEBUG_MODE, new_game: bool = True, settings=None,
+                 director=None):
         pygame.init()
+
+        # ------------------------------------------------------------------
+        # Režisér naskriptovanej lekcie — nepovinný
+        # ------------------------------------------------------------------
+        # None = ostrá hra (a tréningová kapitola tutoriálu). VŠETKY vetvy
+        # v tejto triede, ktoré sa režiséra pýtajú, sú potom no-op — ostrá
+        # hra sa nesmie chovať ani o kúsok inak než pred pridaním tohto
+        # parametra. Nenulový režisér (tutorial/tutorial_director.py) riadi
+        # naskriptovanú lekciu: podstrčí pevné rozdanie, drží hru na mieste,
+        # kým hráč neklikne Ďalej, zúži povolené karty a kreslí výklad.
+        # Návrh a zoznam všetkých dotknutých miest:
+        # claude/08_TUTORIAL_REFACTOR_DESIGN.md §4.
+        self.director = director
 
         self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
         pygame.display.set_caption("Chuj")
@@ -59,7 +73,6 @@ class Screen:
         self.ai_players = ai_players
 
         self.card_renderer = CardRenderer(self.screen, debug)
-        self.scoreboard = Scoreboard(self.screen)
         self.speech_bubble = SpeechBubble(self.screen)
         self.info_overlay = InfoOverlay(self.screen)
 
@@ -101,10 +114,6 @@ class Screen:
         self.message: str = ""
         self.message_timer: int = 0
 
-        # Fáza záväzku a vysvietenia
-        self.declaration_index: int = 0     # kto práve vyhlasuje záväzok
-        self.revealing_index: int = 0       # kto práve vysvecuje
-
         # Karta pre tromf — nie je v Chuji
         self.selected_card = None
 
@@ -123,7 +132,14 @@ class Screen:
 
         self.round_status = RoundStatus(self.screen)
 
-        self.sort_ascending = False
+        # Horný pás s názvom kapitoly a tlačidlom "Preskočiť". Zapína ho
+        # nastavenie "chapter_banner" (názov kapitoly), ktoré si nastavuje
+        # tutoriál — ostrá hra ho nemá, takže tam pás nevznikne vôbec.
+        banner_title = self.settings.get("chapter_banner")
+        self.chapter_banner = (
+            ChapterBanner(self.screen, banner_title) if banner_title else None
+        )
+
         self.declaration_failed_timer: int = 0
         self.show_last_trick = False
 
@@ -154,7 +170,13 @@ class Screen:
         # Zberač žije na GameState, nie tu — pozri komentár tam. Ak už
         # existuje (návrat do rozohratej hry cez "Pokračovať"), necháme
         # ho, inak založíme nový.
-        if game_state.human_index >= 0 and game_state.stats_collector is None:
+        # Pri naskriptovanej lekcii zberač NEZAKLADÁME vôbec: tutoriálové
+        # kolo nie je partia a nesmie sa dostať do štatistík profilu.
+        # GameState.finish_round() zberač volá len keď nie je None, takže
+        # táto jedna podmienka to vyrieši celé.
+        if (self.director is None
+                and game_state.human_index >= 0
+                and game_state.stats_collector is None):
             game_state.stats_collector = StatsCollector(game_state.human_index)
         # Aby sa tá istá hra nezapísala dvakrát (koniec hry sa v kóde
         # vyhodnocuje na viacerých miestach) ani sa nezapísala ako
@@ -167,6 +189,18 @@ class Screen:
         # nezaplaví výstup 60× za sekundu (pozri _safe_update_tip).
         self._tip_error_logged = False
 
+        # Ktorým tlačidlom hráč kapitolu opustil — "skip" (pás kapitoly,
+        # "Preskočiť", aj prirodzené dokončenie poslednej lekcie, pozri
+        # tutorial/tutorial_director.py) alebo "menu" (bežné tlačidlo
+        # Menu dole). Číta len run() nižšie, a len keď ide o kapitolu
+        # (director alebo chapter_banner) — pre ostrú hru sa nepoužíva.
+        self._chapter_exit: str | None = None
+
+        # Prepojenie s režisérom až tu, na konci — v attach() si smie
+        # prezrieť hotový Screen (phase_renderer, card_renderer, panely).
+        if self.director is not None:
+            self.director.attach(self)
+
     # ------------------------------------------------------------------
     # Hlavná slučka
     # ------------------------------------------------------------------
@@ -178,47 +212,47 @@ class Screen:
         self.chujogram.update()
         if self.new_game:
             self._start_round()
+        else:
+            # Návrat do rozohratej hry ("Pokračovať" v menu). Karty sa
+            # hráčovi obnovujú v poradí, v akom padli pri rozdaní (pozri
+            # game/savegame.py::_rebuild_round), a automatické zoradenie
+            # vo vetve rozdávania nižšie sa už nespustí — kolo sa predsa
+            # nerozdáva. Bez tohto riadku hráč po návrate videl ruku
+            # rozhádzanú inak než pred zatvorením hry.
+            # (Nález 2026-09-26.)
+            self._sort_human_hand()
 
         while self.running:
             self.clock.tick(FPS)
-
-            if (self.game_over_timer and
-                    pygame.time.get_ticks() >= self.game_over_timer):
-                self.running = False
-                break
-
-            if (self.next_round_timer and
-                    pygame.time.get_ticks() >= self.next_round_timer):
-                self.next_round_timer = 0
-                self._start_round()
-
-            self._handle_events()
-
-            if self.dealing and self.deal_animation:
-                self.deal_animation.update()
-                self.deal_animation.draw(self.table_bg)
-                self.speech_bubble.draw()
-                if self.deal_animation.done:
-                    self.dealing = False
-                    self.deal_animation = None
-                    # Automatické zoradenie po rozdaní
-                    self.sort_ascending = False
-                    self.game_state.players[
-                        self.game_state.human_index
-                    ].hand.sort_hand()
-            else:
-                self._process_waiting_trick()
-                self.trick_animation.update()
-                self.card_throw_animation.update()
-                self._handle_ai_turn()
-                self._safe_update_tip()
-                self._draw()
-
+            self.step_frame()
             pygame.display.flip()
+
+        finished = self.game_state.phase == "game_over"
+
+        # Kapitola tutoriálu/tréningu — s režisérom (kapitola 1) aj bez
+        # neho (kapitola 2 "Tréning", beží na reálnom Screen s reálnym
+        # AI). Obe nastavujú chapter_banner (pozri gui/chapter_banner.py —
+        # ostrá hra ho nikdy nenastavuje), takže jedna podmienka stačí na
+        # obe. Nesmie sa zapísať do profilu ani do zdieľaného
+        # savegame.json — ten v tej chvíli môže patriť rozohratej OSTREJ
+        # hre, ktorú by kapitola inak tichým save_game()/delete_save()
+        # prepísala alebo zmazala (odchod z kapitoly tak rozohraté kolo
+        # len zahodí) — a tiež sa nesmie objaviť v hlavnom menu ako
+        # "Pokračovať".
+        #
+        # Návratová hodnota mimo "game_over" rozlišuje, ktorým tlačidlom
+        # hráč odišiel — "skip" (Preskočiť, aj prirodzené dokončenie
+        # poslednej lekcie) vs. "menu" (tlačidlo Menu dole) — nastavuje
+        # self._chapter_exit (pozri _handle_click nižšie a
+        # tutorial/tutorial_director.py). main.py podľa toho vie skočiť
+        # rovno na ďalšiu kapitolu namiesto návratu do podmenu Tutoriálu.
+        if self.director is not None or self.settings.get("chapter_banner"):
+            if finished:
+                return "game_over"
+            return self._chapter_exit or "menu"
 
         # Jediné miesto, kde sa hra uzatvára — slučka sa končí buď
         # dohratou hrou, alebo odchodom hráča (Menu/zavretie okna).
-        finished = self.game_state.phase == "game_over"
         if finished:
             self._record_game_result()
             savegame.delete_save()
@@ -233,6 +267,73 @@ class Screen:
             return "game_over"
         return "menu"
 
+    def step_frame(self):
+        """
+        Jedna snímka hernej slučky — časovače, udalosti, logika, kreslenie.
+
+        Vyčlenené z run() zámerne, aby ju mohli volať aj testy
+        (tester/regression_screen.py) namiesto toho, aby si poradie volaní
+        kopírovali k sebe. Kópia poradia je zradná: pri zmene v run() by
+        testy ticho overovali niečo iné, než v hre naozaj beží — presne to
+        sa stalo 2026-09-26 pri hľadaní preblikávania textu v tutoriáli.
+
+        Kreslenie na obrazovku (pygame.display.flip) tu zámerne NIE JE —
+        o to sa stará volajúci.
+        """
+        if (self.game_over_timer and
+                pygame.time.get_ticks() >= self.game_over_timer):
+            self.running = False
+            return
+
+        # Naskriptovaná lekcia má jediné kolo — ďalšie nikdy nezačína.
+        # (game_over_timer tu strážiť netreba: tutoriál začína na nule a
+        # jedno kolo nikoho nedostane nad 100 bodov, takže sa nemá kde
+        # nastaviť.)
+        if (self.next_round_timer and self.director is None and
+                pygame.time.get_ticks() >= self.next_round_timer):
+            self.next_round_timer = 0
+            self._start_round()
+
+        self._handle_events()
+
+        if self.dealing and self.deal_animation:
+            self.deal_animation.update()
+            self.deal_animation.draw(self.table_bg)
+            self.speech_bubble.draw()
+            if self.deal_animation.done:
+                self.dealing = False
+                self.deal_animation = None
+                # Automatické zoradenie po rozdaní
+                self._sort_human_hand()
+            # Režisér musí bežať aj počas rozdávania — inak by sa v kroku
+            # "Rozdanie" nemal kto posunúť ďalej potom, ako animácia
+            # dobehne. Zámerne až TU, keď je self.dealing už prepnuté, nech
+            # to stihne v tej istej snímke.
+            if self.director is not None:
+                self.director.update()
+            return
+
+        self._process_waiting_trick()
+        self.trick_animation.update()
+        self.card_throw_animation.update()
+        self._handle_ai_turn()
+        # Režisér stav hry zisťuje dopytovaním (pozri návrh §3.2), nie
+        # hákmi na každej udalosti. Beží zámerne AŽ TU: po
+        # _process_waiting_trick(), ktoré mohlo uzavrieť štich, a ešte pred
+        # kreslením. Keď bežal hneď po udalostiach, vznikla jedna snímka, v
+        # ktorej už bežal nový štich, ale krok lekcie ešte nie — a panel v
+        # nej stihol vykresliť "text pred ťahom" práve dohratého štichu.
+        # Text tak po každom štichu na okamih preblikol späť.
+        # (Nález 2026-09-26.)
+        if self.director is not None:
+            self.director.update()
+            # Lekcia beží na kliky, nie na čas — kým čaká na "Ďalej",
+            # zastavíme bublinám časovač, nech nezmiznú hráčovi spod rúk,
+            # kým si číta výklad (pozri SpeechBubble.update).
+            self.speech_bubble.frozen = self.director.is_paused()
+        self._safe_update_tip()
+        self._draw()
+
     # ------------------------------------------------------------------
     # Štart kola
     # ------------------------------------------------------------------
@@ -240,6 +341,13 @@ class Screen:
     def _start_round(self):
         """Začne nové kolo."""
         self.game_state.start_new_round()
+
+        # Naskriptovaná lekcia si tu podstrčí pevné rozdanie (a vysvietenie,
+        # ktoré má byť vidno od začiatku). MUSÍ to byť ešte pred
+        # inicializáciou pamäte AI a radcu nižšie — inak by si pamätali
+        # karty z náhodného rozdania, ktoré sme práve zahodili.
+        if self.director is not None:
+            self.director.setup_round()
 
         # Reset AI pamäte
         for i, ai in enumerate(self.ai_players):
@@ -267,8 +375,6 @@ class Screen:
             self._tip_key = None
 
         # Reset stavov
-        self.declaration_index = 0
-        self.revealing_index = 0
         self.trick_waiting = False
         self._trick_anim_started = False
         self.card_throw_animation.in_flight = {}
@@ -326,28 +432,41 @@ class Screen:
         if self.show_last_trick:
             self.show_last_trick = False
             return
-        if self.phase_renderer._button_chujogram_rect().collidepoint(pos):
+
+        # "Preskočiť" v hornom páse kapitoly — ukončí kapitolu a
+        # main.py pokračuje ďalšou (pozri self._chapter_exit v run()).
+        if self.chapter_banner is not None and self.chapter_banner.hit(pos):
+            self._reset_trick_state()
+            self._chapter_exit = "skip"
+            self.running = False
+            return
+
+        # Naskriptovaná lekcia dostane klik hneď po overlayi posledného
+        # štichu: jej tlačidlo "Ďalej" leží v paneli nad stolom a musí
+        # vyhrať nad všetkým, čo je pod ním. Keď klik spotrebuje (vráti
+        # True), Screen ho ďalej nerieši. Bez režiséra je to no-op.
+        if self.director is not None and self.director.handle_click(pos):
+            return
+
+        if (self._shows("chujogram") and
+                self.phase_renderer._button_chujogram_rect().collidepoint(pos)):
             self.chujogram.toggle()
             return
 
-        if (self.phase_renderer._button_last_trick_rect().collidepoint(pos) and
+        if (self._shows("last_trick") and
+                self.phase_renderer._button_last_trick_rect().collidepoint(pos) and
                 self.game_state.current_round and
                 self.game_state.current_round.trick_number > 0):
             self.show_last_trick = not self.show_last_trick
             return
 
-        if self.phase_renderer._button_sort_rect().collidepoint(pos):
-            self.sort_ascending = not self.sort_ascending
-            self.game_state.players[
-                self.game_state.human_index
-            ].hand.sort_hand(self.sort_ascending)
-            return
-
-        if self.phase_renderer._button_info_rect().collidepoint(pos):
+        if (self._shows("info") and
+                self.phase_renderer._button_info_rect().collidepoint(pos)):
             self.info_overlay.toggle()
             return
 
-        if self.phase_renderer._button_tips_rect().collidepoint(pos):
+        if (self._shows("tips") and
+                self.phase_renderer._button_tips_rect().collidepoint(pos)):
             self.tips_enabled = not self.tips_enabled
             self.settings["tips_enabled"] = self.tips_enabled
             self._save_tips_setting()
@@ -356,8 +475,12 @@ class Screen:
                 self._tip_key = None
             return
 
-        if self.phase_renderer._button_menu_rect().collidepoint(pos):
+        if (self._shows("menu") and
+                self.phase_renderer._button_menu_rect().collidepoint(pos)):
             self._reset_trick_state()
+            # Počas kapitoly (pozri run()) toto vráti hráča do podmenu
+            # Tutoriálu, nie do hlavného menu; v ostrej hre sa nečíta.
+            self._chapter_exit = "menu"
             self.running = False
             return
 
@@ -395,6 +518,12 @@ class Screen:
             declaration_active=current_round.declaration_type is not None
         )
 
+        # Lekcia smie povolené karty ešte zúžiť ("teraz zahraj práve túto").
+        # Je to vždy PRIENIK s reálnymi pravidlami, nikdy ich rozšírenie —
+        # nelegálny ťah sa tým nedá umožniť.
+        if self.director is not None:
+            playable = self.director.restrict_playable(playable)
+
         clicked_card = self.card_renderer.get_clicked_card(
             pos,
             self.game_state.players[player_index].hand.cards,
@@ -425,6 +554,10 @@ class Screen:
 
     def _handle_ai_turn(self):
         if self.dealing:
+            return
+        # Naskriptovaná lekcia drží hru na mieste, kým hráč neklikne Ďalej
+        # — počítače medzitým nesmú hrať.
+        if self.director is not None and self.director.is_paused():
             return
         if self.trick_waiting:
             return
@@ -541,6 +674,11 @@ class Screen:
         if not self.trick_waiting:
             return
 
+        # Lekcia najprv vysvetlí, čo sa v štichu stalo — zber kariet k
+        # víťazovi sa spustí až po kliknutí na Ďalej. Dokončený štich teda
+        # zostane odkrytý na stole, kým režisér pauzu nezruší.
+        if self.director is not None and self.director.is_paused():
+            return
 
         current_round = self.game_state.current_round
         if not current_round or not current_round.current_trick:
@@ -600,13 +738,22 @@ class Screen:
         winner_name = self.game_state.players[winner_index].name
         self._show_message(f"{winner_name} vyhral štich!")
 
-        # TODO (nápad z tutoriálu, páčil sa): ukázať tu aj malú červenú
-        # bublinu s počtom trestných bodov, ktoré víťaz práve štichom
-        # získal (trick.total_base_points), rovnako ako
-        # tutorial/tutorial_screen.py::_finish_trick_collect robí cez
-        # self.speech_bubble.show_round_result(winner_index,
-        # trick.total_base_points, is_bidder=False) — ale len keď
-        # trick.total_base_points > 0.
+        # Malá červená bublina s trestnými bodmi, ktoré víťaz práve
+        # štichom inkasoval. Body počítame SO ZOHĽADNENÍM vysvietenia
+        # (nie trick.total_base_points), nech bublina ukazuje presne to
+        # číslo, ktoré víťazovi zároveň pribudne v paneli KOLO — pri
+        # vysvietenom horníkovi sú to inak dve rôzne čísla a hráč by
+        # nevedel, ktorému veriť. Pri štichu bez bodov sa bublina
+        # neukazuje vôbec.
+        trick_points = sum(
+            card.get_points(current_round.leaf_illuminated,
+                            current_round.acorn_illuminated)
+            for _, card in trick.played_cards
+        )
+        if trick_points > 0:
+            self.speech_bubble.show_round_result(
+                winner_index, trick_points, is_bidder=False
+            )
 
         # Skontroluj zlyhanie záväzku
         if current_round.check_declaration_failed():
@@ -670,9 +817,11 @@ class Screen:
             self._draw_current_trick()
         self.card_throw_animation.draw()
         self.trick_animation.draw()
-        self.phase_renderer.draw_player_labels()
+        if self._shows("player_labels"):
+            self.phase_renderer.draw_player_labels()
         self.chujogram.draw(self.game_state.bullet_history,self.game_state.round_scores_history)
-        self.round_status.draw(self.game_state.players,self.game_state.current_round)
+        if self._shows("round_status"):
+            self.round_status.draw(self.game_state.players,self.game_state.current_round)
         self.phase_renderer.draw_buttons()
         # Tip vľavo dole. Chujogram je vysúvací pás cez celú výšku vľavo —
         # ak je (čo i len čiastočne) vysunutý, posunieme panel doprava za
@@ -681,9 +830,14 @@ class Screen:
             chuj_right = self.chujogram.panel_x + self.chujogram.panel_w
             offset = max(0, int(chuj_right + 20 - TIP_PANEL_X))
             self.tip_panel.draw(self.current_tip, x_offset=offset)
-        self.phase_renderer.draw_phase_overlay()
         self.speech_bubble.draw()
         self.phase_renderer.draw_message()
+        # Panel s výkladom lekcie a pás kapitoly. Zámerne POD overlayami
+        # (Pravidlá, Posledný štich) — tie ich majú prekryť, nie naopak.
+        if self.director is not None:
+            self.director.draw()
+        if self.chapter_banner is not None:
+            self.chapter_banner.draw()
         self.info_overlay.draw()
         if self.show_last_trick:
             self._draw_last_trick_overlay()
@@ -819,6 +973,37 @@ class Screen:
     def _show_message(self, text: str, duration_ms: int = 2000):
         self.message = text
         self.message_timer = pygame.time.get_ticks() + duration_ms
+
+    def _sort_human_hand(self):
+        """
+        Zoradí ruku ľudského hráča (farba, v nej hodnota zostupne).
+
+        Dve volacie miesta, obe v run(): po dobehnutí rozdávacej animácie
+        a pri návrate do rozohratej hry. Ruky súperov sa nezoraďujú —
+        hráč ich aj tak vidí rubom.
+        """
+        idx = self.game_state.human_index
+        if idx < 0 or self.game_state.current_round is None:
+            return
+        self.game_state.players[idx].hand.sort_hand()
+
+    def _shows(self, element: str) -> bool:
+        """
+        Má sa daný prvok UI práve kresliť (a reagovať na klik)?
+
+        V ostrej hre vždy True — teda bez zmeny oproti stavu pred
+        refaktorom. Naskriptovaná lekcia ním postupne odhaľuje UI: hráč
+        nemá pred sebou od prvej sekundy všetkých päť tlačidiel a panel
+        KOLO, ale vždy len to, o čom už bola reč. Kreslenie aj spracovanie
+        klikov sa musia pýtať ROVNAKO — inak by sa dalo kliknúť na
+        neviditeľné tlačidlo.
+
+        Kľúče: "tips", "last_trick", "chujogram", "info", "menu",
+        "declaration" (Beriem všetko / Nechytím nič), "ok", "round_status".
+        """
+        if self.director is None:
+            return True
+        return self.director.shows(element)
 
     def _handle_declaration_failed(self):
         """

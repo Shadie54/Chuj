@@ -204,20 +204,31 @@ BUTTON_W = 200
 BUTTON_H = 50
 BUTTON_X = SCREEN_WIDTH - 600
 
+# Tlačidlo "Zoradiť" (ručné zoradenie ruky) odstránené 2026-09-26 —
+# pozostatok z prvej verzie hry, nepoužívalo sa (automatické zoradenie
+# po rozdaní v gui/screen.py to už rieši samo).
+#
+# Po jeho odstránení sa celý stĺpec posunul o jedno miesto (60px)
+# NIŽŠIE, nie vyššie: spodné tlačidlo (Menu) tak zostalo na svojom
+# pôvodnom mieste pri spodnom okraji a voľné miesto ostalo navrchu, kde
+# neprekáža. Prvý pokus (rovnaký deň) zatiahol namiesto toho Pravidlá a
+# Menu nahor — tým pod Menu vzniklo mŕtve miesto, preto táto oprava.
+#
+# Stĺpec zdola nahor: Menu, Pravidlá, Chujogram, Posledný štich, Tipy.
+BUTTON_TIPS_X = BUTTON_X
+BUTTON_TIPS_Y = SCREEN_HEIGHT - 330
+BUTTON_TIPS_WIDTH = BUTTON_W
+BUTTON_TIPS_HEIGHT = BUTTON_H
+
 BUTTON_LAST_TRICK_X = BUTTON_X
-BUTTON_LAST_TRICK_Y = SCREEN_HEIGHT - 330
+BUTTON_LAST_TRICK_Y = SCREEN_HEIGHT - 270
 BUTTON_LAST_TRICK_WIDTH = BUTTON_W
 BUTTON_LAST_TRICK_HEIGHT = BUTTON_H
 
 BUTTON_CHUJOGRAM_X = BUTTON_X
-BUTTON_CHUJOGRAM_Y = SCREEN_HEIGHT - 270
+BUTTON_CHUJOGRAM_Y = SCREEN_HEIGHT - 210
 BUTTON_CHUJOGRAM_W = BUTTON_W
 BUTTON_CHUJOGRAM_H = BUTTON_H
-
-BUTTON_SORT_X = BUTTON_X
-BUTTON_SORT_Y = SCREEN_HEIGHT - 210
-BUTTON_SORT_WIDTH = BUTTON_W
-BUTTON_SORT_HEIGHT = BUTTON_H
 
 BUTTON_INFO_X = BUTTON_X
 BUTTON_INFO_Y = SCREEN_HEIGHT - 150
@@ -228,13 +239,6 @@ BUTTON_MENU_X = BUTTON_X
 BUTTON_MENU_Y = SCREEN_HEIGHT - 90
 BUTTON_MENU_WIDTH = BUTTON_W
 BUTTON_MENU_HEIGHT = BUTTON_H
-
-# Prepínač tipov od AI — šieste tlačidlo v tom istom stĺpci, nad
-# "Posledný štich" (pozri gui/tip_panel.py a gui/screen.py).
-BUTTON_TIPS_X = BUTTON_X
-BUTTON_TIPS_Y = SCREEN_HEIGHT - 390
-BUTTON_TIPS_WIDTH = BUTTON_W
-BUTTON_TIPS_HEIGHT = BUTTON_H
 
 # ------------------------------------------------------------------
 # Panel s tipom od AI — ľavý dolný roh

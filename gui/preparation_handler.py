@@ -1,6 +1,4 @@
 # gui/preparation_handler.py
-import pygame
-from config import NUM_PLAYERS
 
 
 class PreparationHandler:
@@ -8,8 +6,6 @@ class PreparationHandler:
 
     def __init__(self, screen_ref):
         self.s = screen_ref  # referencia na Screen
-        self.declaration_delay_timer: int = 0
-        self.declaration_pending_index: int = -1
 
     def _record_advisor(self, kind: str, player_index: int, *args):
         """
@@ -35,21 +31,27 @@ class PreparationHandler:
         pr = self.s.phase_renderer
         player = self.s.game_state.players[self.s.game_state.human_index]
 
-        if pr._button_ok_rect().collidepoint(pos):
+        # Viditeľnosť tlačidiel rieši Screen._shows() — v ostrej hre vždy
+        # True, naskriptovaná lekcia ich odhaľuje postupne. Pýtame sa tu
+        # rovnako ako pri kreslení (PhaseRenderer.draw_buttons), inak by sa
+        # dalo kliknúť na tlačidlo, ktoré ešte nie je na obrazovke.
+        if (self.s._shows("ok")
+                and pr._button_ok_rect().collidepoint(pos)):
             self.confirm_preparation()
             return
 
-        if pr._button_decl_all_rect().collidepoint(pos):
-            self.s.active_declaration = (
-                None if self.s.active_declaration == "all" else "all"
-            )
-            return
+        if self.s._shows("declaration"):
+            if pr._button_decl_all_rect().collidepoint(pos):
+                self.s.active_declaration = (
+                    None if self.s.active_declaration == "all" else "all"
+                )
+                return
 
-        if pr._button_decl_none_rect().collidepoint(pos):
-            self.s.active_declaration = (
-                None if self.s.active_declaration == "none" else "none"
-            )
-            return
+            if pr._button_decl_none_rect().collidepoint(pos):
+                self.s.active_declaration = (
+                    None if self.s.active_declaration == "none" else "none"
+                )
+                return
 
         # Klik na kartu — vysvietenie horníka
         clicked_card = self.s.card_renderer.get_clicked_card(
@@ -61,50 +63,6 @@ class PreparationHandler:
                     self.s.selected_illumination.remove(clicked_card)
                 else:
                     self.s.selected_illumination.append(clicked_card)
-
-    def handle_declaration_click(self, pos: tuple[int, int]):
-        """Spracuje klik počas záväzku."""
-        pr = self.s.phase_renderer
-        current_round = self.s.game_state.current_round
-        player_index = self.s.game_state.human_index
-
-        if self.s.declaration_index != player_index:
-            return
-
-        if pr._button_decl_all_rect().collidepoint(pos):
-            current_round.process_declaration(player_index, "all")
-            self._advance_declaration()
-        elif pr._button_decl_none_rect().collidepoint(pos):
-            current_round.process_declaration(player_index, "none")
-            self._advance_declaration()
-        elif pr._button_decl_pass_rect().collidepoint(pos):
-            current_round.process_declaration(player_index, None)
-            self._advance_declaration()
-
-    def handle_revealing_click(self, pos: tuple[int, int]):
-        """Spracuje klik počas vysvietenia."""
-        pr = self.s.phase_renderer
-        current_round = self.s.game_state.current_round
-        player_index = self.s.game_state.human_index
-
-        if self.s.revealing_index != player_index:
-            return
-
-        player = self.s.game_state.players[player_index]
-
-        if pr._button_reveal_leaf_rect().collidepoint(pos):
-            if player.hand.has_leaf_over() and not player.illuminated_leaf:
-                current_round.process_revealing(player_index, True, False)
-            return
-
-        if pr._button_reveal_acorn_rect().collidepoint(pos):
-            if player.hand.has_acorn_over() and not player.illuminated_acorn:
-                current_round.process_revealing(player_index, False, True)
-            return
-
-        if pr._button_reveal_pass_rect().collidepoint(pos):
-            self._advance_revealing()
-
     # ------------------------------------------------------------------
     # Potvrdenie prípravy
     # ------------------------------------------------------------------
@@ -116,11 +74,25 @@ class PreparationHandler:
         player = self.s.game_state.players[player_index]
 
         # Záväzok
-        current_round.process_declaration(player_index, self.s.active_declaration)
+        #
+        # V naskriptovanej lekcii (kapitola 1 tutoriálu) je krok "Záväzok"
+        # zámerne NANEČISTO: tlačidlá sa dajú kliknúť a zvýraznia sa, ale
+        # záväzok sa reálne nevyhlási. Skutočný záväzok by naskriptované
+        # kolo rozbil — deklarant by viedol prvý štich, AI by prepli na inú
+        # stratégiu a check_declaration_failed() by kolo mohol ukončiť
+        # predčasne. Hráč si záväzok s reálnym efektom vyskúša v kapitole 2
+        # (tréningová hra). Rozhodnutie:
+        # claude/08_TUTORIAL_REFACTOR_DESIGN.md §9 č. 1.
+        declaration = self.s.active_declaration
+        if (self.s.director is not None
+                and self.s.director.suppress_declaration()):
+            declaration = None
+
+        current_round.process_declaration(player_index, declaration)
         for ai in self.s.ai_players:
             if ai is not None:
-                ai.record_declaration(player_index, self.s.active_declaration)
-        self._record_advisor("declaration", player_index, self.s.active_declaration)
+                ai.record_declaration(player_index, declaration)
+        self._record_advisor("declaration", player_index, declaration)
 
         # Vysvietenie
         illuminate_leaf = any(c.is_leaf_over for c in self.s.selected_illumination)
@@ -147,8 +119,8 @@ class PreparationHandler:
         elif illuminate_acorn:
             self.s.speech_bubble.show_bid(player_index, "Svietim žaluďového!")
 
-        if self.s.active_declaration:
-            text = ("Beriem všetko!" if self.s.active_declaration == "all"
+        if declaration:
+            text = ("Beriem všetko!" if declaration == "all"
                     else "Nechytím nič!")
             self.s.speech_bubble.show_bid(player_index, text)
 
@@ -224,90 +196,6 @@ class PreparationHandler:
     # ------------------------------------------------------------------
     # Postup fázami
     # ------------------------------------------------------------------
-
-    def _advance_declaration(self):
-        """Posunie záväzok na ďalšieho hráča."""
-        current_round = self.s.game_state.current_round
-        self.s.declaration_index += 1
-        if self.s.declaration_index >= NUM_PLAYERS:
-            current_round.finish_declarations()
-            self.s.revealing_index = 0
-
-    def _advance_revealing(self):
-        """Posunie vysvietenie na ďalšieho hráča."""
-        current_round = self.s.game_state.current_round
-        self.s.revealing_index += 1
-        if self.s.revealing_index >= NUM_PLAYERS:
-            current_round.finish_revealing()
-
     # ------------------------------------------------------------------
     # AI záväzok / vysvietenie (standalone volania)
     # ------------------------------------------------------------------
-
-    def ai_declaration(self):
-        """AI vyhlási záväzok."""
-        current_round = self.s.game_state.current_round
-        current_index = self.s.declaration_index
-        player = self.s.game_state.players[current_index]
-
-        if player.is_human:
-            return
-
-        # Asynchrónna pauza — nastav timer pri prvom volaní
-        if self.s.declaration_pending_index != current_index:
-            self.s.declaration_pending_index = current_index
-            self.s.declaration_delay_timer = pygame.time.get_ticks() + 2500
-            return
-
-        # Čakaj kým neuplynie timer
-        if pygame.time.get_ticks() < self.s.declaration_delay_timer:
-            return
-
-        # Reset
-        self.s.declaration_pending_index = -1
-        self.s.declaration_delay_timer = 0
-
-        ai = self.s.ai_players[current_index]
-        declaration = ai.decide_declaration()
-        current_round.process_declaration(current_index, declaration)
-
-        if declaration:
-            self.s.speech_bubble.show_bid(
-                current_index,
-                "Beriem všetko!" if declaration == "all" else "Nechytím nič!"
-            )
-        self._advance_declaration()
-
-    def ai_revealing(self):
-        """AI vysvietí horníkov."""
-        current_round = self.s.game_state.current_round
-        current_index = self.s.revealing_index
-        player = self.s.game_state.players[current_index]
-
-        if player.is_human:
-            return
-
-        ai = self.s.ai_players[current_index]
-        illuminate_leaf, illuminate_acorn = ai.decide_illumination(
-            current_round.first_player_index
-        )
-        current_round.process_revealing(current_index, illuminate_leaf, illuminate_acorn)
-
-        for other_ai in self.s.ai_players:
-            if other_ai is not None:
-                other_ai.record_illumination(current_index, illuminate_leaf, illuminate_acorn)
-        self._record_advisor(
-            "illumination", current_index, illuminate_leaf, illuminate_acorn
-        )
-
-        if illuminate_leaf and illuminate_acorn:
-            self.s.speech_bubble.show_bid(current_index, "Svietim oboch!")
-        elif illuminate_leaf:
-            self.s.speech_bubble.show_bid(current_index, "Svietim zeleného!")
-        elif illuminate_acorn:
-            self.s.speech_bubble.show_bid(current_index, "Svietim žaluďového!")
-
-        self.s.game_state.logger.log_illumination(
-            player.name, illuminate_leaf, illuminate_acorn
-        )
-        self._advance_revealing()

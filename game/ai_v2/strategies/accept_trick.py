@@ -93,7 +93,20 @@ class AcceptTrick(Strategy):
         early = self._early_take_cards(ctx)
         if early:
             for card in early:
-                results.append((card, "EARLY_TAKE", f"bell risk_pick: {card}"))
+                # _early_take_cards() má fallback vetvu: ak risk-picknutá
+                # karta neprebije current_best, vráti max(underplay) —
+                # teda kartu, ktorá štich NEzoberie (zámerné, pozri
+                # 02_AI_REFERENCE.md F-EARLY_TAKE). Tá si preto zaslúži
+                # "UNDERPLAY" popis ("Podlez to."), nie "EARLY_TAKE"
+                # ("Ber štich") — inak tip hovorí opak toho, čo karta
+                # reálne robí.
+                if ctx.current_best and card.rank_order < ctx.current_best.rank_order:
+                    results.append(
+                        (card, "UNDERPLAY",
+                         f"bell risk_pick neprebíja, podliezam: {card}")
+                    )
+                else:
+                    results.append((card, "EARLY_TAKE", f"bell risk_pick: {card}"))
             return results
 
         return results

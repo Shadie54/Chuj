@@ -69,8 +69,14 @@ class GameState:
             self.first_player_index
         )
         self.current_round.deal()
-        self.current_round.round_number = self.round_number
+        # Poradie je dôležité: číslo kola sa priraďuje AŽ PO zvýšení
+        # čítača. Predtým sa priraďovalo pred ním, takže Round.round_number
+        # bol vždy o jedna nižší a panel KOLO (gui/round_status.py, jediný
+        # čitateľ tejto hodnoty) ukazoval v prvom kole "KOLO 0". Logger
+        # nižšie už správne číslo používal, takže panel a log si navyše
+        # protirečili. Opravené 2026-09-26.
         self.round_number += 1
+        self.current_round.round_number = self.round_number
         self.phase = "playing"
 
         # Zaloguj začiatok kola so seedom

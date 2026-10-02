@@ -88,7 +88,10 @@ class RoundStatus:
         self.screen.blit(title, title_rect)
 
         if deal_seed is not None:
-            seed = self.font_small.render(f" ({deal_seed})", True, COLOR_GRAY)  # pridaj medzeru
+            # Len pre zobrazenie — oddeľovač tisícok medzerou (napr. 27 856 498),
+            # samotná hodnota deal_seed (v tester_main.py --seed X a pod.) sa nemení.
+            seed_text = f"{deal_seed:,}".replace(",", " ")
+            seed = self.font_small.render(f" ({seed_text})", True, COLOR_GRAY)  # pridaj medzeru
             seed_rect = seed.get_rect(
                 right=self.x + self.w - 8,
                 centery=title_rect.centery  # rovnaká výška ako KOLO

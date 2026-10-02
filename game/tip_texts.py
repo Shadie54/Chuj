@@ -29,14 +29,21 @@ _TEXTS: dict[str, tuple[str, str]] = {
         "horšiu chvíľu.",
     ),
     "AvoidTrick.DUMP_AK_FREE_OWN": (
-        "Zbav sa vysokej karty teraz.",
-        "Eso či kráľ ti neskôr nemá ako uniknúť — teraz ich vieš pustiť "
-        "bez toho, aby ti zobrali štich.",
+        "Odhoď eso/kráľa, kým je to zadarmo.",
+        "Horníka tejto farby máš v ruke ty, takže sa v tomto štichu "
+        "neobjaví, a riziko, že by si so štichom pribral aj inú "
+        "bodovanú kartu, je nízke. Rezervy na skrývanie ti však "
+        "dochádzajú — využi túto príležitosť teraz.",
+    ),
+    "AvoidTrick.DUMP_AK_FREE_OWN_LIT": (
+        "Zahoď eso alebo kráľa.",
+        "Horník je už vysvietený. Súperi za tebou sa budú zbavovať "
+        "vysokých kariet tak či tak, preto si nízku kartu radšej nechaj.",
     ),
     "AvoidTrick.DUMP_AK_FREE_OPPONENT": (
         "Zbav sa vysokej karty teraz.",
-        "Štich aj tak berie niekto iný — je to lacná príležitosť pustiť "
-        "nebezpečnú kartu.",
+        "Horník tejto farby je vysvietený a jeho majiteľ už zahral — "
+        "v tomto štichu už teda nemôže padnúť.",
     ),
 
     # --- odhadzovanie (dump) -----------------------------------------
@@ -133,9 +140,9 @@ _TEXTS: dict[str, tuple[str, str]] = {
         "ktorá je najvyššia.",
     ),
     "AcceptTrick.FREE_TAKE": (
-        "Ber štich, teraz je to zadarmo.",
-        "Horník je preč a nič bodované v štichu nie je — lacná "
-        "príležitosť zahodiť vysokú kartu",
+        "Ber štich.",
+        "Horník už v tomto štichu nehrozí. Využi šancu zbaviť sa "
+        "vysokej karty bez bodov.",
     ),
     "AcceptTrick.EARLY_TAKE": (
         "Ber štich.",
@@ -188,6 +195,19 @@ _TEXTS: dict[str, tuple[str, str]] = {
     ),
 }
 
+# Alternatívne znenia pre prípad, že v štichu je UŽ bodovaná karta (napr.
+# padnuté srdce) — bežný text pre tieto varianty by inak tvrdil, že štich
+# "nič nestojí", čo by bolo nepravdivé. Logika stratégie sa nemení, len
+# jej vysvetlenie (pozri 02_AI_REFERENCE.md F-FREE_TAKE — aktivácia je
+# zámerne nezávislá od bodov v štichu, len od toho, či horník padol).
+_TEXTS_PENALTY_VARIANT: dict[str, tuple[str, str]] = {
+    "AcceptTrick.FREE_TAKE": (
+        "Ber lacný štich.",
+        "Horník už v tomto štichu nehrozí. Za pár bodov sa môžeš "
+        "zbaviť nebezpečne vysokej karty.",
+    ),
+}
+
 # Ak nesedí ani "Strategy.VARIANT", ani samotný VARIANT.
 _FALLBACK = ("AI by zahrala túto kartu.", "")
 
@@ -217,8 +237,8 @@ _ILLUMINATION_REASONS: dict[str, str] = {
         "hneď, ako sa farba zahrá, asi ho schytáš."
     ),
     "bad_reserves": (
-        "Tvoje ostatné karty v tej farbe sú privysoké — asi by som"
-        "ho nesvietil"
+        "Tvoje ostatné karty v tej farbe sú privysoké — neodporúčam "
+        "svietiť"
     ),
     "leader_borderline": (
         "Vedieš v bodoch, takže si nemôžeš dovoliť riskovať — krytie je "
@@ -277,11 +297,11 @@ def _poistka_phrase(comp_breakdown: dict | None) -> str | None:
     if void:
         names = [_SUIT_NAMES_NOM.get(s, s) for s in void]
         if len(names) > 2:
-            parts.append("máš viacero voľných farieb")
+            parts.append("nemáš viacero farieb")
         elif len(names) == 1:
-            parts.append(f"máš voľnú farbu: {names[0]}")
+            parts.append(f"nemáš farbu: {names[0]}")
         else:
-            parts.append(f"máš voľné: {', '.join(names)}")
+            parts.append(f"nemáš farby: {', '.join(names)}")
     if comp_breakdown.get("position"):
         parts.append("si posledný na rade")
     return " a ".join(parts) if parts else None
@@ -309,15 +329,24 @@ def _illumination_decision_text(is_yes: bool, reserve_quality: str,
     coverage = ("Krytie v tejto farbe je dobré" if good_reserve
                 else "Krytie v tejto farbe je len na hrane")
     parts = [coverage]
+    risky = risk_level in ("medium", "critical")
     if risk_level == "medium":
         parts.append("časť ruky je rizikovejšia")
     elif risk_level == "critical":
         parts.append("zvyšok ruky je dosť rizikový")
+    sentence = ", ".join(parts)
     poistka = _poistka_phrase(comp_breakdown)
     if poistka:
-        parts.append(f"ale {poistka}")
+        # "ale" (s čiarkou) len keď poistka kontruje niečo negatívne
+        # (na hrane krytie alebo pridaná riziková veta) — inak (dobré
+        # krytie bez ďalšieho rizika) je poistka len bonus navyše, nie
+        # protiklad, takže spojka "a" ide bez čiarky (nález z
+        # konzultácie: "Krytie je dobré, ale máš voľnú farbu" znelo,
+        # akoby si farba krytie vyvracala).
+        sentence += (f", ale {poistka}" if (risky or not good_reserve)
+                     else f" a {poistka}")
     verdict = "vysvietenie sa oplatí" if is_yes else "radšej nesvieť"
-    return f"{', '.join(parts)} — {verdict}."
+    return f"{sentence} — {verdict}."
 
 
 def illumination_reason(reason_code: str, short: bool = False,
@@ -375,12 +404,23 @@ def _pair(value) -> tuple[str, str] | None:
 
 
 def tip_text_for(strategy: str, variant: str,
-                 card: Card | None = None) -> tuple[str, str]:
+                 card: Card | None = None,
+                 points_in_trick: bool = False) -> tuple[str, str]:
     """
     Vráti (nadpis, vysvetlenie) pre danú AI stratégiu a variant.
     Nikdy nevyhodí výnimku — neznámy ani zle zapísaný variant dá
     všeobecný text.
+
+    `points_in_trick`: trik už obsahuje bodovanú kartu (napr. padnuté
+    srdce) — pre pár variantov (pozri _TEXTS_PENALTY_VARIANT) to mení
+    vysvetlenie, nie samotný výber karty.
     """
+    key = f"{strategy}.{variant}" if strategy and variant else ""
+    if points_in_trick and key in _TEXTS_PENALTY_VARIANT:
+        pair = _pair(_TEXTS_PENALTY_VARIANT[key])
+        if pair is not None:
+            return pair
+
     candidates = []
     if strategy and variant:
         candidates.append(_TEXTS.get(f"{strategy}.{variant}"))

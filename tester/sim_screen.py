@@ -1,490 +1,529 @@
 # tester/sim_screen.py
 """
-Simulátor GUI — nastavenia + progress + výsledky.
+GUI spúšťač/konfigurátor pre headless simulátor (tester/simulator.py).
 
-Spustenie samostatne:
-    python -m tester.sim_screen
+Vznik: 2026-09-29 — počet --no-xxx-watch CLI flagov v simulátore rástol
+s každým novým watcherom a bolo čoraz ťažšie mať prehľad, čo je zapnuté.
+Toto je vizuálna náhrada: checkboxy zoskupené do záložiek podľa témy
+(Sweep / Deklarácie a horníci / Rozhodnutia v štichoch — rozdelenie
+zodpovedá modulom v kóde: game/ai_sweep/, ai_declaration.py,
+ai_v2/strategies/+selector.py), štvrtá záložka "Výsledky" pre progress
+a súhrn po behu. Spustenie na pozadí (aby okno nezamrzlo) + rýchly skok
+do prehliadača nálezov (tester_main.py --findings).
+
+Záložkový layout (nahradil pôvodný jednostĺpcový zoznam všetkých
+checkboxov naraz — s pribúdajúcimi watchermi to prestávalo byť
+prehľadné) — pozri claude/ dokumentáciu k tejto session pre koncept.
+
+Použitie:
+    python sim_main.py
 """
 
 import os
 import sys
-import threading
-import time
 import subprocess
+import threading
+
 import pygame
 
-if __name__ == "__main__":
-    # PYTHONHASHSEED musí byť nastavený PRED štartom interpretera — inak sa
-    # medzi behmi náhodne mení poradie iterácie cez set/dict s reťazcovými
-    # kľúčmi, čo robí --seed nereprodukovateľným (pozri rovnaký guard v
-    # tester_main.py a tester/simulator.py, kde je aj plné vysvetlenie).
-    #
-    # Reštart ide cez subprocess.run vo forme "-m tester.sim_screen"
-    # (presne ako v hlavičkovom docstringu), nie cez os.execv so
-    # sys.orig_argv — pri spustení cez IDE (napr. PyCharm run/debug)
-    # sys.orig_argv obsahuje IDE/debug launcher namiesto tohto skriptu,
-    # takže reštart cezeň potichu zlyhá bez pripojeného debug servera a
-    # proces skončí s "exit code 0" bez výstupu. Nájdené 2026-09-04 pri
-    # prvom nasadení pôvodného guardu.
-    if os.environ.get("PYTHONHASHSEED") != "0":
-        env = os.environ.copy()
-        env["PYTHONHASHSEED"] = "0"
-        result = subprocess.run(
-            [sys.executable, "-m", "tester.sim_screen"] + sys.argv[1:],
-            env=env,
-        )
-        sys.exit(result.returncode)
-    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from tester.simulator import (
-    SimConfig, Findings, OUTPUT_DIR,
-    _run_single_game, _write_output,
-)
+from tester import simulator
+from tester.simulator import SimConfig
+from config import get_font
+from gui.lesson_panel import LessonPanel  # wrap_text — recyklované, netreba duplikovať
 
 # ------------------------------------------------------------------
-# Vzhľad — bielo-šedý štýl, čierne písmo (štýl testera)
+# Lokálne farby — svetlá "tool" téma, rovnaký princíp ako
+# tester/tester_screen.py (iné než tmavá herná paleta v config.py)
 # ------------------------------------------------------------------
+S_BG = (245, 245, 245)
+S_PANEL_BG = (255, 255, 255)
+S_TEXT = (20, 20, 20)
+S_TEXT_DIM = (100, 100, 100)
+S_BORDER = (180, 180, 180)
+S_HIGHLIGHT = (200, 140, 30)
+S_BUTTON_BG = (220, 220, 220)
+S_BUTTON_PRIMARY = (180, 200, 230)
+S_BUTTON_SUCCESS = (180, 230, 180)
+S_CHECK_ON = (80, 160, 80)
+S_INPUT_ACTIVE = (255, 255, 210)
+S_ERROR = (180, 40, 40)
+S_TAB_BG = (230, 230, 230)
+S_TAB_ACTIVE_BG = (255, 255, 255)
 
-W, H = 720, 640
-FPS = 30
+WIN_WIDTH = 900
+WIN_HEIGHT = 600
 
-C_BG = (240, 240, 240)          # svetlošedé pozadie
-C_PANEL = (255, 255, 255)       # biele panely/inputy
-C_BORDER = (160, 160, 160)      # šedý rám
-C_BORDER_DARK = (100, 100, 100)
-C_TEXT = (0, 0, 0)              # čierne písmo
-C_TEXT_DIM = (120, 120, 120)
-C_ACCENT = (0, 100, 200)        # modrý akcent (aktívne prvky)
-C_BTN = (225, 225, 225)         # tlačidlo
-C_BTN_HOVER = (210, 210, 210)
-C_GREEN = (40, 140, 60)
-C_RED = (190, 40, 40)
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-FONT_NAME = "tahoma"
+CONTENT_X = 30
+CONTENT_Y = 155
+RIGHT_X = 430
+# Priestor pred pravým panelom — dlhší text sa musí zalomiť, inak zasahuje
+# pod Hier/Seed polia a tlačidlá (a nie vždy je to vidno — text pod bielym
+# políčkom sa jednoducho stratí, kým pod priehľadným pozadím je "vidno"
+# prekrytie; nájdené 2026-09-29 pri hinte na prázdnej Výsledky záložke).
+CONTENT_MAX_WIDTH = RIGHT_X - CONTENT_X - 20
 
-WATCHES = [
-    ("watch_illuminated_and_caught",   "Vysvietil + schytal vlastného horníka", False),
-    ("illuminated_exclude_high_score", "vylúč 90+ prípady", True),
-    ("watch_none_declaration_failed",  "Nechytím nič — zlyhalo", False),
-    ("watch_global_fallback",          "Global fallback", False),
-    ("watch_sweep_success",            "Sweep — úspešný", False),
-    ("watch_sweep_failed",             "Sweep — neúspešný", False),
+# ------------------------------------------------------------------
+# Záložky — (kľúč, popisok, zoznam (SimConfig pole, popisok, submodifikátor))
+# Pridanie nového watchera do SimConfig = pridaj riadok do príslušnej
+# záložky tu, žiadny ďalší kód sa meniť nemusí.
+# ------------------------------------------------------------------
+WATCHER_TABS = [
+    ("sweep", "Sweep", [
+        ("watch_sweep_success", "Sweep — úspešný", False),
+        ("watch_sweep_failed", "Sweep — neúspešný", False),
+        ("watch_sweep_90_eval", "Sweep 90+ eval (výskum §14)", False),
+        ("watch_sweep_ev_audit", "Sweep EV audit (§8)", False),
+        ("watch_gate2_audit", "Gate2 audit (§16 A3)", False),
+    ]),
+    ("declarations", "Deklarácie a horníci", [
+        ("watch_none_declaration_failed", "\"Nechytím nič\" zlyhalo", False),
+        ("watch_illuminated_and_caught", "Vysvietil + schytal vlastného horníka", False),
+        ("illuminated_exclude_high_score", "vylúč 90+ prípady", True),
+        ("watch_hornik_capture", "Schytávanie horníkov", False),
+    ]),
+    ("cardplay", "Rozhodnutia v štichoch", [
+        ("watch_global_fallback", "Global fallback", False),
+        ("watch_forced_lead_trap", "Forced lead trap", False),
+    ]),
+]
+# Záložka, do ktorej sa dynamicky dopĺňajú položky z SimConfig.watch_decisions
+# (napr. AcceptTrick.FORCED_POINTS) — pozri _rows_for_tab.
+DECISIONS_TAB_KEY = "cardplay"
+RESULTS_TAB_KEY = "results"
+RESULTS_TAB_LABEL = "Výsledky"
+
+ALL_WATCHER_FIELDS = [
+    (field, label, indented)
+    for _key, _tab_label, fields in WATCHER_TABS
+    for field, label, indented in fields
 ]
 
 
-def _text(surf, font, txt, color, **anchor):
-    s = font.render(txt, True, color)
-    surf.blit(s, s.get_rect(**anchor))
-
-
-# ------------------------------------------------------------------
-# SimSetupScreen
-# ------------------------------------------------------------------
-
-class SimSetupScreen:
-    LEFT = 50       # ľavý okraj labelov
-    CTRL_X = 420    # stĺpec ovládacích prvkov
-
-    def __init__(self, screen: pygame.Surface):
-        self.screen = screen
-        self.clock = pygame.time.Clock()
-        self.font_title = pygame.font.SysFont(FONT_NAME, 26, bold=True)
-        self.font = pygame.font.SysFont(FONT_NAME, 16)
-        self.font_sm = pygame.font.SysFont(FONT_NAME, 14)
-
-        self.num_games = 100
-        self.seed_enabled = False
-        self.seed_value = 42
-        self.system = "new"
-
-        self.watches = {k: True for k, _, _ in WATCHES}
-
-        self._editing_games = False
-        self._editing_seed = False
-        self._input_buf = ""
-
-        self._build_layout()
-
-    def _build_layout(self):
-        y = 80
-        self.games_y = y
-        self.games_input_rect = pygame.Rect(self.CTRL_X, y - 14, 110, 28)
-        y += 44
-
-        self.seed_y = y
-        self.seed_check_rect = pygame.Rect(self.CTRL_X, y - 11, 22, 22)
-        self.seed_input_rect = pygame.Rect(self.CTRL_X + 32, y - 14, 100, 28)
-        y += 44
-
-        self.sys_y = y
-        self.sys_new_rect = pygame.Rect(self.CTRL_X, y - 14, 80, 28)
-        self.sys_old_rect = pygame.Rect(self.CTRL_X + 88, y - 14, 80, 28)
-        y += 54
-
-        self.watch_header_y = y
-        y += 32
-        self.watch_rects = {}
-        for k, label, indent in WATCHES:
-            cb = pygame.Rect(self.CTRL_X, y - 11, 22, 22)
-            self.watch_rects[k] = (cb, y, label, indent)
-            y += 32
-        y += 20
-
-        self.run_btn = pygame.Rect(W // 2 - 100, y, 200, 40)
-
-    # -------------------- beh --------------------
-
-    def run(self) -> SimConfig | None:
-        while True:
-            self.clock.tick(FPS)
-            for event in pygame.event.get():
-                result = self._handle(event)
-                if result == "quit":
-                    return None
-                if result == "run":
-                    return self._build_config()
-            self._draw()
-            pygame.display.flip()
-
-    def _build_config(self) -> SimConfig:
-        cfg = SimConfig(num_games=self.num_games)
-        if self.seed_enabled:
-            cfg.seed = self.seed_value
-        for k, _, _ in WATCHES:
-            setattr(cfg, k, self.watches[k])
-        cfg._use_old_system = (self.system == "old")
-        return cfg
-
-    # -------------------- eventy --------------------
-
-    def _handle(self, event):
-        if event.type == pygame.QUIT:
-            return "quit"
-        if event.type == pygame.KEYDOWN:
-            self._handle_key(event)
-        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            return self._handle_click(event.pos)
-        return None
-
-    def _handle_key(self, event):
-        if not (self._editing_games or self._editing_seed):
-            return
-        if event.key == pygame.K_RETURN:
-            self._commit_input()
-        elif event.key == pygame.K_ESCAPE:
-            self._editing_games = self._editing_seed = False
-        elif event.key == pygame.K_BACKSPACE:
-            self._input_buf = self._input_buf[:-1]
-        elif event.unicode.isdigit():
-            self._input_buf += event.unicode
-
-    def _commit_input(self):
-        val = int(self._input_buf) if self._input_buf.isdigit() else None
-        if self._editing_games and val and val > 0:
-            self.num_games = min(val, 99999)
-        if self._editing_seed and val is not None:
-            self.seed_value = val
-        self._editing_games = self._editing_seed = False
-
-    def _handle_click(self, pos):
-        if self.games_input_rect.collidepoint(pos):
-            self._editing_games, self._editing_seed = True, False
-            self._input_buf = str(self.num_games)
-            return None
-        if self.seed_check_rect.collidepoint(pos):
-            self.seed_enabled = not self.seed_enabled
-            return None
-        if self.seed_enabled and self.seed_input_rect.collidepoint(pos):
-            self._editing_seed, self._editing_games = True, False
-            self._input_buf = str(self.seed_value)
-            return None
-        if self.sys_new_rect.collidepoint(pos):
-            self.system = "new"
-        if self.sys_old_rect.collidepoint(pos):
-            self.system = "old"
-        for k, (cb, y, label, indent) in self.watch_rects.items():
-            if cb.collidepoint(pos):
-                if (k == "illuminated_exclude_high_score"
-                        and not self.watches["watch_illuminated_and_caught"]):
-                    break
-                self.watches[k] = not self.watches[k]
-                break
-        if self.run_btn.collidepoint(pos):
-            self._commit_input()
-            return "run"
-        return None
-
-    # -------------------- kreslenie --------------------
-
-    def _draw_input(self, rect, value, editing):
-        pygame.draw.rect(self.screen, C_PANEL, rect)
-        pygame.draw.rect(self.screen,
-                         C_ACCENT if editing else C_BORDER, rect, 1)
-        txt = (value + "|") if editing else value
-        _text(self.screen, self.font, txt, C_TEXT,
-              centerx=rect.centerx, centery=rect.centery)
-
-    def _draw_checkbox(self, rect, checked, grayed=False):
-        pygame.draw.rect(self.screen, C_PANEL, rect)
-        pygame.draw.rect(self.screen,
-                         C_BORDER if grayed else C_BORDER_DARK, rect, 1)
-        if checked and not grayed:
-            inner = rect.inflate(-8, -8)
-            pygame.draw.rect(self.screen, C_ACCENT, inner)
-
-    def _draw(self):
-        self.screen.fill(C_BG)
-
-        _text(self.screen, self.font_title, "Simulátor", C_TEXT,
-              left=self.LEFT, centery=40)
-
-        # Počet hier
-        _text(self.screen, self.font, "Počet hier:", C_TEXT,
-              left=self.LEFT, centery=self.games_y)
-        val = self._input_buf if self._editing_games else str(self.num_games)
-        self._draw_input(self.games_input_rect, val, self._editing_games)
-
-        # Seed
-        _text(self.screen, self.font, "Seed:", C_TEXT,
-              left=self.LEFT, centery=self.seed_y)
-        self._draw_checkbox(self.seed_check_rect, self.seed_enabled)
-        if self.seed_enabled:
-            val = self._input_buf if self._editing_seed else str(self.seed_value)
-            self._draw_input(self.seed_input_rect, val, self._editing_seed)
-        else:
-            _text(self.screen, self.font_sm, "(náhodný)", C_TEXT_DIM,
-                  left=self.seed_check_rect.right + 10, centery=self.seed_y)
-
-        # Systém
-        _text(self.screen, self.font, "AI systém:", C_TEXT,
-              left=self.LEFT, centery=self.sys_y)
-        for label, rect, key in [("NOVÝ", self.sys_new_rect, "new"),
-                                  ("STARÝ", self.sys_old_rect, "old")]:
-            active = self.system == key
-            pygame.draw.rect(self.screen, C_PANEL, rect)
-            pygame.draw.rect(self.screen,
-                             C_ACCENT if active else C_BORDER, rect,
-                             2 if active else 1)
-            _text(self.screen, self.font, label,
-                  C_ACCENT if active else C_TEXT,
-                  centerx=rect.centerx, centery=rect.centery)
-
-        # Watchers
-        _text(self.screen, self.font, "Sledovať:", C_TEXT,
-              left=self.LEFT, centery=self.watch_header_y)
-        for k, (cb, y, label, indent) in self.watch_rects.items():
-            grayed = (k == "illuminated_exclude_high_score"
-                      and not self.watches["watch_illuminated_and_caught"])
-            self._draw_checkbox(cb, self.watches[k], grayed)
-            x = self.LEFT + (46 if indent else 20)
-            prefix = "└ " if indent else ""
-            _text(self.screen, self.font_sm, prefix + label,
-                  C_TEXT_DIM if grayed else C_TEXT,
-                  left=x, centery=y)
-
-        # Tlačidlo SPUSTIŤ
-        hover = self.run_btn.collidepoint(pygame.mouse.get_pos())
-        pygame.draw.rect(self.screen,
-                         C_BTN_HOVER if hover else C_BTN, self.run_btn)
-        pygame.draw.rect(self.screen, C_BORDER_DARK, self.run_btn, 1)
-        _text(self.screen, self.font, "Spustiť", C_TEXT,
-              centerx=self.run_btn.centerx, centery=self.run_btn.centery)
-
-
-# ------------------------------------------------------------------
-# SimRunScreen
-# ------------------------------------------------------------------
-
-class SimRunScreen:
-    def __init__(self, screen: pygame.Surface, config: SimConfig):
-        self.screen = screen
-        self.clock = pygame.time.Clock()
-        self.config = config
-        self.font_title = pygame.font.SysFont(FONT_NAME, 24, bold=True)
-        self.font = pygame.font.SysFont(FONT_NAME, 16)
-        self.font_sm = pygame.font.SysFont(FONT_NAME, 14)
-
-        self._progress = 0
-        self._findings_count = 0
-        self._done = False
-        self._elapsed = 0.0
-        self._stats: dict = {}
-        self._findings: Findings | None = None
-        self._error: str | None = None
-
-        cx = W // 2
-        self.btn_open = pygame.Rect(cx - 250, H - 70, 170, 36)
-        self.btn_findings = pygame.Rect(cx - 70, H - 70, 170, 36)
-        self.btn_new = pygame.Rect(cx + 110, H - 70, 80, 36)
-
-        self._thread = threading.Thread(target=self._run_sim, daemon=True)
-        self._thread.start()
-
-    def _run_sim(self):
-        import random as _random
-        findings = Findings()
-        stats: dict = {}
-        rng = _random.Random(self.config.seed)
-        start = time.time()
-
-        for i in range(self.config.num_games):
-            _random.seed(rng.randint(0, 2 ** 31))
-            try:
-                _run_single_game(i, self.config, findings, stats)
-            except Exception as e:
-                self._error = f"Chyba v hre {i}: {e}"
-                self._done = True
-                return
-            self._progress = i + 1
-            self._findings_count = len(findings.records)
-            self._elapsed = time.time() - start
-
-        self._elapsed = time.time() - start
-        self._stats = stats
-        self._findings = findings
-        _write_output(self.config, findings, stats, self._elapsed)
-        self._done = True
-
-    def run(self) -> str:
-        while True:
-            self.clock.tick(FPS)
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    return "quit"
-                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    result = self._handle_click(event.pos)
-                    if result:
-                        return result
-            self._draw()
-            pygame.display.flip()
-
-    def _handle_click(self, pos) -> str | None:
-        if not self._done:
-            return None
-        if self.btn_open.collidepoint(pos):
-            self._open_file(os.path.join(OUTPUT_DIR, "sim_summary.txt"))
-        if self.btn_findings.collidepoint(pos):
-            self._open_tester_findings()
-        if self.btn_new.collidepoint(pos):
-            return "new"
-        return None
-
-    @staticmethod
-    def _open_file(path):
-        if not os.path.exists(path):
-            return
-        if sys.platform == "win32":
-            os.startfile(path)
-        elif sys.platform == "darwin":
-            subprocess.call(["open", path])
-        else:
-            subprocess.call(["xdg-open", path])
-
-    @staticmethod
-    def _open_tester_findings():
-        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        subprocess.Popen(
-            [sys.executable, os.path.join(root, "tester_main.py"), "--findings"],
-            cwd=root,
-        )
-
-    def _draw(self):
-        self.screen.fill(C_BG)
-        cx = W // 2
-        n = self.config.num_games
-        prog, done = self._progress, self._done
-
-        status = "Hotovo" if done else "Prebieha…"
-        _text(self.screen, self.font_title, f"Simulácia — {status}",
-              C_GREEN if done else C_TEXT, left=50, centery=40)
-
-        _text(self.screen, self.font,
-              f"Hier: {prog} / {n}    Čas: {self._elapsed:.1f}s    "
-              f"Nálezov: {self._findings_count}",
-              C_TEXT, left=50, centery=80)
-
-        # Progress bar
-        bar = pygame.Rect(50, 105, W - 100, 24)
-        pygame.draw.rect(self.screen, C_PANEL, bar)
-        pygame.draw.rect(self.screen, C_BORDER, bar, 1)
-        if n:
-            fill = pygame.Rect(bar.x + 1, bar.y + 1,
-                               int((bar.width - 2) * prog / n), bar.height - 2)
-            pygame.draw.rect(self.screen,
-                             C_GREEN if done else C_ACCENT, fill)
-        _text(self.screen, self.font_sm, f"{int(100 * prog / n) if n else 0}%",
-              C_TEXT, centerx=cx, centery=bar.centery)
-
-        if self._error:
-            _text(self.screen, self.font, f"CHYBA: {self._error}", C_RED,
-                  left=50, centery=170)
-            return
-
-        if done:
-            stats, findings = self._stats, self._findings
-            y = 165
-            fs = stats.get("final_scores", [])
-            lines = [
-                f"Kôl spolu: {stats.get('rounds_total', 0):,}",
-                f"Priemerné finálne skóre: "
-                f"{(sum(fs) / len(fs)) if fs else 0:.1f}",
-                "Prehry:  " + "   ".join(
-                    f"AI_{i}: {stats.get(f'loser_AI_{i}', 0)}"
-                    for i in range(4)
-                ),
-            ]
-            for line in lines:
-                _text(self.screen, self.font, line, C_TEXT, left=50, centery=y)
-                y += 28
-
-            y += 12
-            _text(self.screen, self.font, "Nálezy:", C_TEXT, left=50, centery=y)
-            y += 28
-            if findings:
-                for ftype, count in sorted(findings.counts.items()):
-                    _text(self.screen, self.font_sm,
-                          f"{ftype}: {count:,}", C_TEXT, left=70, centery=y)
-                    y += 24
-
-            path = os.path.join(OUTPUT_DIR, "sim_findings.jsonl")
-            _text(self.screen, self.font_sm, path, C_TEXT_DIM,
-                  left=50, centery=y + 12)
-
-            for rect, label in [(self.btn_open, "Otvoriť súhrn"),
-                                (self.btn_findings, "Nálezy v testeri"),
-                                (self.btn_new, "Nová")]:
-                hover = rect.collidepoint(pygame.mouse.get_pos())
-                pygame.draw.rect(self.screen,
-                                 C_BTN_HOVER if hover else C_BTN, rect)
-                pygame.draw.rect(self.screen, C_BORDER_DARK, rect, 1)
-                _text(self.screen, self.font_sm, label, C_TEXT,
-                      centerx=rect.centerx, centery=rect.centery)
-
-
-# ------------------------------------------------------------------
-# Main
-# ------------------------------------------------------------------
-
-def main(screen: pygame.Surface | None = None):
-    standalone = screen is None
-    if standalone:
+class SimScreen:
+    def __init__(self):
         pygame.init()
-        screen = pygame.display.set_mode((W, H))
-        pygame.display.set_caption("CHUJ — Simulátor")
+        self.screen = pygame.display.set_mode((WIN_WIDTH, WIN_HEIGHT))
+        pygame.display.set_caption("Chuj — Simulátor")
+        self.clock = pygame.time.Clock()
+        self.running = True
 
-    while True:
-        setup = SimSetupScreen(screen)
-        config = setup.run()
-        if config is None:
-            break
-        run_screen = SimRunScreen(screen, config)
-        result = run_screen.run()
-        if result != "new":
-            break
+        self.font_small = get_font(16)
+        self.font_medium = get_font(20)
+        self.font_large = get_font(26)
 
-    if standalone:
+        default_cfg = SimConfig()
+        self.checked: dict[str, bool] = {
+            field: getattr(default_cfg, field) for field, _, _ in ALL_WATCHER_FIELDS
+        }
+        self.decision_items: list[tuple[str, str]] = list(default_cfg.watch_decisions)
+        self.decision_checked: dict[tuple[str, str], bool] = {
+            item: True for item in self.decision_items
+        }
+
+        self.games_input = str(default_cfg.num_games)
+        self.seed_input = ""
+        self.active_field: str | None = None  # "games" / "seed" / None
+
+        self.active_tab: str = WATCHER_TABS[0][0]
+
+        # Beh na pozadí — simulácia s pygame vôbec nepracuje, takže je
+        # bezpečné pustiť ju vo vlákne. Zdieľaný stav (sim_progress /
+        # sim_result / sim_error / sim_running) sa medzi vláknami mení len
+        # jednoduchým priradením (nie mutáciou na mieste), čo GIL robí
+        # atomickým — pre tento nástroj (nie bezpečnostne kritický kód)
+        # to stačí bez zámku.
+        self.sim_thread: threading.Thread | None = None
+        self.sim_running = False
+        self.sim_progress = (0, 0, 0.0)  # (hotovo, spolu, elapsed_s)
+        self.sim_result = None  # (findings, stats, elapsed) po dobehnutí
+        self.sim_error: str | None = None
+
+        self._build_static_rects()
+
+    # ------------------------------------------------------------------
+    # Layout — tab bar a pravý panel sa nemenia podľa aktívnej záložky,
+    # počítajú sa raz. Riadky checkboxov aktívnej záložky sa počítajú za
+    # behu (_row_rects) — je ich málo (max 5), netreba cachovať.
+    # ------------------------------------------------------------------
+
+    def _build_static_rects(self):
+        self.tab_rects: dict[str, pygame.Rect] = {}
+        x = CONTENT_X
+        y = 92
+        for key, label in self._tab_keys_labels():
+            w = self.font_small.size(self._tab_caption(key, label))[0] + 28
+            self.tab_rects[key] = pygame.Rect(x, y, w, 30)
+            x += w + 6
+
+        self.games_rect = pygame.Rect(RIGHT_X, CONTENT_Y, 140, 32)
+        self.seed_rect = pygame.Rect(RIGHT_X, CONTENT_Y + 60, 140, 32)
+        self.run_btn = pygame.Rect(RIGHT_X, CONTENT_Y + 115, 140, 40)
+        self.open_tester_btn = pygame.Rect(RIGHT_X, CONTENT_Y + 170, 240, 40)
+
+    @staticmethod
+    def _tab_keys_labels():
+        labels = [(k, label) for k, label, _fields in WATCHER_TABS]
+        labels.append((RESULTS_TAB_KEY, RESULTS_TAB_LABEL))
+        return labels
+
+    def _tab_caption(self, key: str, label: str) -> str:
+        if key == RESULTS_TAB_KEY:
+            return label
+        rows = self._rows_for_tab(key)
+        # Submodifikátor (napr. "vylúč 90+ prípady") nie je nezávislý
+        # watcher, len prepínač správania toho nad ním — do počtu sa
+        # nezaratáva.
+        countable = [r for r in rows if not r[3]]
+        checked = sum(1 for kind, k, _l, _i in countable if self._is_checked(kind, k))
+        return f"{label} ({checked}/{len(countable)})"
+
+    # ------------------------------------------------------------------
+    # Riadky danej záložky
+    # ------------------------------------------------------------------
+
+    def _rows_for_tab(self, tab_key: str):
+        """Vráti [(kind, key, label, indented), ...] pre danú záložku.
+        kind je 'field' (bool pole SimConfig) alebo 'decision' (položka
+        watch_decisions)."""
+        if tab_key == RESULTS_TAB_KEY:
+            return []
+        fields = next(f for k, _l, f in WATCHER_TABS if k == tab_key)
+        rows = [("field", field, label, indented) for field, label, indented in fields]
+        if tab_key == DECISIONS_TAB_KEY:
+            for item in self.decision_items:
+                strategy, variant = item
+                rows.append(("decision", item, f"{strategy}.{variant}", False))
+        return rows
+
+    def _is_checked(self, kind: str, key) -> bool:
+        if kind == "field":
+            return self.checked[key]
+        return self.decision_checked[key]
+
+    def _toggle(self, kind: str, key):
+        if kind == "field":
+            self.checked[key] = not self.checked[key]
+        else:
+            self.decision_checked[key] = not self.decision_checked[key]
+
+    def _row_rects(self, tab_key: str):
+        """Riadky danej záložky s vypočítanými Rect-mi checkboxov —
+        [(kind, key, label, indented, rect), ...]."""
+        out = []
+        y = CONTENT_Y
+        for kind, key, label, indented in self._rows_for_tab(tab_key):
+            cx = CONTENT_X + (24 if indented else 0)
+            out.append((kind, key, label, indented, pygame.Rect(cx, y, 20, 20)))
+            y += 30
+        return out
+
+    # ------------------------------------------------------------------
+    # Hlavná slučka
+    # ------------------------------------------------------------------
+
+    def run(self):
+        while self.running:
+            self.clock.tick(30)
+            self._handle_events()
+            self._draw()
+            pygame.display.flip()
         pygame.quit()
 
+    def _handle_events(self):
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                self.running = False
+            elif event.type == pygame.KEYDOWN:
+                self._handle_keydown(event)
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                self._handle_click(event.pos)
 
-if __name__ == "__main__":
-    main()
+    def _handle_keydown(self, event):
+        if self.active_field is None:
+            if event.key == pygame.K_ESCAPE:
+                self.running = False
+            return
+        target = "games_input" if self.active_field == "games" else "seed_input"
+        current = getattr(self, target)
+        if event.key in (pygame.K_RETURN, pygame.K_ESCAPE):
+            self.active_field = None
+        elif event.key == pygame.K_BACKSPACE:
+            setattr(self, target, current[:-1])
+        elif event.unicode.isdigit():
+            setattr(self, target, current + event.unicode)
+
+    def _handle_click(self, pos):
+        for key, rect in self.tab_rects.items():
+            if rect.collidepoint(pos):
+                self.active_tab = key
+                return
+
+        for kind, key, _label, _indented, rect in self._row_rects(self.active_tab):
+            if rect.collidepoint(pos):
+                self._toggle(kind, key)
+                return
+
+        if self.games_rect.collidepoint(pos):
+            self.active_field = "games"
+            return
+        if self.seed_rect.collidepoint(pos):
+            self.active_field = "seed"
+            return
+        self.active_field = None
+
+        if self.run_btn.collidepoint(pos) and not self.sim_running:
+            self._start_simulation()
+            return
+
+        if self.open_tester_btn.collidepoint(pos):
+            self._open_tester()
+            return
+
+    # ------------------------------------------------------------------
+    # Spustenie simulácie (na pozadí)
+    # ------------------------------------------------------------------
+
+    def _build_config(self) -> SimConfig:
+        try:
+            num_games = max(1, int(self.games_input))
+        except ValueError:
+            num_games = 100
+        seed = int(self.seed_input) if self.seed_input.strip() else None
+
+        kwargs = {field: self.checked[field] for field, _, _ in ALL_WATCHER_FIELDS}
+        watch_decisions = [
+            item for item in self.decision_items if self.decision_checked[item]
+        ]
+        return SimConfig(
+            num_games=num_games,
+            seed=seed,
+            watch_decisions=watch_decisions,
+            **kwargs,
+        )
+
+    def _start_simulation(self):
+        config = self._build_config()
+        self.sim_running = True
+        self.sim_progress = (0, config.num_games, 0.0)
+        self.sim_result = None
+        self.sim_error = None
+        # Rovno na Výsledky — nech je vidno progress bez ručného preklikania.
+        self.active_tab = RESULTS_TAB_KEY
+
+        def progress_cb(done, total, elapsed):
+            self.sim_progress = (done, total, elapsed)
+
+        def worker():
+            try:
+                result = simulator.run(config, progress_callback=progress_cb)
+                self.sim_result = result
+            except Exception as e:
+                self.sim_error = f"{type(e).__name__}: {e}"
+            finally:
+                self.sim_running = False
+
+        self.sim_thread = threading.Thread(target=worker, daemon=True)
+        self.sim_thread.start()
+
+    def _open_tester(self):
+        """Spustí tester_main.py --findings ako samostatný proces (needusí
+        blokovať/zavrieť toto okno — dajú sa mať otvorené obe naraz)."""
+        tester_main = os.path.join(_REPO_ROOT, "tester_main.py")
+        if not os.path.exists(tester_main):
+            return
+        try:
+            subprocess.Popen([sys.executable, tester_main, "--findings"],
+                             cwd=_REPO_ROOT)
+        except Exception as e:
+            print(f"[SimScreen] Nepodarilo sa spustiť tester: {e}")
+
+    # ------------------------------------------------------------------
+    # Kreslenie
+    # ------------------------------------------------------------------
+
+    def _draw(self):
+        self.screen.fill(S_BG)
+        self._draw_header()
+        self._draw_tabs()
+        self._draw_content()
+        self._draw_right_panel()
+
+    def _blit_wrapped(self, text: str, x: int, y: int, color,
+                      max_width: int = CONTENT_MAX_WIDTH) -> int:
+        """Vykreslí text zalomený na max_width (pozri CONTENT_MAX_WIDTH —
+        inak zasahuje pod pravý panel). Vráti y hneď POD posledným
+        riadkom, aby sa dal ďalší prvok napojiť bez napevno zadaného
+        odhadu výšky."""
+        lines = LessonPanel.wrap_text(text, self.font_small, max_width)
+        for line in lines:
+            surf = self.font_small.render(line, True, color)
+            self.screen.blit(surf, (x, y))
+            y += 20
+        return y
+
+    def _draw_header(self):
+        title = self.font_large.render("Chuj — Simulátor", True, S_TEXT)
+        self.screen.blit(title, (30, 18))
+        sub = self.font_small.render(
+            "Headless batch beh (tester/simulator.py) — konfigurácia a spustenie",
+            True, S_TEXT_DIM
+        )
+        self.screen.blit(sub, (30, 52))
+
+    def _draw_tabs(self):
+        for key, label in self._tab_keys_labels():
+            rect = self.tab_rects[key]
+            active = key == self.active_tab
+            bg = S_TAB_ACTIVE_BG if active else S_TAB_BG
+            pygame.draw.rect(self.screen, bg, rect, border_radius=6)
+            border = S_HIGHLIGHT if active else S_BORDER
+            pygame.draw.rect(
+                self.screen, border, rect, width=2 if active else 1, border_radius=6
+            )
+            caption = self._tab_caption(key, label)
+            text = self.font_small.render(caption, True, S_TEXT if active else S_TEXT_DIM)
+            text_rect = text.get_rect(center=rect.center)
+            self.screen.blit(text, text_rect)
+
+    def _draw_content(self):
+        if self.active_tab == RESULTS_TAB_KEY:
+            if self.sim_running:
+                self._draw_progress()
+            elif self.sim_error:
+                self._draw_error()
+            elif self.sim_result:
+                self._draw_summary()
+            else:
+                self._blit_wrapped(
+                    "Zatiaľ žiadny beh — nastav watchery v záložkách a klikni Spustiť.",
+                    CONTENT_X, CONTENT_Y, S_TEXT_DIM
+                )
+            return
+
+        rows = self._row_rects(self.active_tab)
+        for kind, key, label, indented, rect in rows:
+            pygame.draw.rect(self.screen, S_PANEL_BG, rect)
+            pygame.draw.rect(self.screen, S_BORDER, rect, width=1)
+            if self._is_checked(kind, key):
+                inner = rect.inflate(-6, -6)
+                pygame.draw.rect(self.screen, S_CHECK_ON, inner)
+            color = S_TEXT_DIM if indented else S_TEXT
+            text = self.font_small.render(label, True, color)
+            self.screen.blit(text, (rect.right + 8, rect.y + 2))
+
+        if self.active_tab == DECISIONS_TAB_KEY:
+            # Pozícia počítaná dynamicky podľa počtu riadkov (presne ten
+            # istý druh chyby ako pri progress bare v predošlej verzii by
+            # sa tu zopakoval pri napevno zadanom y).
+            y = (rows[-1][4].bottom + 12) if rows else CONTENT_Y
+            self._blit_wrapped(
+                "(ďalšie kombinácie zatiaľ cez SimConfig.watch_decisions v kóde"
+                " — objavia sa tu ako checkbox automaticky)",
+                CONTENT_X, y, S_TEXT_DIM
+            )
+
+    def _draw_right_panel(self):
+        self._draw_labeled_input(
+            "Hier:", self.games_rect, self.games_input,
+            self.active_field == "games"
+        )
+        self._draw_labeled_input(
+            "Seed (voliteľné):", self.seed_rect, self.seed_input,
+            self.active_field == "seed"
+        )
+        can_run = not self.sim_running
+        self._draw_button(
+            self.run_btn, "Spustiť",
+            S_BUTTON_PRIMARY if can_run else S_BUTTON_BG
+        )
+        self._draw_button(self.open_tester_btn, "Otvoriť v testeri", S_BUTTON_SUCCESS)
+
+    def _draw_labeled_input(self, label, rect, value, active):
+        text = self.font_small.render(label, True, S_TEXT)
+        self.screen.blit(text, (rect.x, rect.y - 20))
+        bg = S_INPUT_ACTIVE if active else S_PANEL_BG
+        pygame.draw.rect(self.screen, bg, rect)
+        pygame.draw.rect(
+            self.screen, S_HIGHLIGHT if active else S_BORDER, rect,
+            width=2 if active else 1
+        )
+        val_surf = self.font_medium.render(value or " ", True, S_TEXT)
+        self.screen.blit(val_surf, (rect.x + 8, rect.y + 5))
+
+    def _draw_button(self, rect, label, color):
+        pygame.draw.rect(self.screen, color, rect, border_radius=6)
+        pygame.draw.rect(self.screen, S_BORDER, rect, width=1, border_radius=6)
+        text = self.font_medium.render(label, True, S_TEXT)
+        text_rect = text.get_rect(center=rect.center)
+        self.screen.blit(text, text_rect)
+
+    def _draw_progress(self):
+        done, total, elapsed = self.sim_progress
+        y = CONTENT_Y
+        text = self.font_medium.render(
+            f"Beží... hra {done}/{total} ({elapsed:.1f}s)", True, S_TEXT
+        )
+        self.screen.blit(text, (CONTENT_X, y))
+
+        bar_rect = pygame.Rect(CONTENT_X, y + 30, 340, 18)
+        pygame.draw.rect(self.screen, S_PANEL_BG, bar_rect)
+        pygame.draw.rect(self.screen, S_BORDER, bar_rect, width=1)
+        if total > 0:
+            frac = min(1.0, done / total)
+            fill_rect = pygame.Rect(
+                bar_rect.x, bar_rect.y, int(bar_rect.w * frac), bar_rect.h
+            )
+            pygame.draw.rect(self.screen, S_HIGHLIGHT, fill_rect)
+
+    def _draw_error(self):
+        self._blit_wrapped(f"Chyba: {self.sim_error}", CONTENT_X, CONTENT_Y, S_ERROR)
+
+    def _draw_summary(self):
+        findings, stats, elapsed = self.sim_result
+        x, y = CONTENT_X, CONTENT_Y
+        header = self.font_medium.render(
+            f"Hotovo — {stats.get('games_total', 0)} hier, "
+            f"{stats.get('rounds_total', 0)} kôl, {elapsed:.1f}s",
+            True, S_TEXT
+        )
+        self.screen.blit(header, (x, y))
+        y += 32
+
+        final_scores = stats.get("final_scores", [])
+        if final_scores:
+            avg = sum(final_scores) / len(final_scores)
+            avg_text = self.font_small.render(
+                f"Priemerné finálne skóre: {avg:.1f}", True, S_TEXT_DIM
+            )
+            self.screen.blit(avg_text, (x, y))
+            y += 24
+
+        y += 10
+        col_header = self.font_small.render(
+            "NÁLEZY (výskytov | kôl s aspoň 1 výskytom)", True, S_TEXT_DIM
+        )
+        self.screen.blit(col_header, (x, y))
+        y += 22
+
+        # Rovnaká logika ako _write_output v simulator.py — kôl s aspoň
+        # 1 výskytom, nie surový počet výskytov (jedno kolo môže mať
+        # viac nálezov toho istého typu).
+        rounds_with_finding: dict[str, set] = {}
+        for rec in findings.records:
+            key = (rec.get("game_index"), rec.get("round_number"))
+            rounds_with_finding.setdefault(rec["type"], set()).add(key)
+
+        for ftype in sorted(findings.counts.keys()):
+            if y > WIN_HEIGHT - 30:
+                more = self.font_small.render("…", True, S_TEXT_DIM)
+                self.screen.blit(more, (x, y))
+                break
+            count = findings.counts[ftype]
+            rounds_affected = len(rounds_with_finding.get(ftype, set()))
+            row = self.font_small.render(
+                f"{ftype}: {count} | {rounds_affected}", True, S_TEXT
+            )
+            self.screen.blit(row, (x, y))
+            y += 20

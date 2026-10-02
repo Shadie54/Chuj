@@ -23,36 +23,51 @@ class CardRenderer:
     # Načítanie obrázkov
     # ------------------------------------------------------------------
 
-    def _load_image(self, filename: str, size: tuple, path: str) -> pygame.Surface:
-        """Načíta obrázok z disku alebo z cache."""
-        key = f"{path}/{filename}"
+    def _load_image(self, filename: str, size: tuple, path: str,
+                    angle: int = 0) -> pygame.Surface:
+        """
+        Načíta obrázok z disku alebo z cache — vrátane už otočenej verzie.
+
+        `angle` je súčasťou cache kľúča: karty v rukách súperov sa každú
+        snímku kreslia otočené o pevný uhol podľa miesta pri stole (ten sa
+        medzi snímkami nemení), takže `pygame.transform.rotate()` stačí
+        spraviť raz pri prvom výskyte danej dvojice (súbor, uhol) a ďalej
+        len vracať hotový Surface z cache — namiesto alokovania nového
+        Surface pri KAŽDOM blit()e. Pri meraní (frametime_probe.py,
+        2026-09-30) toto meralo r=0.53 koreláciu medzi počtom rotate()
+        volaní za snímku a jej trvaním.
+        """
+        key = f"{path}/{filename}@{angle}"
         if key not in self._cache:
             full_path = os.path.join(path, filename)
             try:
                 img = pygame.image.load(full_path).convert_alpha()
                 img = pygame.transform.scale(img, size)
-                self._cache[key] = img
             except FileNotFoundError:
                 # Ak obrázok chýba — nakreslíme placeholder
-                surf = pygame.Surface(size, pygame.SRCALPHA)
-                surf.fill((200, 200, 200))
+                img = pygame.Surface(size, pygame.SRCALPHA)
+                img.fill((200, 200, 200))
                 font = get_font( 18)
                 text = font.render(filename[:10], True, (0, 0, 0))
-                surf.blit(text, (5, size[1] // 2 - 10))
-                self._cache[key] = surf
+                img.blit(text, (5, size[1] // 2 - 10))
+            if angle:
+                img = pygame.transform.rotate(img, angle)
+            self._cache[key] = img
         return self._cache[key]
 
-    def _get_card_image(self, card: Card, size: str = "medium") -> pygame.Surface:
-        """Vráti obrázok karty."""
+    def _get_card_image(self, card: Card, size: str = "medium",
+                        angle: int = 0) -> pygame.Surface:
+        """Vráti obrázok karty, voliteľne už otočený (a cachovaný)."""
         path = CARDS_MEDIUM_PATH if size == "medium" else CARDS_SMALL_PATH
         card_size = CARD_SIZE_MEDIUM if size == "medium" else CARD_SIZE_SMALL
-        return self._load_image(card.image_name, card_size, path)
+        return self._load_image(card.image_name, card_size, path, angle)
 
-    def _get_card_back(self, size: str = "medium") -> pygame.Surface:
-        """Vráti obrázok zadnej strany karty."""
+    def _get_card_back(self, size: str = "medium",
+                       angle: int = 0) -> pygame.Surface:
+        """Vráti obrázok zadnej strany karty, voliteľne už otočený (a cachovaný)."""
         path = CARDS_MEDIUM_PATH if size == "medium" else CARDS_SMALL_PATH
         card_size = CARD_SIZE_MEDIUM if size == "medium" else CARD_SIZE_SMALL
-        return self._load_image(CARD_BACK_IMAGE, card_size, path)
+        return self._load_image(CARD_BACK_IMAGE, card_size, path, angle)
 
     # ------------------------------------------------------------------
     # Kreslenie ruky hráča
@@ -97,23 +112,26 @@ class CardRenderer:
                     else:
                         x += 20  # PC3 — doľava
 
+            # Uhol otočenia podľa miesta pri stole — nemení sa medzi
+            # snímkami, takže ho pošleme rovno do _get_card_image()/
+            # _get_card_back(), ktoré si otočenú verziu cachujú (pozri
+            # komentár pri _load_image). Predtým sa tu volal
+            # pygame.transform.rotate() nanovo pri KAŽDOM blit()e.
+            if config["direction"] == "vertical":
+                angle = -90 if player_index == 3 else 90
+            elif player_index == 2:
+                angle = 180
+            else:
+                angle = 0
+
             if show_faces:
-                img = self._get_card_image(card)
+                img = self._get_card_image(card, angle=angle)
             else:
                 # AI karta — skontroluj či je vysvietená
                 if selected_illumination and card in selected_illumination:
-                    img = self._get_card_image(card)  # líc namiesto rubu
+                    img = self._get_card_image(card, angle=angle)  # líc namiesto rubu
                 else:
-                    img = self._get_card_back()
-
-            # Rotácia
-            if config["direction"] == "vertical":
-                if player_index == 3:
-                    img = pygame.transform.rotate(img, -90)
-                else:
-                    img = pygame.transform.rotate(img, 90)
-            elif player_index == 2:
-                img = pygame.transform.rotate(img, 180)
+                    img = self._get_card_back(angle=angle)
 
             self.screen.blit(img, (x, y))  # ← teraz na správnej pozícii
 

@@ -39,6 +39,13 @@ class StatsScreen:
         self.font_medium = get_font(FONT_SIZE_MEDIUM)
         self.font_small = get_font(FONT_SIZE_SMALL)
         self.font_value = get_font(30)
+        # Samostatné (väčšie) písmo pre riadky štatistík a svetlejšia farba
+        # popisu — pôvodné FONT_SIZE_SMALL (18px) + COLOR_GRAY boli na
+        # slnku/pri horšom zraku ťažko čitateľné. Lokálne len pre tento
+        # screen, nemeníme globálny COLOR_GRAY (používa ho 12 ďalších
+        # súborov s iným účelom).
+        self.font_row = get_font(21)
+        self.label_color = (215, 195, 165)
 
         try:
             self.bg = pygame.image.load("assets/graphics/table.jpg").convert()
@@ -83,6 +90,17 @@ class StatsScreen:
             "rect": pygame.Rect(center_x - 150, SCREEN_HEIGHT - 70, 300, 50),
             "hover": False,
         }
+
+        # Scrollovateľná oblasť štatistík — nahrádza poistku, ktorá predtým
+        # sekcie presahujúce tlačidlo Späť ticho zahodila (bug na nízkych
+        # rozlíšeniach, < 950px výšky). Panel s menom hore a tlačidlo Späť
+        # dole zostávajú mimo scrollu.
+        self.scroll_offset = 0
+        self.content_height = 0   # dopočíta sa v _draw_sections()
+        self.viewport = pygame.Rect(
+            panel_x, body_top,
+            self.panel_width, self.back_button["rect"].top - 12 - body_top
+        )
 
     # ------------------------------------------------------------------
     # Obsah
@@ -149,7 +167,7 @@ class StatsScreen:
         ]
 
         specialty = [
-            ("Zhabal všetko (sweep)", str(s.sweeps), COLOR_GREEN),
+            ("„Tichý\" (zobral všetky bodové karty)", str(s.sweeps), COLOR_GREEN),
             ("„Nechytím nič\" — vyhlásené", str(s.declared_none), none),
             ("    z toho splnené",
              f"{s.declared_none_ok}  ({pct(s.declared_none_rate)})"
@@ -200,6 +218,12 @@ class StatsScreen:
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     if self._handle_click(event.pos) == "back":
                         return "menu"
+
+                if event.type == pygame.MOUSEWHEEL:
+                    max_scroll = max(0, self.content_height - self.viewport.height)
+                    self.scroll_offset = max(
+                        0, min(self.scroll_offset - event.y * 60, max_scroll)
+                    )
 
             self.back_button["hover"] = self.back_button["rect"].collidepoint(
                 mouse_pos
@@ -309,30 +333,51 @@ class StatsScreen:
             COLOR_BUTTON_PRIMARY if active else COLOR_BUTTON_SECONDARY
         )
 
-    def _draw_sections(self):
-        sections = self._sections()
-        # Rozmery sú navrhnuté tak, aby sa na 1080p zmestili všetky
-        # sekcie do dvoch stĺpcov aj s rezervou — inak by ich poistka
-        # nižšie ticho zahodila. Na nižších obrazovkách sa riadky ešte
-        # stiahnu.
-        compact = SCREEN_HEIGHT < 950
-        row_h = 24 if compact else 28
-        head_h = 44 if compact else 50
-        pad_bottom = 10 if compact else 12
-        gap = 12 if compact else 14
-
+    def _layout_sections(self, sections, row_h, head_h, pad_bottom, gap):
+        """Vypočíta rect každej sekcie v NEposunutých súradniciach (akoby
+        scroll_offset bol 0). Vracia (rects, content_height)."""
         col_bottom = [self.body_top, self.body_top]
-        for idx, (title, rows) in enumerate(sections):
+        rects = []
+        for title, rows in sections:
             # Striedavo do ľavého a pravého stĺpca, vždy do toho kratšieho —
             # tým sa panely samé vyvážia bez ručného ladenia výšok.
             col = 0 if col_bottom[0] <= col_bottom[1] else 1
             h = head_h + len(rows) * row_h + pad_bottom
             rect = pygame.Rect(self.col_x[col], col_bottom[col], self.col_w, h)
-            if rect.bottom > self.back_button["rect"].top - 12:
-                # Poistka pre veľmi nízke rozlíšenia. Na bežnej obrazovke
-                # sem kód nemá doraziť — ak by sa to stalo, je to signál
-                # pridať rolovanie, nie mlčky zahodiť ďalšie sekcie.
-                break
+            rects.append(rect)
+            col_bottom[col] = rect.bottom + gap
+        content_height = max(col_bottom[0], col_bottom[1]) - self.body_top
+        return rects, content_height
+
+    def _draw_sections(self):
+        sections = self._sections()
+        compact = SCREEN_HEIGHT < 950
+        row_h = 27 if compact else 32
+        head_h = 44 if compact else 50
+        pad_bottom = 10 if compact else 12
+        gap = 12 if compact else 14
+
+        rects, self.content_height = self._layout_sections(
+            sections, row_h, head_h, pad_bottom, gap
+        )
+
+        # Scroll môže byť mimo platného rozsahu (napr. po zmene rozlíšenia
+        # v Settings) — orež ho.
+        max_scroll = max(0, self.content_height - self.viewport.height)
+        self.scroll_offset = max(0, min(self.scroll_offset, max_scroll))
+
+        # Celý blok sa kreslí posunutý o -scroll_offset a orezaný na
+        # viewport, aby nezasahoval do mena hráča hore ani do tlačidla
+        # Späť dole. Predtým sa sekcie presahujúce dolný okraj ticho
+        # zahadzovali (bug na rozlíšeniach < 950px výšky) — teraz sa dajú
+        # doscrollovať kolieskom myši.
+        prev_clip = self.screen.get_clip()
+        self.screen.set_clip(self.viewport)
+
+        for rect, (title, rows) in zip(rects, sections):
+            rect = rect.move(0, -self.scroll_offset)
+            if rect.bottom < self.viewport.top or rect.top > self.viewport.bottom:
+                continue  # mimo viditeľnej oblasti — netreba kresliť
             self._panel_bg(rect)
 
             label = self.font_medium.render(title, True, COLOR_GOLD)
@@ -347,15 +392,33 @@ class StatsScreen:
 
             y = rect.top + head_h
             for name, value, color in rows:
-                n = self.font_small.render(name, True, COLOR_GRAY)
+                n = self.font_row.render(name, True, self.label_color)
                 self.screen.blit(n, (rect.left + 24, y + 4))
-                v = self.font_small.render(str(value), True, color)
+                v = self.font_row.render(str(value), True, color)
                 self.screen.blit(
                     v, v.get_rect(topright=(rect.right - 24, y + 4))
                 )
                 y += row_h
 
-            col_bottom[col] = rect.bottom + gap
+        self.screen.set_clip(prev_clip)
+        self._draw_scrollbar(max_scroll)
+
+    def _draw_scrollbar(self, max_scroll: int):
+        """Tenký ukazovateľ vpravo od panelov — viditeľný len keď je
+        naozaj čo scrollovať (na bežných rozlíšeniach sa nezobrazí)."""
+        if max_scroll <= 0:
+            return
+        track = pygame.Rect(self.viewport.right + 10, self.viewport.top,
+                            6, self.viewport.height)
+        pygame.draw.rect(self.screen, COLOR_DARK_GRAY, track, border_radius=3)
+
+        ratio = self.viewport.height / self.content_height
+        thumb_h = max(30, int(track.height * ratio))
+        thumb_y = track.top + int(
+            (track.height - thumb_h) * (self.scroll_offset / max_scroll)
+        )
+        thumb = pygame.Rect(track.x, thumb_y, track.width, thumb_h)
+        pygame.draw.rect(self.screen, COLOR_GOLD, thumb, border_radius=3)
 
     def _panel_bg(self, rect: pygame.Rect):
         surf = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)

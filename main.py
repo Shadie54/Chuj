@@ -13,12 +13,17 @@ from gui.menu import Menu
 from gui.settings_screen import SettingsScreen
 from gui.stats_screen import StatsScreen
 from gui.game_over_screen import GameOverScreen
+from gui.tutorial_menu import TutorialMenu
 from config import DEBUG_MODE
 # Nastavenia aj vytvorenie hry sú v game_setup.py, spoločne s
 # tutorial_main.py. Dôležité: create_game() odtiaľ berie meno hráča z
 # aktívneho profilu — lokálna kópia tejto funkcie v main.py by meno
 # opäť natvrdo prepísala na "Hráč" (presne to sa raz už stalo).
 from game_setup import load_settings, save_settings, create_game
+# CHAPTERS = zoznam (id, run_fn) kapitol — jediný zdroj pravdy, zdieľaný
+# so samostatným launcherom tutorial_main.py (pozri tam). TutorialMenu
+# dostáva len id, main() podľa neho nájde a spustí zvolenú run_fn.
+from tutorial_main import CHAPTERS
 from game import savegame
 from game import profile as profile_store
 
@@ -69,6 +74,25 @@ def main():
 
         elif action == "profile":
             StatsScreen(window).run()
+
+        elif action == "tutorial":
+            chapter_ids = [chapter_id for chapter_id, _ in CHAPTERS]
+            chapter_runners = dict(CHAPTERS)
+            choice = TutorialMenu(window, chapter_ids).run()
+            while choice != "back":
+                # "skip" — tlačidlo Preskočiť (aj prirodzené dokončenie
+                # poslednej lekcie) — ide rovno na ďalšiu kapitolu bez
+                # zobrazenia podmenu. "menu" — tlačidlo Menu v hre — aj
+                # "skip" za poslednou kapitolou (niet už kam skočiť) sa
+                # vracajú do podmenu Tutoriálu, NIE do hlavného menu
+                # (pozri tutorial_main.py::run_chapter_*, gui/screen.py).
+                result = chapter_runners[choice]()
+                if result == "skip":
+                    next_index = chapter_ids.index(choice) + 1
+                    if next_index < len(chapter_ids):
+                        choice = chapter_ids[next_index]
+                        continue
+                choice = TutorialMenu(window, chapter_ids).run()
 
         elif action == "settings":
             settings_screen = SettingsScreen(window, settings)

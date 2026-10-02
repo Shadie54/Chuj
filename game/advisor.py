@@ -143,7 +143,10 @@ class Advisor:
         else:
             alternatives = list(trace.alternatives) if trace else []
 
-        headline, explanation = tip_text_for(strategy, variant, card)
+        points_in_trick = current_trick.total_base_points > 0
+        headline, explanation = tip_text_for(
+            strategy, variant, card, points_in_trick=points_in_trick
+        )
         return Tip(
             kind="card",
             recommended_card=card,

@@ -152,8 +152,16 @@ class AvoidTrick(Strategy):
                 ]
                 if high:
                     max_rank = max(c.rank_order for c in high)
-                    return [c for c in high if c.rank_order == max_rank], \
-                        "DUMP_AK_FREE_OWN"
+                    # Rovnaká bezpečnosť/karta bez ohľadu na vysvietenie
+                    # (pozri docstring vyššie) — len iný label pre tip,
+                    # nech hráčovi vieme povedať presnejší dôvod (verejne
+                    # známe vs. len moja vlastná istota).
+                    variant = (
+                        "DUMP_AK_FREE_OWN_LIT"
+                        if self.memory.illuminated_by[suit] == self.player.index
+                        else "DUMP_AK_FREE_OWN"
+                    )
+                    return [c for c in high if c.rank_order == max_rank], variant
 
         return [], ""
 
@@ -253,6 +261,7 @@ class AvoidTrick(Strategy):
         return 5.0
 
     def variant_weight(self, variant: str, ctx: AIContext) -> float:
-        if variant in ("DUMP_AK_FREE_OPPONENT", "DUMP_AK_FREE_OWN"):
+        if variant in ("DUMP_AK_FREE_OPPONENT", "DUMP_AK_FREE_OWN",
+                       "DUMP_AK_FREE_OWN_LIT"):
             return 6.0
         return self.weight(ctx)

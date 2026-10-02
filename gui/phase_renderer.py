@@ -5,7 +5,6 @@ from config import (
     FONT_SIZE_MEDIUM, FONT_SIZE_LARGE,
     TABLE_CENTER_X, TABLE_CENTER_Y,
     BUTTON_HEIGHT, BUTTON_RADIUS, BUTTON_Y,
-    BUTTON_SORT_X, BUTTON_SORT_Y, BUTTON_SORT_WIDTH, BUTTON_SORT_HEIGHT,
     BUTTON_INFO_X, BUTTON_INFO_Y, BUTTON_INFO_WIDTH, BUTTON_INFO_HEIGHT,
     BUTTON_MENU_X, BUTTON_MENU_Y, BUTTON_MENU_WIDTH, BUTTON_MENU_HEIGHT,
     BUTTON_LAST_TRICK_X, BUTTON_LAST_TRICK_Y, BUTTON_LAST_TRICK_WIDTH, BUTTON_LAST_TRICK_HEIGHT,
@@ -98,50 +97,53 @@ class PhaseRenderer:
                     place_icon(badge)
 
     def draw_buttons(self):
-        """Nakreslí vždy viditeľné tlačidlá + preparation tlačidlá."""
-        if (self.s.game_state.current_round and
+        """Nakreslí vždy viditeľné tlačidlá + preparation tlačidlá.
+
+        Každé tlačidlo sa najprv spýta Screen._shows() — v ostrej hre to je
+        vždy True (teda bez zmeny), naskriptovaná lekcia tým UI postupne
+        odhaľuje. Spracovanie klikov v Screen._handle_click a
+        PreparationHandler sa pýta ROVNAKO, nech sa nedá kliknúť na
+        neviditeľné tlačidlo.
+        """
+        shows = self.s._shows
+
+        if (shows("last_trick") and self.s.game_state.current_round and
                 self.s.game_state.current_round.trick_number > 0):
             self.draw_button(
                 self._button_last_trick_rect(), "Posledný štich",
                 COLOR_BUTTON_SECONDARY
             )
-        tips_on = getattr(self.s, "tips_enabled", False)
-        self.draw_button(
-            self._button_tips_rect(),
-            "Tipy: ZAP" if tips_on else "Tipy: VYP",
-            COLOR_BUTTON_PRIMARY if tips_on else COLOR_BUTTON_SECONDARY
-        )
-        self.draw_button(self._button_chujogram_rect(), "Chujogram", COLOR_BUTTON_SECONDARY)
-        self.draw_button(self._button_sort_rect(), "Zoradiť", COLOR_BUTTON_SECONDARY)
-        self.draw_button(self._button_info_rect(), "Pravidlá", COLOR_BUTTON_SECONDARY)
-        self.draw_button(self._button_menu_rect(), "Menu", COLOR_BUTTON_SECONDARY)
+        if shows("tips"):
+            tips_on = getattr(self.s, "tips_enabled", False)
+            self.draw_button(
+                self._button_tips_rect(),
+                "Tipy: ZAP" if tips_on else "Tipy: VYP",
+                COLOR_BUTTON_PRIMARY if tips_on else COLOR_BUTTON_SECONDARY
+            )
+        if shows("chujogram"):
+            self.draw_button(self._button_chujogram_rect(), "Chujogram", COLOR_BUTTON_SECONDARY)
+        if shows("info"):
+            self.draw_button(self._button_info_rect(), "Pravidlá", COLOR_BUTTON_SECONDARY)
+        if shows("menu"):
+            self.draw_button(self._button_menu_rect(), "Menu", COLOR_BUTTON_SECONDARY)
 
         phase = (self.s.game_state.current_round.phase
                  if self.s.game_state.current_round else None)
 
         if phase == "preparation" and self.s.game_state.is_human_turn:
-            color_all = (COLOR_BUTTON_PRIMARY if self.s.active_declaration == "all"
-                         else COLOR_BUTTON_SECONDARY)
-            self.draw_button(
-                self._button_decl_all_rect(), "Beriem všetko  [-20b]", color_all
-            )
-            color_none = (COLOR_BUTTON_PRIMARY if self.s.active_declaration == "none"
-                          else COLOR_BUTTON_SECONDARY)
-            self.draw_button(
-                self._button_decl_none_rect(), "Nechytím nič  [-10b]", color_none
-            )
-            self.draw_button(self._button_ok_rect(), "OK", COLOR_BUTTON_PRIMARY)
-
-    def draw_phase_overlay(self):
-        """Nakreslí overlay pre fázy záväzku a vysvietenia."""
-        if not self.s.game_state.current_round:
-            return
-        phase = self.s.game_state.current_round.phase
-        if phase == "game_declaration":
-            self._draw_declaration_overlay()
-        elif phase == "revealing":
-            self._draw_revealing_overlay()
-
+            if shows("declaration"):
+                color_all = (COLOR_BUTTON_PRIMARY if self.s.active_declaration == "all"
+                             else COLOR_BUTTON_SECONDARY)
+                self.draw_button(
+                    self._button_decl_all_rect(), "Beriem všetko  [-20b]", color_all
+                )
+                color_none = (COLOR_BUTTON_PRIMARY if self.s.active_declaration == "none"
+                              else COLOR_BUTTON_SECONDARY)
+                self.draw_button(
+                    self._button_decl_none_rect(), "Nechytím nič  [-10b]", color_none
+                )
+            if shows("ok"):
+                self.draw_button(self._button_ok_rect(), "OK", COLOR_BUTTON_PRIMARY)
     def draw_message(self):
         """Zobrazí dočasnú správu v strede obrazovky."""
         if not self.s.message or pygame.time.get_ticks() >= self.s.message_timer:
@@ -167,85 +169,6 @@ class PhaseRenderer:
     # ------------------------------------------------------------------
     # Interné overlay metódy
     # ------------------------------------------------------------------
-
-    def _draw_declaration_overlay(self):
-        current_index = self.s.declaration_index
-        player = self.s.game_state.players[current_index]
-
-        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 120))
-        self.surface.blit(overlay, (0, 0))
-
-        panel_w, panel_h = 500, 250
-        panel_x = SCREEN_WIDTH // 2 - panel_w // 2
-        panel_y = SCREEN_HEIGHT // 2 - panel_h // 2
-
-        bg = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
-        bg.fill((20, 12, 5, 230))
-        self.surface.blit(bg, (panel_x, panel_y))
-        pygame.draw.rect(
-            self.surface, COLOR_GOLD,
-            (panel_x, panel_y, panel_w, panel_h),
-            width=2, border_radius=10
-        )
-
-        title = self.font_large.render(
-            f"{player.name} — záväzok?", True, COLOR_GOLD
-        )
-        title_rect = title.get_rect(centerx=SCREEN_WIDTH // 2, top=panel_y + 20)
-        self.surface.blit(title, title_rect)
-
-        if player.is_human:
-            self.draw_button(
-                self._button_decl_all_rect(), "Všetky štichy -20b", COLOR_BUTTON_PRIMARY
-            )
-            self.draw_button(
-                self._button_decl_none_rect(), "Žiadny trestný bod -10b", COLOR_BUTTON_PRIMARY
-            )
-            self.draw_button(
-                self._button_decl_pass_rect(), "Bez záväzku", COLOR_BUTTON_SECONDARY
-            )
-
-    def _draw_revealing_overlay(self):
-        current_index = self.s.revealing_index
-        player = self.s.game_state.players[current_index]
-
-        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 120))
-        self.surface.blit(overlay, (0, 0))
-
-        panel_w, panel_h = 500, 220
-        panel_x = SCREEN_WIDTH // 2 - panel_w // 2
-        panel_y = SCREEN_HEIGHT // 2 - panel_h // 2 - 50
-
-        bg = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
-        bg.fill((20, 12, 5, 230))
-        self.surface.blit(bg, (panel_x, panel_y))
-        pygame.draw.rect(
-            self.surface, COLOR_GOLD,
-            (panel_x, panel_y, panel_w, panel_h),
-            width=2, border_radius=10
-        )
-
-        title = self.font_large.render(
-            f"{player.name} — vysvietenie?", True, COLOR_GOLD
-        )
-        title_rect = title.get_rect(centerx=SCREEN_WIDTH // 2, top=panel_y + 15)
-        self.surface.blit(title, title_rect)
-
-        if player.is_human:
-            if player.hand.has_leaf_over() and not player.illuminated_leaf:
-                self.draw_button(
-                    self._button_reveal_leaf_rect(), "Zelený horník (16b)", COLOR_BUTTON_PRIMARY
-                )
-            if player.hand.has_acorn_over() and not player.illuminated_acorn:
-                self.draw_button(
-                    self._button_reveal_acorn_rect(), "Žaluďový horník (8b)", COLOR_BUTTON_PRIMARY
-                )
-            self.draw_button(
-                self._button_reveal_pass_rect(), "Hotovo", COLOR_BUTTON_SECONDARY
-            )
-
     # ------------------------------------------------------------------
     # Primitív tlačidla
     # ------------------------------------------------------------------
@@ -291,10 +214,6 @@ class PhaseRenderer:
                            BUTTON_CHUJOGRAM_W, BUTTON_CHUJOGRAM_H)
 
     @staticmethod
-    def _button_sort_rect() -> pygame.Rect:
-        return pygame.Rect(BUTTON_SORT_X, BUTTON_SORT_Y, BUTTON_SORT_WIDTH, BUTTON_SORT_HEIGHT)
-
-    @staticmethod
     def _button_info_rect() -> pygame.Rect:
         return pygame.Rect(BUTTON_INFO_X, BUTTON_INFO_Y, BUTTON_INFO_WIDTH, BUTTON_INFO_HEIGHT)
 
@@ -313,19 +232,3 @@ class PhaseRenderer:
     @staticmethod
     def _button_ok_rect() -> pygame.Rect:
         return pygame.Rect(TABLE_CENTER_X + 140, BUTTON_Y, 120, BUTTON_HEIGHT)
-
-    @staticmethod
-    def _button_decl_pass_rect() -> pygame.Rect:
-        return pygame.Rect(TABLE_CENTER_X - 220, SCREEN_HEIGHT // 2 + 40, 420, 50)
-
-    @staticmethod
-    def _button_reveal_leaf_rect() -> pygame.Rect:
-        return pygame.Rect(TABLE_CENTER_X - 220, SCREEN_HEIGHT // 2 - 80, 420, 50)
-
-    @staticmethod
-    def _button_reveal_acorn_rect() -> pygame.Rect:
-        return pygame.Rect(TABLE_CENTER_X - 220, SCREEN_HEIGHT // 2 - 20, 420, 50)
-
-    @staticmethod
-    def _button_reveal_pass_rect() -> pygame.Rect:
-        return pygame.Rect(TABLE_CENTER_X - 220, SCREEN_HEIGHT // 2 + 40, 420, 50)
