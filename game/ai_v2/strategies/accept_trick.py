@@ -81,7 +81,22 @@ class AcceptTrick(Strategy):
                 if not ctx.trick_has_penalty:
                     results += self._forced_clean(ctx, certain_cards)
                 else:
-                    results += self._forced_points(ctx, certain_cards)
+                    # FORCED_POINTS_LOW: existuje nešpeciálna lead karta,
+                    # ktorá by štich NEzobrala (podlez bol technicky možný) —
+                    # _has_alternative() ju napriek tomu nepovažuje za
+                    # alternatívu (napr. ≤2 body, pozri jej docstring), takže
+                    # sa sem dostaneme aj v tomto prípade. Tip na to potrebuje
+                    # iný text než skutočné "štichu sa nevyhneš".
+                    non_special = [c for c in ctx.lead_cards if not c.is_special]
+                    has_never = any(
+                        card_outcome(
+                            c, ctx.decision.trick,
+                            self.memory, ctx.decision.players_after
+                        ) == TrickOutcome.NEVER
+                        for c in non_special
+                    )
+                    variant = "FORCED_POINTS_LOW" if has_never else "FORCED_POINTS"
+                    results += self._forced_points(ctx, certain_cards, variant)
                 return results
 
         free = self._free_take_cards(ctx)
@@ -196,9 +211,14 @@ class AcceptTrick(Strategy):
         return results
 
     @staticmethod
-    def _forced_points(ctx: AIContext,
-                       certain_cards: list[Card]) -> list[tuple[Card, str, str]]:
-        """Bodový štich, nemám alternatívu — posledný berie max, inak min škoda."""
+    def _forced_points(ctx: AIContext, certain_cards: list[Card],
+                       variant: str = "FORCED_POINTS") -> list[tuple[Card, str, str]]:
+        """
+        Bodový štich — posledný berie max, inak min škoda.
+        variant="FORCED_POINTS": skutočne nemám alternatívu (každá karta by
+        štich zobrala). variant="FORCED_POINTS_LOW": podlez bol technicky
+        možný, len sa pre pár bodov neoplatí (pozri propose()).
+        """
         results = []
         if ctx.is_last:
             target = max(c.rank_order for c in certain_cards)
@@ -207,7 +227,7 @@ class AcceptTrick(Strategy):
             target = min(c.rank_order for c in certain_cards)
             label = "min škoda"
         for card in [c for c in certain_cards if c.rank_order == target]:
-            results.append((card, "FORCED_POINTS", f"{label}: {card}"))
+            results.append((card, variant, f"{label}: {card}"))
         return results
 
     def _can_early_take(self, ctx: AIContext) -> bool:
@@ -318,50 +338,25 @@ class AcceptTrick(Strategy):
                           my_count: int, remaining: int,
                           all_in_hand: list[Card],
                           ctx: AIContext) -> list[Card]:
-        """Zdieľaná risk-pick matica (max/mid/safe podľa my_count vs remaining) — použitá pre bell v _early_take_cards."""
+        """Zdieľaná risk-pick matica (max/mid podľa my_count) — použitá pre bell v _early_take_cards."""
         if not suit_cards:
             return []
 
-        def safe_or_lowest() -> list[Card]:
-            safe = [c for c in suit_cards if self._is_safe(c, ctx)]
-            pool = safe if safe else suit_cards
-            min_rank = min(c.rank_order for c in pool)
-            return [c for c in pool if c.rank_order == min_rank]
+        # remaining < 5 je nedosiahnuteľné (_can_early_take už vyžaduje >=5)
+        # a my_count >= 4 je nedosiahnuteľné pri remaining>=5 (pigeonhole
+        # na 8-kartovej farbe) — obe pôvodné "mŕtve" vetvy boli zmazané.
+        if my_count <= 2:
+            max_rank = max(c.rank_order for c in suit_cards)
+            return [c for c in suit_cards if c.rank_order == max_rank]
 
-        def mid_cards() -> list[Card]:
-            if not all_in_hand:
-                return []
-            highest = max(all_in_hand, key=lambda c: c.rank_order)
-            candidates = [
-                c for c in suit_cards
-                if highest.rank_order - c.rank_order >= 2
-            ]
-            if not candidates:
-                return []
-            max_rank = max(c.rank_order for c in candidates)
-            return [c for c in candidates if c.rank_order == max_rank]
-
-        if remaining >= 5:
-            if my_count <= 2:
-                max_rank = max(c.rank_order for c in suit_cards)
-                return [c for c in suit_cards if c.rank_order == max_rank]
-            elif my_count == 3:
-                mid = mid_cards()
-                if mid:
-                    return mid
-                min_rank = min(c.rank_order for c in suit_cards)
-                return [c for c in suit_cards if c.rank_order == min_rank]
-            else:
-                return safe_or_lowest()
-        else:
-            if my_count <= 2:
-                mid = mid_cards()
-                if mid:
-                    return mid
-                min_rank = min(c.rank_order for c in suit_cards)
-                return [c for c in suit_cards if c.rank_order == min_rank]
-            else:
-                return safe_or_lowest()
+        # my_count == 3 (jediný ešte dosiahnuteľný prípad) — skutočný
+        # stred zoradených kariet, bez gap-heuristiky a bez fallbacku
+        # na najnižšiu (rovnaký princíp ako LeadSafe._simple_median()).
+        sorted_cards = sorted(suit_cards, key=lambda c: c.rank_order)
+        n = len(sorted_cards)
+        idx = n // 2 if n % 2 == 1 else n // 2 - 1
+        target_rank = sorted_cards[idx].rank_order
+        return [c for c in sorted_cards if c.rank_order == target_rank]
 
     def weight(self, ctx: AIContext) -> float:
         if ctx.trick_outcome == TrickOutcome.CERTAIN:

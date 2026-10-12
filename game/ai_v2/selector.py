@@ -183,19 +183,16 @@ class StrategySelector:
             return None
 
         best_card = max(card_scores, key=lambda c: card_scores[c])
-        # Nájdi variant s najvyššou váhou pre víťaznú kartu (posledný zdroj ak viac)
-        sources = card_sources.get(best_card, [])
-        if sources:
-            # source formát: "StrategyName.VARIANT(weight)"
-            last_source = sources[-1]
-            variant_part = last_source.split(".", 1)[-1].split("(")[0]
-            self.last_variant = variant_part
-        else:
-            self.last_variant = ""
-
+        # Variant s najvyššou jednotlivou váhou pre víťaznú kartu —
+        # JEDINÝ zdroj pravdy pre "prečo sa táto karta vybrala" (predtým
+        # tu bol samostatný, poradovo založený výpočet cez card_sources,
+        # ktorý mohol vybrať iný variant než ten, čo sa uvádza v
+        # DecisionTrace nižšie — pozri AI_V2_HANDOFF.md, tipy vedeli
+        # ukázať popis jednej stratégie pod hlavičkou inej).
         _, best_strategy, best_variant, best_detail = card_best_proposal.get(
-            best_card, (0.0, "", self.last_variant, "")
+            best_card, (0.0, "", "", "")
         )
+        self.last_variant = best_variant
         self.last_trace = DecisionTrace(
             card=best_card,
             strategy=best_strategy,

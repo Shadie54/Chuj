@@ -23,7 +23,7 @@ class RoundStatus:
             path = os.path.join("assets", "graphics", f"{key}.png")
             try:
                 img = pygame.image.load(path).convert_alpha()
-                self._declaration_badges[key] = pygame.transform.scale(img, (30, 30))
+                self._declaration_badges[key] = pygame.transform.scale(img, (45, 45))  # bolo 30 (test +50%)
             except FileNotFoundError:
                 self._declaration_badges[key] = None
 

@@ -207,16 +207,16 @@ class Advisor:
 
         if len(held) == 1:
             suit = held[0]
-            verb = "Sviet" if decisions[suit] else "Nesviet"
+            verb = "Svieť" if decisions[suit] else "Nesvieť"
             headline = f"{verb} {self._SPECIAL_NAMES[suit][0]}."
         else:
             yes_suits = [s for s in held if decisions[s]]
             if len(yes_suits) == 2:
-                headline = "Sviet oboch horníkov."
+                headline = "Svieť oboch horníkov."
             elif not yes_suits:
-                headline = "Nesviet ani jedného horníka."
+                headline = "Nesvieť ani jedného horníka."
             else:
-                headline = f"Sviet len {self._SPECIAL_NAMES[yes_suits[0]][0]}."
+                headline = f"Svieť len {self._SPECIAL_NAMES[yes_suits[0]][0]}."
 
         # Pri jednom drženom horníkovi je v paneli dosť miesta na plné,
         # poskladané znenie (krytie + riziko + poistka, ak nejaká je).

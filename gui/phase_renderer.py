@@ -38,7 +38,7 @@ class PhaseRenderer:
             path = os.path.join("assets", "graphics", f"{key}.png")
             try:
                 img = pygame.image.load(path).convert_alpha()
-                self._declaration_badges[key] = pygame.transform.scale(img, (100, 100))
+                self._declaration_badges[key] = pygame.transform.scale(img, (200, 200))  # test
             except FileNotFoundError:
                 self._declaration_badges[key] = None
     # ------------------------------------------------------------------

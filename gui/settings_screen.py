@@ -1,5 +1,7 @@
 # gui/settings_screen.py
 
+import os
+import re
 import pygame
 import sys
 from config import (
@@ -12,6 +14,46 @@ from config import (
     BUTTON_RADIUS, get_font,
     ANIMATION_SPEED_MIN, ANIMATION_SPEED_MAX, ANIMATION_SPEED_DEFAULT
 )
+
+# Pozadia stola sa nehardkódujú — prečítajú sa priamo z assets/graphics/
+# podľa vzoru "table.jpg", "table1.jpg", "table2.jpg", ... Pridanie
+# ďalšieho súboru (napr. table7.jpg) sa tak v Nastaveniach objaví
+# automaticky, bez zásahu do kódu.
+_BG_PATTERN = re.compile(r"^table(\d*)\.jpg$")
+_BG_DIR = "assets/graphics"
+
+
+def _discover_table_backgrounds(graphics_dir: str = _BG_DIR) -> list[str]:
+    """Vráti zoznam pozadí stola z disku, zoradený table.jpg, table1.jpg, ...
+
+    Pri chybe (chýbajúci priečinok a pod.) vráti aspoň ["table.jpg"], aby
+    Nastavenia nespadli na prázdnom zozname.
+    """
+    try:
+        names = os.listdir(graphics_dir)
+    except OSError:
+        return ["table.jpg"]
+
+    matches = []
+    for name in names:
+        m = _BG_PATTERN.match(name)
+        if m:
+            number = int(m.group(1)) if m.group(1) else 0
+            matches.append((number, name))
+    matches.sort(key=lambda pair: pair[0])
+
+    found = [name for _, name in matches]
+    return found if found else ["table.jpg"]
+
+
+def _bg_label(fname: str) -> str:
+    """Odvodí popisok z názvu súboru — "table.jpg" -> "Stôl", "table3.jpg" ->
+    "Stôl 3". Žiadne ručne zadávané výnimky (napr. staré "Makita" pre
+    table5.jpg) — jednotné pre všetky, aj budúce, pozadia."""
+    m = _BG_PATTERN.match(fname)
+    if not m or not m.group(1):
+        return "Stôl"
+    return f"Stôl {int(m.group(1))}"
 
 
 class SettingsScreen:
@@ -111,13 +153,23 @@ class SettingsScreen:
         # ------------------------------------------------------------
         # Panel 3 — Pozadie
         # ------------------------------------------------------------
-        self.bg_options = ["table.jpg", "table1.jpg", "table2.jpg", "table3.jpg", "table4.jpg", "table5.jpg"]
-        self.bg_labels  = ["Stôl", "Stôl 1", "Stôl 2", "Stôl 3", "Stôl 4", "Makita"]
+        # Zoznam sa čerpá z disku (pozri _discover_table_backgrounds vyššie)
+        # — môže byť dlhší, než sa zmestí naraz na obrazovku. Zobrazuje sa
+        # preto len "okno" self.bg_visible_count miniatúr, posúvateľné
+        # šípkami vľavo/vpravo (self.bg_scroll = index prvej viditeľnej).
+        # Rozmery miniatúr, medzery aj šírka panela ostávajú rovnaké ako
+        # pri pôvodnom pevnom zozname 6 pozadí — nič sa nezväčšuje ani
+        # nezmenšuje, len sa časť zoznamu pri väčšom počte skryje.
+        self.bg_options = _discover_table_backgrounds()
+        self.bg_labels  = [_bg_label(f) for f in self.bg_options]
         self.bg_thumbnails = {}
 
         thumb_w, thumb_h = 150, 88
         thumb_gap = 16
         self._load_thumbnails(thumb_w, thumb_h)
+
+        self.bg_visible_count = min(5, len(self.bg_options))
+        self.bg_max_scroll = max(0, len(self.bg_options) - self.bg_visible_count)
 
         bg_top_pad = 62
         bg_label_h = 30
@@ -128,14 +180,46 @@ class SettingsScreen:
             panel_x, self.panel_anim.bottom + gap, self.panel_width, bg_panel_h
         )
 
-        total_w = len(self.bg_options) * (thumb_w + thumb_gap) - thumb_gap
+        total_w = self.bg_visible_count * (thumb_w + thumb_gap) - thumb_gap
         thumb_start = center_x - total_w // 2
         thumb_y = self.panel_bg.top + bg_top_pad
 
         self.bg_rects = []
-        for i in range(len(self.bg_options)):
+        for i in range(self.bg_visible_count):
             x = thumb_start + i * (thumb_w + thumb_gap)
             self.bg_rects.append(pygame.Rect(x, thumb_y, thumb_w, thumb_h))
+
+        # Šípky — vo voľnom mieste medzi panelom a oknom miniatúr (zámerne
+        # tam, nie mimo panela, aby sa nezmenila celková šírka/proporcie
+        # panela "POZADIE STOLA"). Pri málo pozadiach (okno pokryje celý
+        # zoznam, bg_max_scroll == 0) sa jednoducho nikdy nedajú stlačiť.
+        arrow_cy = thumb_y + thumb_h // 2
+        thumb_end = thumb_start + total_w
+        left_cx  = (panel_x + thumb_start) // 2
+        right_cx = (thumb_end + panel_x + self.panel_width) // 2
+
+        self.bg_arrow_left = {
+            "rect": pygame.Rect(left_cx - 18, arrow_cy - 28, 36, 56),
+            "center": (left_cx, arrow_cy),
+            "hover": False,
+        }
+        self.bg_arrow_right = {
+            "rect": pygame.Rect(right_cx - 18, arrow_cy - 28, 36, 56),
+            "center": (right_cx, arrow_cy),
+            "hover": False,
+        }
+
+        # Okno sa pri otvorení Nastavení posunie tak, aby bolo hneď vidno
+        # aktuálne vybrané pozadie, aj keby bolo mimo prvých N miniatúr.
+        current_bg = settings.get("table_bg", "table.jpg")
+        self.bg_scroll = 0
+        if current_bg in self.bg_options:
+            current_idx = self.bg_options.index(current_bg)
+            if current_idx >= self.bg_visible_count:
+                self.bg_scroll = min(
+                    current_idx - (self.bg_visible_count - 1),
+                    self.bg_max_scroll,
+                )
 
         # Tlačidlo späť
         self.back_button = {
@@ -229,9 +313,22 @@ class SettingsScreen:
                     self.settings[btn["key"]] = btn["difficulty"]
                     return None
 
-        for i, (fname, rect) in enumerate(zip(self.bg_options, self.bg_rects)):
+        if self.bg_arrow_left["rect"].collidepoint(pos):
+            if self.bg_scroll > 0:
+                self.bg_scroll -= 1
+            return None
+
+        if self.bg_arrow_right["rect"].collidepoint(pos):
+            if self.bg_scroll < self.bg_max_scroll:
+                self.bg_scroll += 1
+            return None
+
+        for i, rect in enumerate(self.bg_rects):
+            idx = self.bg_scroll + i
+            if idx >= len(self.bg_options):
+                continue
             if rect.collidepoint(pos):
-                self.settings["table_bg"] = fname
+                self.settings["table_bg"] = self.bg_options[idx]
                 return None
 
         if self.back_button["rect"].collidepoint(pos):
@@ -246,6 +343,8 @@ class SettingsScreen:
         self.back_button["hover"] = self.back_button["rect"].collidepoint(
             mouse_pos
         )
+        self.bg_arrow_left["hover"] = self.bg_arrow_left["rect"].collidepoint(mouse_pos)
+        self.bg_arrow_right["hover"] = self.bg_arrow_right["rect"].collidepoint(mouse_pos)
 
     # ------------------------------------------------------------------
     # Kreslenie
@@ -271,6 +370,7 @@ class SettingsScreen:
 
         self._draw_panel(self.panel_bg, "POZADIE STOLA")
         self._draw_bg_section()
+        self._draw_bg_arrows()
 
         self._draw_back_button()
 
@@ -396,7 +496,12 @@ class SettingsScreen:
     def _draw_bg_section(self):
         current = self.settings.get("table_bg", "table.jpg")
 
-        for i, (fname, rect) in enumerate(zip(self.bg_options, self.bg_rects)):
+        for i, rect in enumerate(self.bg_rects):
+            idx = self.bg_scroll + i
+            if idx >= len(self.bg_options):
+                continue
+            fname = self.bg_options[idx]
+
             is_selected = (fname == current)
             is_hover    = rect.collidepoint(pygame.mouse.get_pos())
 
@@ -418,13 +523,46 @@ class SettingsScreen:
             )
 
             lbl      = self.font_small.render(
-                self.bg_labels[i], True,
+                self.bg_labels[idx], True,
                 COLOR_GOLD if is_selected else COLOR_WHITE
             )
             lbl_rect = lbl.get_rect(
                 centerx=rect.centerx, top=rect.bottom + 6
             )
             self.screen.blit(lbl, lbl_rect)
+
+    def _draw_bg_arrows(self):
+        """Malé trojuholníkové šípky — posúvajú okno viditeľných miniatúr
+        pozadí. Stlmené (a nereagujú na klik — pozri _handle_click), keď sa
+        už nedá posunúť ďalším smerom."""
+        self._draw_bg_arrow(self.bg_arrow_left, "left", self.bg_scroll > 0)
+        self._draw_bg_arrow(
+            self.bg_arrow_right, "right", self.bg_scroll < self.bg_max_scroll
+        )
+
+    def _draw_bg_arrow(self, arrow: dict, direction: str, enabled: bool):
+        cx, cy = arrow["center"]
+        if not enabled:
+            color = COLOR_DARK_GRAY
+        elif arrow["hover"]:
+            color = COLOR_YELLOW
+        else:
+            color = COLOR_GOLD
+
+        half_w, half_h = 10, 16
+        if direction == "left":
+            points = [
+                (cx + half_w, cy - half_h),
+                (cx + half_w, cy + half_h),
+                (cx - half_w, cy),
+            ]
+        else:
+            points = [
+                (cx - half_w, cy - half_h),
+                (cx - half_w, cy + half_h),
+                (cx + half_w, cy),
+            ]
+        pygame.draw.polygon(self.screen, color, points)
 
     def _draw_back_button(self):
         rect  = self.back_button["rect"]

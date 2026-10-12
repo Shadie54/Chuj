@@ -23,22 +23,25 @@ _TEXTS: dict[str, tuple[str, str]] = {
         "Máš kartu nižšiu než aktuálne najvyššia v štichu — štich "
         "nezoberieš a nič neriskuješ.",
     ),
-    "AvoidTrick.RISK_PICK": (
+    "AvoidTrick.RISK_PICK_HIGH": (
+        "Zahraj vyššiu kartu.",
+        "Nižšiu si radšej nechaj na neskoršie podliezanie. Teraz môžeš "
+        "zariskovať a zbaviť sa vyššej karty.",
+    ),
+    "AvoidTrick.RISK_PICK_MID": (
         "Zahraj strednú kartu.",
-        "Príliš vysoká by štich zobrala, nízku kartu si nechaj na "
-        "horšiu chvíľu.",
+        "Najvyššiu zatiaľ neriskuj a najnižšiu si nechaj na podliezanie. "
+        "Stredná je rozumný kompromis.",
     ),
     "AvoidTrick.DUMP_AK_FREE_OWN": (
         "Odhoď eso/kráľa, kým je to zadarmo.",
-        "Horníka tejto farby máš v ruke ty, takže sa v tomto štichu "
-        "neobjaví, a riziko, že by si so štichom pribral aj inú "
-        "bodovanú kartu, je nízke. Rezervy na skrývanie ti však "
-        "dochádzajú — využi túto príležitosť teraz.",
+        "Horníka máš ty, riziko chytenia ďalších bodov"
+        " je malé a bezpečných príležitostí ubúda.",
     ),
     "AvoidTrick.DUMP_AK_FREE_OWN_LIT": (
         "Zahoď eso alebo kráľa.",
-        "Horník je už vysvietený. Súperi za tebou sa budú zbavovať "
-        "vysokých kariet tak či tak, preto si nízku kartu radšej nechaj.",
+        "Vysvieteného horníka máš ty, takže súperi za tebou sa ho nemusia báť. "
+        "Budú sa zbavovať vysokých kariet, nízke karty si ešte nechaj",
     ),
     "AvoidTrick.DUMP_AK_FREE_OPPONENT": (
         "Zbav sa vysokej karty teraz.",
@@ -66,7 +69,7 @@ _TEXTS: dict[str, tuple[str, str]] = {
     ),
     "DumpHeart.UNDERPLAY": (
         "Odhoď srdce.",
-        "Štich berie niekto iný,",
+        "Vyššia karta už leží na stole, takže štich nezískaš",
     ),
     "DumpDangerous.DANGER_TRAP": (
         "Zbav sa nebezpečnej karty.",
@@ -110,13 +113,13 @@ _TEXTS: dict[str, tuple[str, str]] = {
     ),
     "LeadSafe.HIGH_SCORE": (
         "Zbav sa prebytočného srdca.",
-        "Máš 90+ bodov, takže každý trestný bod bolí — pusti ho,"
+        "Máš 90+ bodov, takže každý trestný bod bolí — pusti ho, "
         "kým sa dá.",
     ),
     "LeadSafe.FORCE_TAKE_SPECIAL": (
-        "Vytlač cudzieho horníka.",
-        "Súper musí priznať farbu, a ak má horníka, bude ho musieť "
-        "zahrať.",
+        "Bezpečne sa zbav horníka.",
+        "V hre zostali už len vyššie karty tejto farby. "
+        "Súper ťa preto určite prebije a ty sa horníka bezpečne zbavíš.",
     ),
     "ForceSpecial.FORCE": (
         "Vytiahni cudzieho horníka.",
@@ -138,6 +141,11 @@ _TEXTS: dict[str, tuple[str, str]] = {
         "Štichu sa nevyhneš.",
         "Body v ňom sú, ale lepšiu možnosť nemáš — ber ho aspoň kartou, "
         "ktorá je najvyššia.",
+    ),
+    "AcceptTrick.FORCED_POINTS_LOW": (
+        "Zober lacný štich.",
+        "Môžeš síce podliezť, ale teraz máš príležitosť zbaviť sa vysokej "
+        "karty za cenu pár trestných bodov.",
     ),
     "AcceptTrick.FREE_TAKE": (
         "Ber štich.",

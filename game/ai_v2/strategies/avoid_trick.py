@@ -55,7 +55,7 @@ class AvoidTrick(Strategy):
         for card in dump_ak:
             results.append((card, dump_ak_variant, f"{card}"))
 
-        risk = self._risk_pick_cards(ctx)
+        risk, risk_variant = self._risk_pick_cards(ctx)
         valid_risk = [
             c for c in risk
             if card_outcome(
@@ -64,7 +64,7 @@ class AvoidTrick(Strategy):
             ) == TrickOutcome.UNKNOWN
         ]
         for card in valid_risk:
-            results.append((card, "RISK_PICK", f"{card}"))
+            results.append((card, risk_variant, f"{card}"))
 
         if ctx.current_best:
             underplay = [
@@ -171,6 +171,14 @@ class AvoidTrick(Strategy):
         suit = ctx.lead_suit
         if suit is None:
             return False
+        if suit == "heart":
+            # Srdce má na rozdiel od ostatných farieb bodovú cenu za
+            # KAŽDÚ kartu (aj non-special) — risk-pick matica bola
+            # navrhnutá pre farby, kde výhra štichu je zadarmo. Rovnako
+            # ako v pred-ai_v2 kóde (game/ai_card_select.py) srdce do
+            # tejto matice nikdy nevstupovalo; podlez/fallback nižšie v
+            # propose() to rieši správne.
+            return False
         if suit in self.memory.suits_led:
             return False
         if ctx.current_best:
@@ -184,9 +192,14 @@ class AvoidTrick(Strategy):
         remaining = len(self.memory.remaining[suit])
         return remaining >= 5
 
-    def _risk_pick_cards(self, ctx: AIContext) -> list[Card]:
+    def _risk_pick_cards(self, ctx: AIContext) -> tuple[list[Card], str]:
+        """
+        Vráti (karty, variant_label). Variant podľa my_count — RISK_PICK_HIGH
+        (<=2, hraje sa najvyššia) alebo RISK_PICK_MID (==3, hraje sa skutočný
+        stred) — pozri tip_texts.py, kde majú samostatné, presnejšie texty.
+        """
         if not self._can_risk_pick(ctx):
-            return []
+            return [], ""
 
         suit = ctx.lead_suit
         suit_cards = [c for c in ctx.lead_cards if not c.is_special]
@@ -195,14 +208,14 @@ class AvoidTrick(Strategy):
             suit_cards = [c for c in suit_cards if c.rank not in ("ace", "king")]
 
         if not suit_cards:
-            return []
+            return [], ""
 
         my_count = len([
             c for c in self.player.hand.cards
             if c.suit == suit and not c.is_special
         ])
         if my_count <= 1:
-            return []
+            return [], ""
 
         remaining = len(self.memory.remaining[suit])
         all_in_hand = [
@@ -210,52 +223,29 @@ class AvoidTrick(Strategy):
             if c.suit == suit and not c.is_special
         ]
 
-        return self._risk_pick_matrix(suit_cards, my_count, remaining, all_in_hand, ctx)
+        variant = "RISK_PICK_HIGH" if my_count <= 2 else "RISK_PICK_MID"
+        cards = self._risk_pick_matrix(suit_cards, my_count, remaining, all_in_hand, ctx)
+        return cards, variant
 
     def _risk_pick_matrix(self, suit_cards: list[Card],
                           my_count: int, remaining: int,
                           all_in_hand: list[Card],
                           ctx: AIContext) -> list[Card]:
-        def safe_or_lowest() -> list[Card]:
-            safe = [c for c in suit_cards if self._is_safe(c, ctx)]
-            pool = safe if safe else suit_cards
-            min_rank = min(c.rank_order for c in pool)
-            return [c for c in pool if c.rank_order == min_rank]
+        # remaining < 5 je nedosiahnuteľné (_can_risk_pick už vyžaduje >=5)
+        # a my_count >= 4 je nedosiahnuteľné pri remaining>=5 (pigeonhole
+        # na 8-kartovej farbe) — obe pôvodné "mŕtve" vetvy boli zmazané.
+        if my_count <= 2:
+            max_rank = max(c.rank_order for c in suit_cards)
+            return [c for c in suit_cards if c.rank_order == max_rank]
 
-        def mid_cards() -> list[Card]:
-            if not all_in_hand:
-                return []
-            highest = max(all_in_hand, key=lambda c: c.rank_order)
-            candidates = [
-                c for c in suit_cards
-                if highest.rank_order - c.rank_order >= 2
-            ]
-            if not candidates:
-                return []
-            max_rank = max(c.rank_order for c in candidates)
-            return [c for c in candidates if c.rank_order == max_rank]
-
-        if remaining >= 5:
-            if my_count <= 2:
-                max_rank = max(c.rank_order for c in suit_cards)
-                return [c for c in suit_cards if c.rank_order == max_rank]
-            elif my_count == 3:
-                mid = mid_cards()
-                if mid:
-                    return mid
-                min_rank = min(c.rank_order for c in suit_cards)
-                return [c for c in suit_cards if c.rank_order == min_rank]
-            else:
-                return safe_or_lowest()
-        else:
-            if my_count <= 2:
-                mid = mid_cards()
-                if mid:
-                    return mid
-                min_rank = min(c.rank_order for c in suit_cards)
-                return [c for c in suit_cards if c.rank_order == min_rank]
-            else:
-                return safe_or_lowest()
+        # my_count == 3 (jediný ešte dosiahnuteľný prípad) — skutočný
+        # stred zoradených kariet, bez gap-heuristiky a bez fallbacku
+        # na najnižšiu (rovnaký princíp ako LeadSafe._simple_median()).
+        sorted_cards = sorted(suit_cards, key=lambda c: c.rank_order)
+        n = len(sorted_cards)
+        idx = n // 2 if n % 2 == 1 else n // 2 - 1
+        target_rank = sorted_cards[idx].rank_order
+        return [c for c in sorted_cards if c.rank_order == target_rank]
 
     def weight(self, ctx: AIContext) -> float:
         return 5.0

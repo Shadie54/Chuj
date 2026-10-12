@@ -336,7 +336,11 @@ STEPS = [
                 "Počítač 2 práve zobral oboch vysvietených horníkov, "
                 "preto mu pribudlo 24 bodov (16 + 8).\n\n"
                 "Ikony pri menách ti počas celého kola pripomínajú, "
-                "kto ktorého horníka vysvietil."
+                "kto ktorého horníka vysvietil.\n\n"
+                "Guličky pod menom sledujú tvoju sériu kôl bez "
+                "trestných bodov. Za každé čisté kolo sa vyfarbí "
+                "jedna gulička na zeleno. Ak ich nazbieraš 5 po sebe, "
+                "odpočíta sa ti 10 bodov!"
             ) if Card("acorn", "over") in screen.illuminated_cards else (
                 "Vpravo dole sa ti teraz zobrazuje tabuľka KOLO. "
                 "Ukazuje, koľko trestných bodov už jednotliví hráči v "
@@ -346,7 +350,11 @@ STEPS = [
                 "preto mu pribudlo 20 bodov (16 + 4). Tvoj horník "
                 "nebol vysvietený, takže má nižšiu hodnotu.\n\n"
                 "Ikony pri menách ti počas celého kola pripomínajú, "
-                "kto ktorého horníka vysvietil."
+                "kto ktorého horníka vysvietil.\n\n"
+                "Guličky pod menom sledujú tvoju sériu kôl bez "
+                "trestných bodov. Za každé čisté kolo sa vyfarbí "
+                "jedna gulička na zeleno. Ak ich nazbieraš 5 po sebe, "
+                "odpočíta sa ti 10 bodov!"
             )
         ),
     },
@@ -548,12 +556,13 @@ STEPS = [
         "key": "chujogram_explain",
         # Guličky, ktoré tento text vysvetľuje, sú priamo v Chujograme
         # (pri hráčovi s najvyšším skóre v danom kole) — NIE guličky z
-        # panelu KOLO. Históriu odohraných kôl ani sériový bonus za
-        # čisté kolá naďalej zámerne nespomíname — to spolu súvisí
-        # (bonus dáva zmysel len s pochopením histórie/série) a chceme
-        # to vysvetliť spolu, až neskôr (plánovaná krátka precvičovacia
-        # hra hneď po tutoriáli). Bonus preto v tomto tutoriáli ani
-        # nespúšťame (pozri __init__, no_penalty_streak).
+        # panelu KOLO (séria čistých kôl + bonus -10b). Tie sa vysvetľujú
+        # už skôr, pri prvom zobrazení panelu KOLO (krok "trick2_collect"
+        # vyššie) — práve tam sa hráč prvýkrát pozerá na tabuľku KOLO,
+        # takže dáva zmysel vysvetliť všetko, čo v nej je, na jednom
+        # mieste. Bonus v tomto tutoriáli reálne nespúšťame (pozri
+        # __init__, no_penalty_streak) — ide o všeobecné vysvetlenie
+        # mechaniky, nie o demonštráciu jej spustenia.
         "text": (
             "Toto je Chujogram – tabuľka, do ktorej sa po každom kole "
             "zapisujú trestné body všetkých hráčov.\n\n"
