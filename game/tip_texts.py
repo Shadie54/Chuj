@@ -90,18 +90,13 @@ _TEXTS: dict[str, tuple[str, str]] = {
     # --- vedenie štichu ----------------------------------------------
     "LeadSafe.ESCAPE": (
         "Veď bezpečnou kartou.",
-        "Niekto vyšší v tejto farbe je ešte vonku, možno ťa prebije a "
-        "štich nezoberieš.",
+        "V tejto farbe ešte zostávajú vyššie karty. Možno ťa súper prebije  "
+        "a štich nezoberieš.",
     ),
     "LeadSafe.BELL_ESCAPE": (
         "Veď guľami.",
         "V guliach nie sú trestné body — bezpečný spôsob, ako "
         "sa zbaviť karty",
-    ),
-    "LeadSafe.EXHAUST": (
-        "Vyčerpaj farbu.",
-        "Ťahá súperom karty z farby, ktorú máš pokrytú, bez rizika, že "
-        "schytáš body.",
     ),
     "LeadSafe.PROTECTED_ESCAPE_PRIMARY": (
         "Veď bezpečnou kartou.",
@@ -122,14 +117,13 @@ _TEXTS: dict[str, tuple[str, str]] = {
         "Súper ťa preto určite prebije a ty sa horníka bezpečne zbavíš.",
     ),
     "ForceSpecial.FORCE": (
-        "Vytiahni cudzieho horníka.",
-        "Vedieš farbou, v ktorej súper drží horníka — musí priznať a "
-        "horník môže padnúť.",
+        "Vylákaj súperovho horníka.",
+        "Súper musí priznať farbu, takže možno bude nútený "
+        "zahrať svojho horníka.",
     ),
     "SetupVoid.SETUP": (
-        "Priprav si void.",
-        "Zbavíš sa poslednej karty tejto farby — nabudúce do nej budeš "
-        "môcť odhodiť čokoľvek nebezpečné.",
+        "Zbav sa celej farby.",
+        "Keď súper nabudúce zahrá túto farbu, môžeš sa zbaviť aj nebezpečnej karty. ",
     ),
 
     # --- vedomé branie štichu ----------------------------------------
@@ -189,8 +183,7 @@ _TEXTS: dict[str, tuple[str, str]] = {
     ),
     "GLOBAL_FALLBACK": (
         "Zahraj nízku kartu.",
-        "Nič výrazné sa neponúka — najnižšia karta je najbezpečnejšia "
-        "voľba.",
+        "Keď sa neponúka nič lepšie, nízka karta je rozumná voľba. ",
     ),
     "DECLARATION_NONE": (
         "Pozor, hrá sa záväzok.",

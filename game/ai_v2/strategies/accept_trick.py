@@ -210,25 +210,55 @@ class AcceptTrick(Strategy):
             results.append((card, "FORCED_CLEAN", f"najvyššia lead: {card}"))
         return results
 
-    @staticmethod
-    def _forced_points(ctx: AIContext, certain_cards: list[Card],
+    def _forced_points(self, ctx: AIContext, certain_cards: list[Card],
                        variant: str = "FORCED_POINTS") -> list[tuple[Card, str, str]]:
         """
         Bodový štich — posledný berie max, inak min škoda.
-        variant="FORCED_POINTS": skutočne nemám alternatívu (každá karta by
-        štich zobrala). variant="FORCED_POINTS_LOW": podlez bol technicky
-        možný, len sa pre pár bodov neoplatí (pozri propose()).
+
+        "min škoda" navyše vylezie na bezprostredne susednú vyššiu kartu tej
+        istej farby, ak ju držím v ruke (pozri _climb_adjacent) — štich sa
+        tým neberie inak (karty sú "pri sebe", žiadna medzi nimi, rovnaký
+        princíp ako claude/10_RISK_PICK_TIP_LABELING.md pri RISK_PICK), ale
+        tip "Štichu sa nevyhneš... ber ho najvyššou kartou" tak zostane
+        presný aj v praxi, nielen formálne (nahlásené 2026-10-15).
         """
         results = []
         if ctx.is_last:
             target = max(c.rank_order for c in certain_cards)
-            label = "posledný max"
-        else:
-            target = min(c.rank_order for c in certain_cards)
-            label = "min škoda"
-        for card in [c for c in certain_cards if c.rank_order == target]:
+            for card in [c for c in certain_cards if c.rank_order == target]:
+                results.append((card, variant, f"posledný max: {card}"))
+            return results
+
+        min_rank = min(c.rank_order for c in certain_cards)
+        climbed = [
+            self._climb_adjacent(c, ctx)
+            for c in certain_cards if c.rank_order == min_rank
+        ]
+        target = max(c.rank_order for c in climbed)
+        for card in [c for c in climbed if c.rank_order == target]:
+            label = "min škoda" if card.rank_order == min_rank else "min škoda (sused)"
             results.append((card, variant, f"{label}: {card}"))
         return results
+
+    def _climb_adjacent(self, card: Card, ctx: AIContext) -> Card:
+        """
+        Z `card` vylezie po bezprostredne susedných (rank_order o presne 1
+        vyšších) kartách tej istej farby, ktoré ešte držím v ruke a nie sú
+        horník — až po najvyššiu dosiahnuteľnú v tomto reťazci. Keďže medzi
+        susednými kartami niet žiadnej inej, vzatie štichu vyššou z nich nič
+        nemení (pozri claude/10_RISK_PICK_TIP_LABELING.md).
+        """
+        by_rank = {
+            c.rank_order: c for c in self.player.hand.cards
+            if c.suit == card.suit and not c.is_special
+        }
+        current = card
+        while True:
+            higher = by_rank.get(current.rank_order + 1)
+            if higher is None:
+                break
+            current = higher
+        return current
 
     def _can_early_take(self, ctx: AIContext) -> bool:
         """Bell, čistý štich, 2./3. pozícia, nízke void riziko — dobrovoľné zbavenie sa bell karty."""

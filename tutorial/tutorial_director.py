@@ -183,6 +183,19 @@ class TutorialDirector:
                 and self._step_kind() == "phase_list"):
             self._enter_step(self.step_index + 1)
 
+        # Štich bez textu po zahraní (napr. trick3) -> nečaká sa na klik
+        # na "Ďalej", zbiera sa automaticky presne tak, ako v bežnej hre
+        # — po tej istej 1.5s pauze (self.screen.trick_display_timer),
+        # pozri _trick_silent_after().
+        if (rnd is not None and self._released_trick != rnd.trick_number
+                and rnd.current_trick is not None
+                and rnd.current_trick.is_complete
+                and not self.screen.card_throw_animation.in_flight
+                and self._step_kind() == "trick"
+                and self._trick_silent_after(self.current_step())
+                and pygame.time.get_ticks() >= self.screen.trick_display_timer):
+            self._released_trick = rnd.trick_number
+
         # Štich sa uzavrel -> ďalší krok scenára.
         if rnd is not None and rnd.trick_number != self._last_trick_number:
             self._last_trick_number = rnd.trick_number
@@ -379,12 +392,14 @@ class TutorialDirector:
         """
         Kedy sa tlačidlo "Ďalej" NEUKAZUJE.
 
-        Šesť nezávislých dôvodov, prevzatých 1:1 z pôvodného
-        tutorial_screen.py::_draw_panel(): hráč má najprv vykonať akciu,
-        ktorú mu prikazuje zlatá inštrukcia — zahrať kartu, kliknúť na
-        horníka, otvoriť Chujogram, otvoriť Posledný štich — alebo v kroku
-        Záväzok pokračovať výhradne tlačidlom OK, nech sa naučí, že práve
-        ono potvrdzuje rozhodnutie.
+        Sedem nezávislých dôvodov. Šesť z nich je prevzatých 1:1 z
+        pôvodného tutorial_screen.py::_draw_panel(): hráč má najprv
+        vykonať akciu, ktorú mu prikazuje zlatá inštrukcia — zahrať
+        kartu, kliknúť na horníka, otvoriť Chujogram, otvoriť Posledný
+        štich — alebo v kroku Záväzok pokračovať výhradne tlačidlom OK,
+        nech sa naučí, že práve ono potvrdzuje rozhodnutie. Siedmy
+        (štich bez textu po zahraní) sa nekreslí vôbec — zbiera sa
+        automaticky, pozri update()/_trick_silent_after().
         """
         kind = step["kind"]
         is_phase_list = kind == "phase_list"
@@ -402,12 +417,24 @@ class TutorialDirector:
         return bool(
             kind == "human_play"
             or (is_trick and not trick_settled)
+            or (is_trick and trick_settled and self._trick_silent_after(step))
             or step.get("key") == "chujogram_wait"
             or (is_phase_list and phase["key"] == "zavazok")
             or (is_phase_list and phase["key"] == "vysvietenie"
                 and not self.illumination_interacted)
             or (step.get("requires_last_trick_view")
                 and not self.last_trick_viewed)
+        )
+
+    @staticmethod
+    def _trick_silent_after(step: dict) -> bool:
+        """Štich bez vysvetlenia po zahraní (napr. trick3) — hráč sa už
+        nemá čo nové dozvedieť, takže sa nečaká na klik na "Ďalej":
+        zbiera sa automaticky (pozri update())."""
+        return not (
+            step.get("text_after")
+            or step.get("text_after_fn")
+            or step.get("text_after_by_card")
         )
 
     def suppress_declaration(self) -> bool:
@@ -443,6 +470,14 @@ class TutorialDirector:
             # Rovnaké vycentrované rozloženie ako "trick_demo" — pozri
             # _draw_centered_penalty_overview.
             self._draw_centered_penalty_overview(step)
+            return
+
+        if (step["kind"] == "trick" and self._human_has_played()
+                and self._trick_silent_after(step)):
+            # Nič sa tu nevysvetľuje — aj prázdny orámovaný panel by bol
+            # zbytočný (navyše viditeľný len počas animácie zberu
+            # štichu). Panel sa vôbec nekreslí; štich sa medzitým sám
+            # zbiera (pozri update()).
             return
 
         content = self.panel_content(

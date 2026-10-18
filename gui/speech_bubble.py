@@ -88,7 +88,7 @@ class SpeechBubble:
 
     def show_bid(self, player_index: int, text: str,
                  duration_ms: int = 5000):
-        """Zobrazí biddingová bublinu."""
+        """Zobrazí biddingová bublinu (záväzok, vysvietenie, risk)."""
         if text is None:
             display_text = "Ja nič"
             color = (150, 150, 150)
@@ -96,12 +96,23 @@ class SpeechBubble:
             display_text = text
             color = COLOR_YELLOW
 
+        # Hráč (0): rovnaká "bezpečná" pozícia ako bodová bublina po
+        # štichu (show_round_result) — nad prvou kartou jeho ruky, nie v
+        # strede nad celou rukou (bubble_positions[0]). Dlhší text (napr.
+        # "Svietim žaluďového!") pri strednej pozícii zasahoval priamo do
+        # kariet (nahlásené 2026-10-15).
+        position = (
+            self.round_result_positions.get(player_index)
+            if player_index == 0 else None
+        )
+
         self._add_bubble(
             player_index=player_index,
             text=display_text,
             suit=None,
             duration_ms=duration_ms,
-            color=color
+            color=color,
+            position=position,
         )
 
     def show_instruction(self, player_index: int, text: str):

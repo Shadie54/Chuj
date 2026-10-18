@@ -20,8 +20,6 @@ class LeadSafe(Strategy):
             return True
         if self._escape_candidates(ctx):
             return True
-        if self._exhaust_candidates(ctx):
-            return True
         if self._protected_last_resort(ctx):
             return True
 
@@ -54,12 +52,6 @@ class LeadSafe(Strategy):
                 min_rank = min(c.rank_order for c in suit_escape)
                 for card in [c for c in suit_escape if c.rank_order == min_rank]:
                     results.append((card, "ESCAPE", f"{suit}: {card}"))
-
-        exhaust = self._exhaust_candidates(ctx)
-        if exhaust:
-            min_rank = min(c.rank_order for c in exhaust)
-            for card in [c for c in exhaust if c.rank_order == min_rank]:
-                results.append((card, "EXHAUST", f"{card}"))
 
         if not results:
             suit_picks = self._protected_last_resort(ctx)
@@ -273,26 +265,6 @@ class LeadSafe(Strategy):
             return False
 
         return not remaining_escapes and bool(high_cards)
-
-    def _exhaust_candidates(self, ctx: AIContext) -> list[Card]:
-        candidates = []
-        for suit in ("leaf", "acorn"):
-            if self.memory.illuminated_by[suit] != self.player.index:
-                continue
-            reserves = [
-                c for c in self.player.hand.cards
-                if c.suit == suit and not c.is_special
-            ]
-            if len(reserves) < 4:
-                continue
-            if any(c.rank in ("ace", "king") for c in reserves):
-                continue
-            suit_playable = [
-                c for c in ctx.playable
-                if c.suit == suit and not c.is_special
-            ]
-            candidates += suit_playable
-        return candidates
 
     def _risk_pick_matrix(self, suit_cards: list[Card],
                           my_count: int, remaining: int,

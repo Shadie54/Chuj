@@ -62,7 +62,6 @@ class DecisionContext:
     can_be_beaten: bool
     trick_has_penalty: bool
     protected_suits: set[str]
-    exhaustable_suits: set[str]
     special_holders: dict[str, set[int]]
 
     @staticmethod
@@ -125,21 +124,6 @@ class DecisionContext:
             if len(reserves) <= 3:
                 protected_suits.add(suit)
 
-        # Exhaustable suits
-        exhaustable_suits = set()
-        for suit in ("leaf", "acorn"):
-            if memory.illuminated_by[suit] != player.index:
-                continue
-            reserves = [
-                c for c in player.hand.cards
-                if c.suit == suit and not c.is_special
-            ]
-            if len(reserves) < 4:
-                continue
-            high_reserves = [c for c in reserves if c.rank in ("ace", "king")]
-            if len(high_reserves) == 0:
-                exhaustable_suits.add(suit)
-
         # Special holders
         special_holders = {
             suit: memory.who_has_special(suit)
@@ -160,7 +144,6 @@ class DecisionContext:
             can_be_beaten=can_be_beaten,
             trick_has_penalty=trick_has_penalty,
             protected_suits=protected_suits,
-            exhaustable_suits=exhaustable_suits,
             special_holders=special_holders,
         )
 
