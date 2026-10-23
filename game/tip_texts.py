@@ -169,8 +169,8 @@ _TEXTS: dict[str, tuple[str, str]] = {
     # --- mimo selectora ----------------------------------------------
     "SWEEP_COMMIT": (
         "Poď po všetkých kartách!",
-        "AI vyhodnotila, že máš šancu pozbierať všetky trestné karty — "
-        "to je šanca odpísať −10 bodov",
+        "Máš dobrú šancu pozbierať všetky trestné karty — "
+        "odpísať 10 bodov",
     ),
     "FORCED_SINGLE_CARD": (
         "Nemáš na výber.",
@@ -221,18 +221,12 @@ _FALLBACK = ("AI by zahrala túto kartu.", "")
 # advisor.py podľa samotného rozhodnutia, lebo závisí aj od toho, koľko
 # horníkov hráč drží.
 _ILLUMINATION_REASONS: dict[str, str] = {
-    # Tieto dve sú len núdzový fallback pre prípad, že by niekedy niekto
-    # zavolal illumination_reason() bez reserve_quality/risk_level/
-    # comp_breakdown (bežne sa tak nikdy nestane — game/advisor.py ich
-    # vždy posiela a text sa poskladá cez _illumination_decision_text()
-    # nižšie, presne podľa toho, čo sa v danej ruke reálne stalo).
-    "decision_yes": (
-        "AI vyhodnotila, že krytie aj zvyšok ruky sú v poriadku — "
-        "vysvietenie sa oplatí."
-    ),
-    "decision_no": (
-        "AI vyhodnotila, že riziko je teraz príliš vysoké na vysvietenie."
-    ),
+    # "decision_yes"/"decision_no" tu zámerne NIE JE — game/advisor.py
+    # vždy posiela reserve_quality, takže pre tieto dva kódy sa text
+    # vždy skladá cez _illumination_decision_text() nižšie (presne podľa
+    # toho, čo sa v danej ruke reálne stalo), a tento slovník sa pre ne
+    # nikdy nepoužije. Staré statické znenia boli nedosiahnuteľný kód —
+    # odstránené 2026-10-21.
     "no_reserves": (
         "Horníka nemáš čím kryť — je v tej farbe sám, takže "
         "hneď, ako sa farba zahrá, asi ho schytáš."
@@ -260,10 +254,8 @@ _ILLUMINATION_FALLBACK = "AI by v tejto ruke volila takto."
 # Skrátené znenie — použije sa, keď hráč drží OBOCH horníkov a v paneli
 # treba dva dôvody vedľa seba (dlhé vety by sa tam nezmestili).
 _ILLUMINATION_REASONS_SHORT: dict[str, str] = {
-    # Rovnaký núdzový fallback ako vyššie — bežne sa nepoužije, pozri
-    # illumination_reason().
-    "decision_yes": "oplatí sa riskovať",
-    "decision_no": "riziko je vysoké",
+    # "decision_yes"/"decision_no" tu zámerne NIE JE — pozri komentár
+    # pri _ILLUMINATION_REASONS vyššie.
     "no_reserves": "nemáš ho čím kryť",
     "bad_reserves": "rezervy sú privysoké",
     # Skrátené z "vedieš v bodoch, netreba riskovať" — pri dvoch

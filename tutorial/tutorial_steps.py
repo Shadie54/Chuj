@@ -437,7 +437,7 @@ STEPS = [
         # samotný herný engine, nie text. Štich sa zbiera automaticky —
         # pozri _trick_silent_after().
         "text_before": "",
-        "human_instruction": "Zahraj svoju poslednú guľovú kartu.",
+        "human_instruction": "Si na ťahu.",
     },
     {
         "kind": "trick",
@@ -456,7 +456,7 @@ STEPS = [
         # pravidlá, tento štich by ich len opakoval. Štich sa zbiera
         # automaticky — pozri _trick_silent_after().
         "text_before": "",
-        "human_instruction": "Zahraj jednu zo svojich dvoch kariet.",
+        "human_instruction": "Si na ťahu.",
     },
     {
         "kind": "trick",
@@ -475,7 +475,7 @@ STEPS = [
             "jedna karta."
         ),
         "text_after": "Posledný štich vyhral Počítač 1. Kolo sa skončilo.",
-        "human_instruction": "Zahraj svoju poslednú kartu.",
+        "human_instruction": "Si na ťahu.",
         "round_end": True,
     },
     {
@@ -571,7 +571,7 @@ BRANCH_B_STEPS = {
         # bol len opakovanie "vyššia karta vyhráva". Štich sa zbiera
         # automaticky — pozri _trick_silent_after().
         "text_before": "",
-        "human_instruction": "Vyber si, ktorou kartou začneš.",
+        "human_instruction": "Si na ťahu.",
     },
     # Vedie Počítač 1 (hráč pri trick7 viedol listom).
     "trick8_p1": {
@@ -589,7 +589,7 @@ BRANCH_B_STEPS = {
             "jedna karta."
         ),
         "text_after": "Posledný štich vyhral Počítač 3. Kolo sa skončilo.",
-        "human_instruction": "Zahraj svoju poslednú kartu.",
+        "human_instruction": "Si na ťahu.",
         "round_end": True,
     },
     # Vedie Počítač 2 (hráč pri trick7 viedol žaluďom).
@@ -609,7 +609,7 @@ BRANCH_B_STEPS = {
             "jedna karta."
         ),
         "text_after": "Posledný štich vyhral Počítač 3. Kolo sa skončilo.",
-        "human_instruction": "Zahraj svoju poslednú kartu.",
+        "human_instruction": "Si na ťahu.",
         "round_end": True,
     },
 }

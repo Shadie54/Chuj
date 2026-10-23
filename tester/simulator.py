@@ -105,6 +105,13 @@ class SimConfig:
     watch_decisions: list[tuple[str, str]] = field(
         default_factory=lambda: [("AcceptTrick", "FORCED_POINTS")]
     )
+    # Všeobecný watcher na úrovni kola (nezávislý od konkrétnej stratégie) —
+    # zaznamená KAŽDÉ kolo, kde aspoň jeden hráč má na začiatku 90+ bodov,
+    # nech sa v ňom stane čokoľvek. Na rozdiel od watch_sweep_90_eval
+    # (ktorý sleduje len vyhodnotenia sweep pipeline, výskum §14) je toto
+    # pre ručnú analýzu 90+ logiky všade inde (LeadSafe.HIGH_SCORE,
+    # AcceptTrick, DumpHeart, ai_declaration.py, ...). Vznik: 2026-10-22.
+    watch_high_score_round: bool = True
 
 
 # ------------------------------------------------------------------
@@ -115,6 +122,10 @@ class SimConfig:
 class Findings:
     records: list[dict] = field(default_factory=list)
     counts: dict[str, int] = field(default_factory=dict)
+    # Seedy už zaznamenané watch_high_score_round watcherom v tomto behu —
+    # aby sa pri --findings prehrávaní neopakovala tá istá hra dvakrát
+    # (pozri _round_end_watchers nižšie).
+    seen_high_score_round_seeds: set = field(default_factory=set)
 
     def add(self, record: dict):
         self.records.append(record)
@@ -431,6 +442,26 @@ def _round_end_watchers(config: SimConfig, findings: Findings,
                 "penalty_points_taken": game_state.players[pidx].round_points,
             })
 
+    # 4) Kolo so všeobecnou 90+ situáciou — nezávisle od toho, čo sa v ňom
+    #    stane (na rozdiel od watch_sweep_90_eval vyššie, ktorý sleduje len
+    #    SWEEP_90_EVAL vyhodnotenia sweep pipeline). Každý deal_seed sa
+    #    zaznamená najviac raz za celý beh, aby --findings prehrávanie
+    #    neobsahovalo duplicitné hry.
+    if config.watch_high_score_round:
+        if any(s >= HIGH_SCORE_THRESHOLD for s in scores_at_start):
+            seed = rnd.deal_seed
+            if seed not in findings.seen_high_score_round_seeds:
+                findings.seen_high_score_round_seeds.add(seed)
+                findings.add({
+                    "type": "high_score_round",
+                    **sim_logger.round_context,
+                    "players_90plus": [
+                        game_state.players[i].name
+                        for i, s in enumerate(scores_at_start)
+                        if s >= HIGH_SCORE_THRESHOLD
+                    ],
+                })
+
 
 # ------------------------------------------------------------------
 # Hlavný beh + výstup
@@ -529,6 +560,7 @@ def main():
     parser.add_argument("--no-hornik-capture-watch", action="store_true")
     parser.add_argument("--no-sweep-ev-audit-watch", action="store_true")
     parser.add_argument("--no-gate2-audit-watch", action="store_true")
+    parser.add_argument("--no-high-score-round-watch", action="store_true")
     args = parser.parse_args()
 
     config = SimConfig(
@@ -545,6 +577,7 @@ def main():
         watch_hornik_capture=not args.no_hornik_capture_watch,
         watch_sweep_ev_audit=not args.no_sweep_ev_audit_watch,
         watch_gate2_audit=not args.no_gate2_audit_watch,
+        watch_high_score_round=not args.no_high_score_round_watch,
     )
     print(f"Spúšťam simuláciu: {config.num_games} hier (seed={config.seed})")
     run(config)

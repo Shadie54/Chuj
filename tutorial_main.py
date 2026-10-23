@@ -21,14 +21,79 @@ try:
 except Exception:
     pass
 
+import sys
+
 import pygame
 from gui.screen import Screen
 from gui.game_over_screen import GameOverScreen
+from gui.lesson_panel import LessonPanel
 from game_setup import load_settings, create_game
-from config import DEBUG_MODE
+from config import DEBUG_MODE, SCREEN_WIDTH, SCREEN_HEIGHT, COLOR_BG, FPS
 from tutorial.tutorial_director import TutorialDirector
 from tutorial.scripted_ai import ScriptedAI
 from tutorial.scripted_round import build_tutorial_game_state
+from tutorial.zavazok_director import ZavazokDirector
+from tutorial.trening_score_director import TreningScoreDirector
+from game.ai import AI
+
+TRENING_INTRO_TEXT = (
+    "Teraz si zahráš naostro!\n\n"
+    "V tréningovej hre už rozhoduješ sám. Pomáhať ti bude poradca, "
+    "ktorý ti odporučí kartu a vysvetlí, prečo by ju zahral.\n\n"
+    "Jeho rady ti môžu pomôcť, no nie vždy musí ísť o najlepší ťah. "
+    "Neboj sa preto rozhodovať aj podľa seba!\n\n"
+    "Poradcu môžeš kedykoľvek vypnúť."
+)
+
+
+def _show_trening_intro_panel() -> None:
+    """Krátky úvodný panel (poradca) PRED prvým kolom tréningovej hry.
+
+    ÚMYSELNE samostatná mini-slučka, BEZ gui/screen.py::Screen a BEZ
+    diriguenta: Screen vypína automatické rozdanie ďalšieho kola vždy,
+    keď má pripojený director (step_frame()::next_round_timer check
+    "self.director is None") — to by po prvom kole tréningovej hry
+    nechalo stôl stáť navždy (nájdené v hre 2026-10-21). Táto funkcia
+    teda nič z reálnej hry nepoužíva, len LessonPanel nad jednoduchým
+    pozadím.
+
+    Pri zatvorení okna (QUIT) počas panela skončí rovnako, ako by
+    skončila ktorákoľvek iná obrazovka v hre (pygame.quit() + exit) —
+    rovnaký vzor ako gui/tutorial_menu.py::TutorialMenu.run()."""
+    surface = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+    clock = pygame.time.Clock()
+    lesson_panel = LessonPanel(surface)
+
+    try:
+        bg = pygame.image.load("assets/graphics/table.jpg").convert()
+        bg = pygame.transform.scale(bg, (SCREEN_WIDTH, SCREEN_HEIGHT))
+    except FileNotFoundError:
+        bg = None
+
+    while True:
+        clock.tick(FPS)
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if (event.type == pygame.MOUSEBUTTONDOWN and event.button == 1
+                    and lesson_panel.next_button.collidepoint(event.pos)):
+                return
+
+        if bg:
+            surface.blit(bg, (0, 0))
+        else:
+            surface.fill(COLOR_BG)
+        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 150))
+        surface.blit(overlay, (0, 0))
+
+        lesson_panel.draw(
+            title="Tréningová hra",
+            paragraphs=TRENING_INTRO_TEXT,
+            button_label="Hraj →",
+        )
+        pygame.display.flip()
 
 
 def run_chapter_zaklady() -> str:
@@ -78,6 +143,49 @@ def run_chapter_zaklady() -> str:
     return screen.run()
 
 
+def run_chapter_zavazky() -> str:
+    """Kapitola 2 — Záväzok. NA ROZDIEL OD kapitoly 1 ide o reálnu,
+    nenaskriptovanú hru: hráč sám skúša splniť záväzok proti
+    skutočnému AI (game/ai.py::AI, "easy" — tí sa sami nikdy
+    nevyhlásia, pozri game/ai_declaration.py::decide_declaration), bez
+    vedenia za ruku. Dva stupne v tomto poradí: "Beriem všetko" (seed
+    160), potom "Nechytím nič" (5 seedov, zamiešané na začiatku
+    kapitoly). Návrh a overenie — vrátane toho, prečo práve tieto
+    seedy — pozri tutorial/zavazok_director.py a
+    tutorial2_sandbox/test_zavazok_chapter.py (10/10 headless behov).
+
+    Záväzok sa NEZAMYKÁ — hráč ho vyhlasuje sám, cez bežné tlačidlá
+    Beriem všetko/Nechytím nič/OK (fáza "preparation" sa nijako
+    nepotláča ani neobchádza, pozri tutorial/zavazok_director.py pre
+    detaily). Director len pred touto fázou ukáže panel s výkladom a
+    tlačidlá záväzku/OK dočasne schová, kým ho hráč nezavrie. Pri
+    zlyhaní ponúkne "Skúsiť znova" (rovnaký stupeň, ďalší seed v
+    poradí), pri úspechu "Ďalej"/"Dokončiť".
+
+    Vracia "skip"/"menu" rovnako ako ostatné kapitoly (pozri
+    run_chapter_zaklady) — tu sa prakticky vždy vráti "skip"
+    (dokončenie oboch stupňov), "menu" len cez bežné tlačidlo Menu v
+    hre."""
+    director = ZavazokDirector()
+    game_state = build_tutorial_game_state(first_player_index=0)
+
+    # Skutočné AI, nie ScriptedAI — na rozdiel od kapitoly 1 tu hráč
+    # hraje proti reálnemu rozhodovaniu, nie proti scenáru.
+    ai_players = [None] + [
+        AI(game_state.players[i], difficulty="easy", logger=game_state.logger)
+        for i in range(1, len(game_state.players))
+    ]
+
+    settings = dict(load_settings())
+    # Tipy by sa bili s panelom výkladu (rovnaký dôvod ako v kapitole 1).
+    settings["tips_enabled"] = False
+    settings["chapter_banner"] = "TUTORIÁL — ZÁVÄZOK"
+
+    screen = Screen(game_state, ai_players, debug=DEBUG_MODE,
+                    new_game=True, settings=settings, director=director)
+    return screen.run()
+
+
 def run_chapter_trening() -> str:
     """Kapitola 2 — ostrá tréningová hra. ŽIADNE skriptovanie — reálny
     GameState/AI podľa uložených nastavení (rovnaká obtiažnosť ako "Nová
@@ -91,7 +199,26 @@ def run_chapter_trening() -> str:
     Tutoriálu) — po Game Over vždy "menu" (Preskočiť už niet kam, kolo je
     dohraté).
 
-    Jediný rozdiel oproti ostrej hre: tipy od AI sú tu zapnuté."""
+    Jediný rozdiel oproti ostrej hre: tipy od AI sú tu zapnuté. Pred
+    PRVÝM kolom tejto návštevy kapitoly sa navyše ukáže krátky úvodný
+    panel vysvetľujúci poradcu (_show_trening_intro_panel() vyššie) —
+    pri "Hraj znova" po Game Over sa už nezobrazí.
+
+    Panel je ZÁMERNE samostatná slučka BEZ diriguenta na Screen —
+    pripojenie diriguenta (čo i len na úvodnú obrazovku) vypína
+    automatické rozdanie ďalšieho kola na celú reláciu (pozri
+    gui/screen.py::step_frame()::next_round_timer) a tréning by po
+    prvom kole zamrzol. (Nájdené v hre 2026-10-21.)
+
+    Samotná hra MÁ diriguenta (tutorial/trening_score_director.py::
+    TreningScoreDirector) — na rozdiel od úvodného panela si ale ten
+    sám preberá spúšťanie ďalšieho kola (pozri jeho hlavu súboru), takže
+    sa vyššie spomínaný bug nemôže zopakovať. Zobrazuje jednorazové
+    vysvetlenia pravidiel "90b" a "reset na 100b". Nová instancia na
+    každé "Hraj znova" (nový while cyklus nižšie) — vysvetlenia sa tak
+    môžu zobraziť znova v novej hre."""
+    _show_trening_intro_panel()
+
     settings = dict(load_settings())
     # Tipy chceme v tréningovej kapitole vždy, bez ohľadu na to, ako ich
     # má hráč nastavené v ostrej hre. Meníme len túto lokálnu kópiu — do
@@ -104,7 +231,9 @@ def run_chapter_trening() -> str:
     settings["chapter_banner"] = "TRÉNINGOVÁ HRA"
     while True:
         game_state, ai_players = create_game(settings)
-        screen = Screen(game_state, ai_players, debug=DEBUG_MODE, settings=settings)
+        director = TreningScoreDirector()
+        screen = Screen(game_state, ai_players, debug=DEBUG_MODE,
+                        settings=settings, director=director)
         result = screen.run()
 
         if result == "game_over":
@@ -130,6 +259,7 @@ def run_chapter_trening() -> str:
 
 CHAPTERS = [
     ("zaklady", run_chapter_zaklady),
+    ("zavazky", run_chapter_zavazky),
     ("trening", run_chapter_trening),
 ]
 

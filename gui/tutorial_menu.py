@@ -18,6 +18,7 @@ from config import (
 
 CHAPTER_LABELS = {
     "zaklady": "Základy",
+    "zavazky": "Záväzok",
     "trening": "Tréningová hra",
 }
 

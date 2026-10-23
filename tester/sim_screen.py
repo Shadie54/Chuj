@@ -82,6 +82,7 @@ WATCHER_TABS = [
         ("watch_illuminated_and_caught", "Vysvietil + schytal vlastného horníka", False),
         ("illuminated_exclude_high_score", "vylúč 90+ prípady", True),
         ("watch_hornik_capture", "Schytávanie horníkov", False),
+        ("watch_high_score_round", "Kolo s 90+ situáciou (hocičo, pre ručnú analýzu)", False),
     ]),
     ("cardplay", "Rozhodnutia v štichoch", [
         ("watch_global_fallback", "Global fallback", False),

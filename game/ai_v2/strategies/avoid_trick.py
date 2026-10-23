@@ -204,7 +204,14 @@ class AvoidTrick(Strategy):
         suit = ctx.lead_suit
         suit_cards = [c for c in ctx.lead_cards if not c.is_special]
 
-        if suit in ("leaf", "acorn"):
+        # Eso/kráľ sa z kandidátov vylučujú len kým je horník danej farby
+        # ešte živý — ich vylúčenie bolo pôvodne bez ohľadu na
+        # is_special_gone(suit), takže keď bol horník preukázateľne mimo
+        # hry (napr. padol cez void v prvých štichoch), AI bola pri výbere
+        # zbytočne konzervatívna aj v nerozohranej farbe (nahlásené
+        # 2026-10-22). Keď je horník gone, eso/kráľ idú do matice rovnako
+        # ako ostatné karty tej farby.
+        if suit in ("leaf", "acorn") and not self.memory.is_special_gone(suit):
             suit_cards = [c for c in suit_cards if c.rank not in ("ace", "king")]
 
         if not suit_cards:

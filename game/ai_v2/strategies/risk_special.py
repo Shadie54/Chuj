@@ -113,9 +113,16 @@ class RiskSpecial(Strategy):
             return False
         if self.memory.is_special_gone(lead_suit):
             return False
+        # Kontrola musí zachytiť HOCIJAKÉHO horníka v štichu, nie len
+        # rovnakej farby ako lead_suit — ak niekto cez void dumpol
+        # horníka OPAČNEJ farby, výhra štichu (zahraním neporaziteľného
+        # esa/kráľa) ho rovnako zoberie. Pôvodná podmienka to prehliadala,
+        # takže RISK_TRAP sa spustil aj keď v štichu už reálne ležali body
+        # (nahlásené 2026-10-22, seed 2031266500 — zelený horník padol cez
+        # void, počítač si napriek tomu "rizikovo" zobral eso a zarobil
+        # 12b navyše). Rovnaký princíp ako AvoidTrick._dump_ak_free().
         special_in_trick = any(
-            c.is_special and c.suit == lead_suit
-            for _, c in ctx.decision.trick.played_cards
+            c.is_special for _, c in ctx.decision.trick.played_cards
         )
         if special_in_trick:
             return False
