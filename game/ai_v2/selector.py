@@ -221,6 +221,20 @@ class StrategySelector:
     def _fallback(self, ctx: AIContext) -> Card:
         non_special = [c for c in ctx.playable if not c.is_special]
         pool = non_special if non_special else ctx.playable
+        # Pri vynášaní sa trapy (karty, ktoré nikto nemôže prebiť —
+        # vrátane každej karty mŕtvej farby) vyradia, ak zostane aspoň
+        # jedna iná karta. Trap pri výnose = istá výhra štichu a ostatní
+        # (pri mŕtvej farbe void) môžu voľne zhodiť červené/horníka.
+        # Pôvodne sa bral len najnižší rank bez ohľadu na trap
+        # (2026-10-24, nález pri oprave SetupVoid, seed 1310220294).
+        # Keď sú trap všetky karty, zoznam ostane — FORCED_LEAD_TRAP nižšie.
+        if ctx.is_leader:
+            not_trap = [
+                c for c in pool
+                if not self._is_unbeatable_by_opponent(c, ctx)
+            ]
+            if not_trap:
+                pool = not_trap
         card = min(pool, key=lambda c: c.rank_order)
 
         # Úzko vymedzený prípad: leader a VŠETKY hrateľné karty (vrátane

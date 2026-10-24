@@ -3,10 +3,10 @@
 import pygame
 import os
 from config import (
-    SCREEN_WIDTH, SCREEN_HEIGHT,
-    COLOR_WHITE, COLOR_GOLD, COLOR_GRAY, COLOR_RED, COLOR_GREEN,
-    COLOR_BUTTON_SECONDARY, CARDS_MEDIUM_PATH, CARD_SIZE_MEDIUM,
-    COLOR_PENALTY, COLOR_BONUS, COLOR_ILLUMINATED, get_font, SUIT_ICONS_PATH,
+    SCREEN_WIDTH,
+    COLOR_WHITE, COLOR_GOLD, COLOR_GRAY,
+    COLOR_BUTTON_SECONDARY,
+    COLOR_PENALTY, COLOR_BONUS, COLOR_ILLUMINATED, SUIT_ICONS_PATH,
     RANKS, COLOR_PANEL_BG, COLOR_DARK_GRAY, BUTTON_RADIUS
 )
 
@@ -19,12 +19,13 @@ _PANEL_BORDER_RADIUS = 14
 
 
 class InfoOverlay:
-    def __init__(self, screen: pygame.Surface):
-        self.screen = screen
+    def __init__(self, canvas):
+        # canvas = gui/canvas.py::Canvas nad oknom (rework rozlíšení, krok 5)
+        self.canvas = canvas
         self.visible = False
-        self.font_small = get_font(22)
-        self.font_medium = get_font(30)
-        self.font_large = get_font(48)
+        self.font_small = self.canvas.font(22)
+        self.font_medium = self.canvas.font(30)
+        self.font_large = self.canvas.font(48)
 
         # Odvodené od SKUTOČNEJ výšky písma (font.get_height()), nie z
         # čísla "na oko". Pevné hodnoty ladené na jednom fonte (napr. v
@@ -36,8 +37,6 @@ class InfoOverlay:
         self._row_h = self.font_small.get_height() + 12       # text aj odznak
         self._medium_line_h = self.font_medium.get_height() + 8
         self._small_line_h = self.font_small.get_height() + 6
-
-        self._card_cache: dict[str, pygame.Surface] = {}
 
         self.btn_close = pygame.Rect(SCREEN_WIDTH - 60, 20, 40, 40)
 
@@ -97,22 +96,21 @@ class InfoOverlay:
         if not self.visible:
             return
 
-        dark = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-        dark.fill((0, 0, 0, 245))
-        self.screen.blit(dark, (0, 0))
+        # Stmavenie cez celé okno (aj pásma pri 21:9)
+        self.canvas.overlay_window((0, 0, 0, 245))
 
         # Nadpis
         title = self.font_large.render("PRAVIDLÁ A BODOVANIE", True, COLOR_GOLD)
-        self.screen.blit(title, title.get_rect(centerx=SCREEN_WIDTH // 2, top=18))
-        pygame.draw.line(self.screen, COLOR_GOLD, (80, 68), (SCREEN_WIDTH - 80, 68), 1)
+        self.canvas.blit(title, title.get_rect(centerx=SCREEN_WIDTH // 2, top=18))
+        self.canvas.line(COLOR_GOLD, (80, 68), (SCREEN_WIDTH - 80, 68), 1)
 
         # Zavrieť
-        pygame.draw.rect(self.screen, COLOR_BUTTON_SECONDARY,
+        self.canvas.rect(COLOR_BUTTON_SECONDARY,
                          self.btn_close, border_radius=BUTTON_RADIUS)
-        pygame.draw.rect(self.screen, COLOR_GOLD,
+        self.canvas.rect(COLOR_GOLD,
                          self.btn_close, width=2, border_radius=BUTTON_RADIUS)
         x = self.font_medium.render("X", True, COLOR_WHITE)
-        self.screen.blit(x, x.get_rect(center=self.btn_close.center))
+        self.canvas.blit(x, x.get_rect(center=self.btn_close.center))
 
         self._draw_tabs()
 
@@ -131,14 +129,13 @@ class InfoOverlay:
             (self.tab_pravidla,  "Pravidlá",  "pravidla"),
         ):
             active = self.active_tab == key
-            pygame.draw.rect(self.screen,
-                             (45, 30, 12) if active else (20, 12, 5),
+            self.canvas.rect((45, 30, 12) if active else (20, 12, 5),
                              tab, border_radius=BUTTON_RADIUS)
-            pygame.draw.rect(self.screen, COLOR_GOLD, tab, width=2,
+            self.canvas.rect(COLOR_GOLD, tab, width=2,
                              border_radius=BUTTON_RADIUS)
             surf = self.font_small.render(label, True,
                                           COLOR_GOLD if active else COLOR_GRAY)
-            self.screen.blit(surf, surf.get_rect(center=tab.center))
+            self.canvas.blit(surf, surf.get_rect(center=tab.center))
 
     # ------------------------------------------------------------------
     # Záložka: BODOVANIE
@@ -153,16 +150,14 @@ class InfoOverlay:
             content_h = content_fn(x, cy, col_w, measure_only=True)
             box_h = self._header_h + content_h + 20
 
-            box = pygame.Surface((col_w, box_h), pygame.SRCALPHA)
-            box.fill((*COLOR_PANEL_BG, _PANEL_BG_ALPHA))
-            self.screen.blit(box, (x, cy))
-            pygame.draw.rect(self.screen, COLOR_GOLD, (x, cy, col_w, box_h),
+            self.canvas.overlay(pygame.Rect((x, cy), (col_w, box_h)), (*COLOR_PANEL_BG, _PANEL_BG_ALPHA))
+            self.canvas.rect(COLOR_GOLD, (x, cy, col_w, box_h),
                              width=2, border_radius=_PANEL_BORDER_RADIUS)
 
             title_surf = self.font_medium.render(title, True, COLOR_GOLD)
-            self.screen.blit(title_surf, (x + 14, cy + 10))
+            self.canvas.blit(title_surf, (x + 14, cy + 10))
             line_y = cy + 10 + title_surf.get_height() + 6
-            pygame.draw.line(self.screen, COLOR_DARK_GRAY,
+            self.canvas.line(COLOR_DARK_GRAY,
                              (x + 14, line_y), (x + col_w - 14, line_y), 1)
 
             content_fn(x, line_y + 10, col_w, measure_only=False)
@@ -185,25 +180,23 @@ class InfoOverlay:
                 bx = x + 14
                 hx = bx
                 for rank in RANKS:
-                    img = self._load_card("heart", rank)
+                    img = self._load_card("heart", rank, (card_w, card_h))
                     if img:
-                        self.screen.blit(
-                            pygame.transform.scale(img, (card_w, card_h)), (hx, y))
-                        pygame.draw.rect(
-                            self.screen, COLOR_GOLD, (hx, y, card_w, card_h),
+                        self.canvas.blit(img, (hx, y))
+                        self.canvas.rect(COLOR_GOLD, (hx, y, card_w, card_h),
                             width=2, border_radius=6
                         )
                     hx += heart_step
                 tx = bx + hearts_w + 20
                 ty = y + 40
                 s = self.font_medium.render("1 bod", True, COLOR_PENALTY)
-                self.screen.blit(s, (tx, ty)); ty += self._medium_line_h
+                self.canvas.blit(s, (tx, ty)); ty += self._medium_line_h
                 s = self.font_small.render(
                     "každá srdcová karta, bez ohľadu na hodnotu", True, COLOR_WHITE)
-                self.screen.blit(s, (tx, ty)); ty += self._small_line_h
+                self.canvas.blit(s, (tx, ty)); ty += self._small_line_h
                 s = self.font_small.render(
                     "2 body, ak sú vysvietení obaja horníci", True, COLOR_ILLUMINATED)
-                self.screen.blit(s, (tx, ty))
+                self.canvas.blit(s, (tx, ty))
             return card_h + 20
 
         y = draw_section(col_x, y, "HODNOTY KARIET", content_karty, full_w)
@@ -219,21 +212,20 @@ class InfoOverlay:
                 block_w = w // 2
                 for i, (suit, rank, base, illum, note) in enumerate(specials):
                     bx = x + i * block_w + 14
-                    img = self._load_card(suit, rank)
+                    img = self._load_card(suit, rank, (card_w, card_h))
                     if img:
-                        self.screen.blit(
-                            pygame.transform.scale(img, (card_w, card_h)), (bx, y))
+                        self.canvas.blit(img, (bx, y))
                     tx = bx + card_w + 20
                     ty = y + 30
                     s = self.font_medium.render(base, True, COLOR_PENALTY)
-                    self.screen.blit(s, (tx, ty));
+                    self.canvas.blit(s, (tx, ty));
                     ty += self._medium_line_h
                     s = self.font_small.render(illum, True, COLOR_ILLUMINATED)
-                    self.screen.blit(s, (tx, ty));
+                    self.canvas.blit(s, (tx, ty));
                     ty += self._small_line_h
                     if note:
                         s = self.font_small.render(note, True, COLOR_ILLUMINATED)
-                        self.screen.blit(s, (tx, ty))
+                        self.canvas.blit(s, (tx, ty))
             return card_h + 20
 
         def content_bonusy(x, y, w, measure_only):
@@ -271,15 +263,13 @@ class InfoOverlay:
 
         # Kresli ľavý box — horníci
         box_h = content_hornici(col_x, y, col_w2, measure_only=True) + self._header_h + 20
-        box = pygame.Surface((col_w2, box_h), pygame.SRCALPHA)
-        box.fill((*COLOR_PANEL_BG, _PANEL_BG_ALPHA))
-        self.screen.blit(box, (col_x, y))
-        pygame.draw.rect(self.screen, COLOR_GOLD, (col_x, y, col_w2, box_h),
+        self.canvas.overlay(pygame.Rect((col_x, y), (col_w2, box_h)), (*COLOR_PANEL_BG, _PANEL_BG_ALPHA))
+        self.canvas.rect(COLOR_GOLD, (col_x, y, col_w2, box_h),
                          width=2, border_radius=_PANEL_BORDER_RADIUS)
         t = self.font_medium.render("HORNÍCI", True, COLOR_GOLD)
-        self.screen.blit(t, (col_x + 14, y + 10))
+        self.canvas.blit(t, (col_x + 14, y + 10))
         line_y = y + 10 + t.get_height() + 6
-        pygame.draw.line(self.screen, COLOR_DARK_GRAY,
+        self.canvas.line(COLOR_DARK_GRAY,
                          (col_x + 14, line_y), (col_x + col_w2 - 14, line_y), 1)
         content_hornici(col_x, line_y + 10, col_w2, measure_only=False)
 
@@ -295,41 +285,37 @@ class InfoOverlay:
                 ix = x + 14
                 iy = cy + (content_h - icon_side) // 2
                 if icon:
-                    self.screen.blit(icon, (ix, iy))
+                    self.canvas.blit(icon, (ix, iy))
                 tx = ix + icon_side + 20
                 ty = cy + (content_h - text_h) // 2
                 for line in lines:
                     s = self.font_small.render(line, True, COLOR_WHITE)
-                    self.screen.blit(s, (tx, ty))
+                    self.canvas.blit(s, (tx, ty))
                     ty += self._small_line_h
             return content_h
 
         chuj_y = y + box_h + 14
         box_h3 = content_chuj(col_x, chuj_y, col_w2, measure_only=True) + self._header_h + 20
-        box3 = pygame.Surface((col_w2, box_h3), pygame.SRCALPHA)
-        box3.fill((*COLOR_PANEL_BG, _PANEL_BG_ALPHA))
-        self.screen.blit(box3, (col_x, chuj_y))
-        pygame.draw.rect(self.screen, COLOR_GOLD, (col_x, chuj_y, col_w2, box_h3),
+        self.canvas.overlay(pygame.Rect((col_x, chuj_y), (col_w2, box_h3)), (*COLOR_PANEL_BG, _PANEL_BG_ALPHA))
+        self.canvas.rect(COLOR_GOLD, (col_x, chuj_y, col_w2, box_h3),
                          width=2, border_radius=_PANEL_BORDER_RADIUS)
         t3 = self.font_medium.render("AKTUÁLNY CHUJ", True, COLOR_GOLD)
-        self.screen.blit(t3, (col_x + 14, chuj_y + 10))
+        self.canvas.blit(t3, (col_x + 14, chuj_y + 10))
         line_y3 = chuj_y + 10 + t3.get_height() + 6
-        pygame.draw.line(self.screen, COLOR_DARK_GRAY,
+        self.canvas.line(COLOR_DARK_GRAY,
                          (col_x + 14, line_y3), (col_x + col_w2 - 14, line_y3), 1)
         content_chuj(col_x, line_y3 + 10, col_w2, measure_only=False)
 
         # Kresli pravý box — bonusy
         bx2 = col_x + col_w2 + 40
         box_h2 = content_bonusy(bx2, y, col_w2, measure_only=True) + self._header_h + 20
-        box2 = pygame.Surface((col_w2, box_h2), pygame.SRCALPHA)
-        box2.fill((*COLOR_PANEL_BG, _PANEL_BG_ALPHA))
-        self.screen.blit(box2, (bx2, y))
-        pygame.draw.rect(self.screen, COLOR_GOLD, (bx2, y, col_w2, box_h2),
+        self.canvas.overlay(pygame.Rect((bx2, y), (col_w2, box_h2)), (*COLOR_PANEL_BG, _PANEL_BG_ALPHA))
+        self.canvas.rect(COLOR_GOLD, (bx2, y, col_w2, box_h2),
                          width=2, border_radius=_PANEL_BORDER_RADIUS)
         t2 = self.font_medium.render("BONUSY A PRAVIDLÁ", True, COLOR_GOLD)
-        self.screen.blit(t2, (bx2 + 14, y + 10))
+        self.canvas.blit(t2, (bx2 + 14, y + 10))
         line_y2 = y + 10 + t2.get_height() + 6
-        pygame.draw.line(self.screen, COLOR_DARK_GRAY,
+        self.canvas.line(COLOR_DARK_GRAY,
                          (bx2 + 14, line_y2), (bx2 + col_w2 - 14, line_y2), 1)
         content_bonusy(bx2, line_y2 + 10, col_w2, measure_only=False)
 
@@ -363,21 +349,19 @@ class InfoOverlay:
             box_h = self._header_h + content_h + 14  # nadpis + obsah + padding
 
             # Karta — polopriesvitné pozadie
-            box = pygame.Surface((col_w, box_h), pygame.SRCALPHA)
-            box.fill((*COLOR_PANEL_BG, _PANEL_BG_ALPHA))
-            self.screen.blit(box, (x, cy))
+            self.canvas.overlay(pygame.Rect((x, cy), (col_w, box_h)), (*COLOR_PANEL_BG, _PANEL_BG_ALPHA))
 
             # Celý zaoblený zlatý rámik (rovnako ako ostatné panely v hre)
-            pygame.draw.rect(self.screen, COLOR_GOLD, (x, cy, col_w, box_h),
+            self.canvas.rect(COLOR_GOLD, (x, cy, col_w, box_h),
                              width=2, border_radius=_PANEL_BORDER_RADIUS)
 
             # Nadpis sekcie
             title_surf = self.font_medium.render(title, True, COLOR_GOLD)
-            self.screen.blit(title_surf, (x + 14, cy + 10))
+            self.canvas.blit(title_surf, (x + 14, cy + 10))
 
             # Oddeľovač pod nadpisom
             line_y = cy + 10 + title_surf.get_height() + 6
-            pygame.draw.line(self.screen, COLOR_DARK_GRAY,
+            self.canvas.line(COLOR_DARK_GRAY,
                              (x + 14, line_y), (x + col_w - 14, line_y), 1)
 
             # Obsah
@@ -389,20 +373,20 @@ class InfoOverlay:
                 if isinstance(item, tuple) and item[0] == "icon":
                     _, icon_key, text = item
                     surf = self._render_with_icons(text, self.font_small, COLOR_WHITE)
-                    self.screen.blit(surf, (x + 14, text_y))
+                    self.canvas.blit(surf, (x + 14, text_y))
                     icon = self._declaration_icons.get(icon_key)
                     if icon:
                         ir = icon.get_rect()
                         # vycentrovať na celý 3-riadkový blok (popis +
                         # splnené + nesplnené), nie len na tento riadok
                         ir.midright = (x + col_w - 14, int(text_y + 1.5 * row_h))
-                        self.screen.blit(icon, ir)
+                        self.canvas.blit(icon, ir)
                 elif isinstance(item, tuple):
                     color, badge, text = item
                     self._draw_badge_line(x + 14, text_y, badge, text, color)
                 else:
                     surf = self._render_with_icons(item, self.font_small, COLOR_WHITE)
-                    self.screen.blit(surf, (x + 14, text_y))
+                    self.canvas.blit(surf, (x + 14, text_y))
                 text_y += row_h
 
             return cy + box_h + 14  # medzera medzi sekciami
@@ -468,11 +452,11 @@ class InfoOverlay:
                         center: bool = False):
         surf = self.font_medium.render(text, True, COLOR_GOLD)
         rx = x if not center else surf.get_rect(centerx=x).x
-        self.screen.blit(surf, (rx, y))
+        self.canvas.blit(surf, (rx, y))
         line_y = y + surf.get_height() + 2
         line_w = surf.get_width() if not center else SCREEN_WIDTH - 160
         lx = rx if not center else 80
-        pygame.draw.line(self.screen, COLOR_GOLD,
+        self.canvas.line(COLOR_GOLD,
                          (lx, line_y), (lx + line_w, line_y), 1)
 
     def _text_block(self, x: int, y: int, max_w: int,
@@ -483,7 +467,7 @@ class InfoOverlay:
                 y += 10
                 continue
             surf = self._render_with_icons(line, self.font_small, COLOR_WHITE)
-            self.screen.blit(surf, (x, y))
+            self.canvas.blit(surf, (x, y))
             y += 24
         return y
 
@@ -494,31 +478,25 @@ class InfoOverlay:
         badge_surf = self.font_small.render(badge, True, color)
         bw = badge_surf.get_width() + 16
         bh = badge_surf.get_height() + 6
-        bg = pygame.Surface((bw, bh), pygame.SRCALPHA)
-        bg.fill((0, 0, 0, 120))
-        self.screen.blit(bg, (x, y - 3))
-        pygame.draw.rect(self.screen, color,
+        self.canvas.overlay(pygame.Rect((x, y - 3), (bw, bh)), (0, 0, 0, 120))
+        self.canvas.rect(color,
                          (x, y - 3, bw, bh), width=1, border_radius=4)
-        self.screen.blit(badge_surf, (x + 8, y))
+        self.canvas.blit(badge_surf, (x + 8, y))
 
         # Text
         txt = self.font_small.render(text, True, COLOR_WHITE)
-        self.screen.blit(txt, (x + bw + 10, y))
+        self.canvas.blit(txt, (x + bw + 10, y))
 
-    def _load_card(self, suit: str, rank: str) -> pygame.Surface | None:
-        key = f"{suit}-{rank}"
-        if key not in self._card_cache:
-            path = os.path.join(CARDS_MEDIUM_PATH, f"{suit}-{rank}.png")
-            try:
-                img = pygame.image.load(path).convert_alpha()
-                self._card_cache[key] = pygame.transform.scale(img, CARD_SIZE_MEDIUM)
-            except FileNotFoundError:
-                self._card_cache[key] = None
-        return self._card_cache[key]
+    def _load_card(self, suit: str, rank: str, size: tuple[int, int]):
+        """Karta v logickej veľkosti (Canvas — ostrá aj na 4K; predtým
+        medium + transform.scale každú snímku)."""
+        try:
+            return self.canvas.card(f"{suit}-{rank}.png", lsize=size)
+        except (FileNotFoundError, pygame.error):
+            return None
 
     def _load_suit_icons(self):
         """Načíta malé suit ikony a škáluje ich na výšku textu."""
-        from config import SUIT_ICONS_PATH  # treba pridať do config.py
         icon_h = 22  # výška ikony = výška riadku font_small
         suits = {
             "♠": "leaf",
@@ -529,14 +507,11 @@ class InfoOverlay:
         for symbol, suit in suits.items():
             path = os.path.join(SUIT_ICONS_PATH, f"{suit}-icon@small.png")
             try:
-                img = pygame.image.load(path).convert_alpha()
                 # Zachovaj pomer strán, výška = icon_h
-                w, h = img.get_size()
+                w, h = pygame.image.load(path).get_size()
                 new_w = int(w * icon_h / h)
-                self._suit_icons[symbol] = pygame.transform.scale(
-                    img, (new_w, icon_h)
-                )
-            except FileNotFoundError:
+                self._suit_icons[symbol] = self.canvas.image(path, (new_w, icon_h))
+            except (FileNotFoundError, pygame.error):
                 self._suit_icons[symbol] = None
 
     def _load_declaration_icons(self):
@@ -545,15 +520,14 @@ class InfoOverlay:
         phase_renderer.py. Výška = 3 textové riadky (popis + splnené +
         nesplnené), nech sú dobre čitateľné, nie vtesnané do jedného
         riadku."""
-        self._declaration_icons: dict[str, pygame.Surface | None] = {}
-        icon_side = self._row_h * 3 - 8
+        self._declaration_icons: dict = {}
+        icon_side = int(self._row_h * 3 - 8)
         for key in ("all", "none"):
             path = os.path.join("assets", "graphics", f"{key}.png")
             try:
-                img = pygame.image.load(path).convert_alpha()
-                self._declaration_icons[key] = pygame.transform.scale(
-                    img, (icon_side, icon_side))
-            except FileNotFoundError:
+                self._declaration_icons[key] = self.canvas.image(
+                    path, (icon_side, icon_side))
+            except (FileNotFoundError, pygame.error):
                 self._declaration_icons[key] = None
 
     def _load_chuj_icon(self):
@@ -562,48 +536,41 @@ class InfoOverlay:
         stole (phase_renderer.py::_chuj_icon, 100x100)."""
         path = os.path.join("assets", "graphics", "chuj.png")
         try:
-            img = pygame.image.load(path).convert_alpha()
-            self._chuj_icon = pygame.transform.scale(img, (100, 100))
-        except FileNotFoundError:
+            self._chuj_icon = self.canvas.image(path, (100, 100))
+        except (FileNotFoundError, pygame.error):
             self._chuj_icon = None
 
-    def _render_with_icons(self, text: str, font: pygame.font.Font,
-                           color: tuple) -> pygame.Surface:
+    def _render_with_icons(self, text: str, font, color: tuple):
         """
-        Vykreslí text kde suit symboly sú nahradené ikonkami.
-        Vracia Surface so zloženým výsledkom.
+        Vykreslí text, kde sú suit symboly nahradené ikonkami. Vracia
+        LSurf (fyzické pixely, logické rozmery — gui/canvas.py).
         """
         import re
         # Rozdeľ text na časti — text a symboly
         parts = re.split(r'([♠♣♥●])', text)
 
         surfaces = []
-        total_w = 0
-        max_h = font.get_height()
-
         for part in parts:
             if part in self._suit_icons and self._suit_icons[part]:
-                surf = self._suit_icons[part]
+                surfaces.append(self._suit_icons[part])
             elif part:
-                surf = font.render(part, True, color)
-            else:
-                continue
-            surfaces.append(surf)
-            total_w += surf.get_width()
-            max_h = max(max_h, surf.get_height())
+                surfaces.append(font.render(part, True, color))
 
         if not surfaces:
             return font.render(text, True, color)
 
-        result = pygame.Surface((total_w, max_h), pygame.SRCALPHA)
+        # Vertikálne centrovanie na výšku riadku (aspoň výška písma)
+        s = self.canvas.s
+        total_w = sum(p.phys.get_width() for p in surfaces)
+        max_h = max([round(font.get_height() * s)]
+                    + [p.phys.get_height() for p in surfaces])
+        result = pygame.Surface((max(1, total_w), max(1, max_h)), pygame.SRCALPHA)
         x = 0
         for surf in surfaces:
-            # Vertikálne centrovanie
-            y = (max_h - surf.get_height()) // 2
-            result.blit(surf, (x, y))
-            x += surf.get_width()
-
-        return result
+            result.blit(surf.phys, (x, (max_h - surf.phys.get_height()) // 2))
+            x += surf.phys.get_width()
+        from gui.canvas import LSurf
+        return LSurf(result, round(total_w / s), round(max_h / s))
 
     def __repr__(self) -> str:
         return f"InfoOverlay(visible={self.visible})"

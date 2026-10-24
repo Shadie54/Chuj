@@ -21,7 +21,7 @@ import pygame
 from config import (
     BUTTON_RADIUS, CARD_SIZE_MEDIUM, COLOR_BUTTON_PRIMARY, COLOR_GOLD,
     COLOR_GRAY, COLOR_PANEL_BG, COLOR_WHITE,
-    SCREEN_WIDTH, TABLE_CENTER_X, TABLE_CENTER_Y,
+    SCREEN_WIDTH, TABLE_CENTER_X,
 )
 from game.card import Card
 from gui.lesson_panel import LessonPanel, PANEL_LEFT, PANEL_TOP, BUTTON_H
@@ -119,7 +119,7 @@ class TutorialDirector:
     def attach(self, screen):
         """Volá Screen na konci svojho __init__."""
         self.screen = screen
-        self.lesson_panel = LessonPanel(screen.screen)
+        self.lesson_panel = LessonPanel(screen.canvas)
         # Pôvodný názov bannera zo settings — _sync_banner_title() sa naň
         # vracia mimo kroku "trick_demo".
         self._default_banner_title = screen.settings.get("chapter_banner")
@@ -522,7 +522,7 @@ class TutorialDirector:
         handle_click() vie len o LessonPanel, nie o konkrétnom kroku, a
         vďaka tomu to funguje bez zmeny.
         """
-        surface = self.screen.screen
+        canvas = self.screen.canvas
         panel = self.lesson_panel
         cx = TABLE_CENTER_X
 
@@ -559,24 +559,22 @@ class TutorialDirector:
         backdrop_rect = pygame.Rect(0, 0, backdrop_w, backdrop_h)
         backdrop_rect.centerx = cx
         backdrop_rect.top = ty - pad_y
-        backdrop = pygame.Surface((backdrop_w, backdrop_h), pygame.SRCALPHA)
-        backdrop.fill((*COLOR_PANEL_BG, 235))
-        surface.blit(backdrop, backdrop_rect.topleft)
-        pygame.draw.rect(surface, COLOR_GOLD, backdrop_rect,
+        canvas.overlay(backdrop_rect, (*COLOR_PANEL_BG, 235))
+        canvas.rect(COLOR_GOLD, backdrop_rect,
                          width=2, border_radius=14)
 
         counter_surf = counter_font.render(counter, True, COLOR_GRAY)
-        surface.blit(counter_surf, counter_surf.get_rect(centerx=cx, top=ty))
+        canvas.blit(counter_surf, counter_surf.get_rect(centerx=cx, top=ty))
         ty += counter_h + spacing
 
         if title:
             title_surf = body_font.render(title, True, COLOR_GOLD)
-            surface.blit(title_surf, title_surf.get_rect(centerx=cx, top=ty))
+            canvas.blit(title_surf, title_surf.get_rect(centerx=cx, top=ty))
             ty += title_h + 10
 
         for line in lines:
             line_surf = body_font.render(line, True, COLOR_WHITE)
-            surface.blit(line_surf, line_surf.get_rect(centerx=cx, top=ty))
+            canvas.blit(line_surf, line_surf.get_rect(centerx=cx, top=ty))
             ty += line_h
         ty += spacing
 
@@ -589,12 +587,10 @@ class TutorialDirector:
         button_rect = pygame.Rect(0, 0, btn_w, BUTTON_H)
         button_rect.centerx = cx
         button_rect.top = ty
-        overlay = pygame.Surface((btn_w, BUTTON_H), pygame.SRCALPHA)
-        overlay.fill((*COLOR_BUTTON_PRIMARY, 230))
-        surface.blit(overlay, button_rect.topleft)
-        pygame.draw.rect(surface, COLOR_GOLD, button_rect,
+        canvas.overlay(button_rect, (*COLOR_BUTTON_PRIMARY, 230))
+        canvas.rect(COLOR_GOLD, button_rect,
                          width=2, border_radius=BUTTON_RADIUS)
-        surface.blit(text_surf, text_surf.get_rect(center=button_rect.center))
+        canvas.blit(text_surf, text_surf.get_rect(center=button_rect.center))
         # Jediný dôvod, prečo sa krok vôbec dotýka LessonPanel — handle_click()
         # odtiaľ tlačidlo číta bez ohľadu na to, ktorý krok ho nakreslil.
         panel.next_button = button_rect
@@ -618,7 +614,7 @@ class TutorialDirector:
         riadku, vypočítaný volajúcim (_draw_centered_panel) podľa toho,
         kde skončil text nad ním.
         """
-        surface = self.screen.screen
+        canvas = self.screen.canvas
         renderer = self.screen.card_renderer
         card_w, card_h = CARD_SIZE_MEDIUM
         gap = self._DEMO_GAP
@@ -661,9 +657,9 @@ class TutorialDirector:
             img = renderer._get_card_image(card, size="medium").copy()
             img.set_alpha(alpha)
             rect = img.get_rect(center=(int(x), int(cy)))
-            surface.blit(img, rect)
+            canvas.blit(img, rect)
             if alpha == 255:
-                pygame.draw.rect(surface, COLOR_GOLD, rect,
+                canvas.rect(COLOR_GOLD, rect,
                                  width=2, border_radius=6)
 
     def _draw_centered_penalty_overview(self, step: dict):
@@ -703,7 +699,7 @@ class TutorialDirector:
         """Nakreslí samotný riadok: zelený a žaluďový horník ako
         samostatné karty (vlastný popis a body pod každou), vedľa nich
         vejár sŕdc (jeden spoločný popis a body pod celým vejárom)."""
-        surface = self.screen.screen
+        canvas = self.screen.canvas
         panel = self.lesson_panel
         renderer = self.screen.card_renderer
         card_w, card_h = CARD_SIZE_MEDIUM
@@ -713,27 +709,27 @@ class TutorialDirector:
             ty = top + card_h + 10
             for line in panel.wrap_text(label, panel.font_small, card_w + 30):
                 surf = panel.font_small.render(line, True, COLOR_WHITE)
-                surface.blit(surf, surf.get_rect(centerx=center_x, top=ty))
+                canvas.blit(surf, surf.get_rect(centerx=center_x, top=ty))
                 ty += 22
             points_surf = panel.font_medium.render(points, True, COLOR_GOLD)
-            surface.blit(points_surf, points_surf.get_rect(
+            canvas.blit(points_surf, points_surf.get_rect(
                 centerx=center_x, top=ty))
 
         x = TABLE_CENTER_X - self._penalty_row_w(specials, hearts, heart_step) // 2
 
         for card, label, points in specials:
-            surface.blit(renderer._get_card_image(card, size="medium"),
+            canvas.blit(renderer._get_card_image(card, size="medium"),
                          (x, top))
-            pygame.draw.rect(surface, COLOR_GOLD, (x, top, card_w, card_h),
+            canvas.rect(COLOR_GOLD, (x, top, card_w, card_h),
                              width=2, border_radius=6)
             draw_label(x + card_w // 2, label, points)
             x += card_w + gap
 
         hearts_x0 = x
         for card in hearts:
-            surface.blit(renderer._get_card_image(card, size="medium"),
+            canvas.blit(renderer._get_card_image(card, size="medium"),
                          (x, top))
-            pygame.draw.rect(surface, COLOR_GOLD, (x, top, card_w, card_h),
+            canvas.rect(COLOR_GOLD, (x, top, card_w, card_h),
                              width=2, border_radius=6)
             x += heart_step
         hearts_w = card_w + max(0, len(hearts) - 1) * heart_step

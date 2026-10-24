@@ -6,6 +6,9 @@
 #
 # Všetky čísla pochádzajú z game/profile.py — tu sa nič nepočíta, len
 # vykresľuje. Vďaka tomu sa dá obsah meniť bez zásahu do zberu dát.
+#
+# Od reworku rozlíšení (krok 4) kreslí cez gui/canvas.py v natívnom
+# rozlíšení; pozadie s nadpisom je statická vrstva.
 
 import pygame
 import sys
@@ -13,13 +16,15 @@ import sys
 from game.profile import (
     DEFAULT_NAME, Stats, load_profiles, save_profiles,
 )
+from gui import display
+from gui.canvas import StaticLayer, draw_backdrop
 from config import (
-    SCREEN_WIDTH, SCREEN_HEIGHT,
+    SCREEN_WIDTH,
     COLOR_WHITE, COLOR_GOLD, COLOR_GRAY, COLOR_DARK_GRAY,
     COLOR_GREEN, COLOR_RED,
     COLOR_BUTTON_PRIMARY, COLOR_BUTTON_SECONDARY, COLOR_PANEL_BG,
     FONT_SIZE_LARGE, FONT_SIZE_MEDIUM, FONT_SIZE_SMALL,
-    BUTTON_RADIUS, get_font,
+    BUTTON_RADIUS,
 )
 
 # Menovka hráča sa na dvoch miestach skracuje na 10 znakov (panel KOLO v
@@ -31,29 +36,24 @@ MAX_NAME_LEN = 10
 
 class StatsScreen:
     def __init__(self, screen: pygame.Surface):
+        # `screen` (logický povrch) sa nepoužíva — kreslí sa cez Canvas.
         self.screen = screen
+        self.canvas = display.canvas()
+        self._layer: StaticLayer | None = None
         self.clock = pygame.time.Clock()
 
-        self.font_title = get_font(64)
-        self.font_large = get_font(FONT_SIZE_LARGE)
-        self.font_medium = get_font(FONT_SIZE_MEDIUM)
-        self.font_small = get_font(FONT_SIZE_SMALL)
-        self.font_value = get_font(30)
+        self.font_title = self.canvas.font(64)
+        self.font_large = self.canvas.font(FONT_SIZE_LARGE)
+        self.font_medium = self.canvas.font(FONT_SIZE_MEDIUM)
+        self.font_small = self.canvas.font(FONT_SIZE_SMALL)
+        self.font_value = self.canvas.font(30)
         # Samostatné (väčšie) písmo pre riadky štatistík a svetlejšia farba
         # popisu — pôvodné FONT_SIZE_SMALL (18px) + COLOR_GRAY boli na
         # slnku/pri horšom zraku ťažko čitateľné. Lokálne len pre tento
         # screen, nemeníme globálny COLOR_GRAY (používa ho 12 ďalších
         # súborov s iným účelom).
-        self.font_row = get_font(21)
+        self.font_row = self.canvas.font(21)
         self.label_color = (215, 195, 165)
-
-        try:
-            self.bg = pygame.image.load("assets/graphics/table.jpg").convert()
-            self.bg = pygame.transform.scale(
-                self.bg, (SCREEN_WIDTH, SCREEN_HEIGHT)
-            )
-        except FileNotFoundError:
-            self.bg = None
 
         self.profiles, self.active = load_profiles()
         self.profile = self.profiles[self.active]
@@ -87,7 +87,7 @@ class StatsScreen:
         self.body_top = body_top
 
         self.back_button = {
-            "rect": pygame.Rect(center_x - 150, SCREEN_HEIGHT - 70, 300, 50),
+            "rect": pygame.Rect(center_x - 150, display.logical_height() - 70, 300, 50),
             "hover": False,
         }
 
@@ -193,9 +193,9 @@ class StatsScreen:
     def run(self) -> str:
         while True:
             self.clock.tick(60)
-            mouse_pos = pygame.mouse.get_pos()
+            mouse_pos = display.mouse_pos()
 
-            for event in pygame.event.get():
+            for event in display.get_events():
                 if event.type == pygame.QUIT:
                     pygame.quit()
                     sys.exit()
@@ -232,7 +232,7 @@ class StatsScreen:
                 self.rename_button["rect"].collidepoint(mouse_pos)
 
             self._draw()
-            pygame.display.flip()
+            display.present()
 
     def _handle_click(self, pos) -> str | None:
         if self.name_field.collidepoint(pos) or \
@@ -274,21 +274,18 @@ class StatsScreen:
     # ------------------------------------------------------------------
 
     def _draw(self):
-        if self.bg:
-            self.screen.blit(self.bg, (0, 0))
-        else:
-            self.screen.fill((45, 28, 15))
-        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 165))
-        self.screen.blit(overlay, (0, 0))
-
-        title = self.font_title.render("PROFIL", True, COLOR_GOLD)
-        self.screen.blit(title, title.get_rect(center=(SCREEN_WIDTH // 2, 88)))
-        pygame.draw.line(
-            self.screen, COLOR_GOLD,
-            (SCREEN_WIDTH // 2 - 220, 128), (SCREEN_WIDTH // 2 + 220, 128),
-            width=2
-        )
+        c = self.canvas
+        if self._layer is None:
+            self._layer = StaticLayer(c.target.get_size())
+        if self._layer.needs_redraw("static"):
+            with self._layer.drawing(c, key="static"):
+                draw_backdrop(c, (0, 0, 0, 165))
+                title = self.font_title.render("PROFIL", True, COLOR_GOLD)
+                c.blit(title, title.get_rect(center=(SCREEN_WIDTH // 2, 88)))
+                c.line(COLOR_GOLD,
+                       (SCREEN_WIDTH // 2 - 220, 128),
+                       (SCREEN_WIDTH // 2 + 220, 128), width=2)
+        self._layer.blit_to(c.target)
 
         self._draw_name_panel()
         self._draw_sections()
@@ -297,23 +294,21 @@ class StatsScreen:
     def _draw_name_panel(self):
         self._panel_bg(self.panel_name)
         label = self.font_medium.render("MENO HRÁČA", True, COLOR_GOLD)
-        self.screen.blit(
+        self.canvas.blit(
             label, label.get_rect(midleft=(self.panel_name.left + 28,
                                            self.name_field.centery))
         )
 
         active = self.editing_name
-        pygame.draw.rect(
-            self.screen, (12, 8, 4), self.name_field, border_radius=8
+        self.canvas.rect((12, 8, 4), self.name_field, border_radius=8
         )
-        pygame.draw.rect(
-            self.screen, COLOR_GOLD if active else COLOR_DARK_GRAY,
+        self.canvas.rect(COLOR_GOLD if active else COLOR_DARK_GRAY,
             self.name_field, width=2, border_radius=8
         )
 
         text = self.name_buffer if active else self.profile.name
         surf = self.font_value.render(text, True, COLOR_WHITE)
-        self.screen.blit(
+        self.canvas.blit(
             surf, surf.get_rect(midleft=(self.name_field.left + 14,
                                          self.name_field.centery))
         )
@@ -321,8 +316,7 @@ class StatsScreen:
             self._caret_timer = (self._caret_timer + 1) % 60
             if self._caret_timer < 30:
                 cx = self.name_field.left + 16 + surf.get_width() + 2
-                pygame.draw.line(
-                    self.screen, COLOR_WHITE,
+                self.canvas.line(COLOR_WHITE,
                     (cx, self.name_field.top + 10),
                     (cx, self.name_field.bottom - 10), width=2
                 )
@@ -351,7 +345,7 @@ class StatsScreen:
 
     def _draw_sections(self):
         sections = self._sections()
-        compact = SCREEN_HEIGHT < 950
+        compact = display.logical_height() < 950
         row_h = 27 if compact else 32
         head_h = 44 if compact else 50
         pad_bottom = 10 if compact else 12
@@ -371,8 +365,7 @@ class StatsScreen:
         # Späť dole. Predtým sa sekcie presahujúce dolný okraj ticho
         # zahadzovali (bug na rozlíšeniach < 950px výšky) — teraz sa dajú
         # doscrollovať kolieskom myši.
-        prev_clip = self.screen.get_clip()
-        self.screen.set_clip(self.viewport)
+        self.canvas.set_clip(self.viewport)
 
         for rect, (title, rows) in zip(rects, sections):
             rect = rect.move(0, -self.scroll_offset)
@@ -381,11 +374,10 @@ class StatsScreen:
             self._panel_bg(rect)
 
             label = self.font_medium.render(title, True, COLOR_GOLD)
-            self.screen.blit(
+            self.canvas.blit(
                 label, label.get_rect(midleft=(rect.left + 24, rect.top + 28))
             )
-            pygame.draw.line(
-                self.screen, COLOR_DARK_GRAY,
+            self.canvas.line(COLOR_DARK_GRAY,
                 (rect.left + 20, rect.top + 48),
                 (rect.right - 20, rect.top + 48), width=1
             )
@@ -393,14 +385,14 @@ class StatsScreen:
             y = rect.top + head_h
             for name, value, color in rows:
                 n = self.font_row.render(name, True, self.label_color)
-                self.screen.blit(n, (rect.left + 24, y + 4))
+                self.canvas.blit(n, (rect.left + 24, y + 4))
                 v = self.font_row.render(str(value), True, color)
-                self.screen.blit(
+                self.canvas.blit(
                     v, v.get_rect(topright=(rect.right - 24, y + 4))
                 )
                 y += row_h
 
-        self.screen.set_clip(prev_clip)
+        self.canvas.set_clip(None)
         self._draw_scrollbar(max_scroll)
 
     def _draw_scrollbar(self, max_scroll: int):
@@ -410,7 +402,7 @@ class StatsScreen:
             return
         track = pygame.Rect(self.viewport.right + 10, self.viewport.top,
                             6, self.viewport.height)
-        pygame.draw.rect(self.screen, COLOR_DARK_GRAY, track, border_radius=3)
+        self.canvas.rect(COLOR_DARK_GRAY, track, border_radius=3)
 
         ratio = self.viewport.height / self.content_height
         thumb_h = max(30, int(track.height * ratio))
@@ -418,23 +410,20 @@ class StatsScreen:
             (track.height - thumb_h) * (self.scroll_offset / max_scroll)
         )
         thumb = pygame.Rect(track.x, thumb_y, track.width, thumb_h)
-        pygame.draw.rect(self.screen, COLOR_GOLD, thumb, border_radius=3)
+        self.canvas.rect(COLOR_GOLD, thumb, border_radius=3)
 
     def _panel_bg(self, rect: pygame.Rect):
-        surf = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
-        surf.fill((*COLOR_PANEL_BG, 210))
-        self.screen.blit(surf, (rect.x, rect.y))
-        pygame.draw.rect(self.screen, COLOR_GOLD, rect, width=2, border_radius=14)
+        self.canvas.overlay(rect, (*COLOR_PANEL_BG, 210))
+        self.canvas.rect(COLOR_GOLD, rect, width=2, border_radius=14)
 
     def _draw_button(self, btn: dict, text: str, color: tuple):
         rect = btn["rect"]
         shade = tuple(min(255, c + 30) for c in color) if btn.get("hover") else color
-        pygame.draw.rect(self.screen, shade, rect, border_radius=BUTTON_RADIUS)
-        pygame.draw.rect(
-            self.screen, COLOR_GOLD, rect, width=2, border_radius=BUTTON_RADIUS
+        self.canvas.rect(shade, rect, border_radius=BUTTON_RADIUS)
+        self.canvas.rect(COLOR_GOLD, rect, width=2, border_radius=BUTTON_RADIUS
         )
         surf = self.font_small.render(text, True, COLOR_WHITE)
-        self.screen.blit(surf, surf.get_rect(center=rect.center))
+        self.canvas.blit(surf, surf.get_rect(center=rect.center))
 
     def _draw_back_button(self):
         self._draw_button(self.back_button, "Späť do menu", COLOR_BUTTON_SECONDARY)

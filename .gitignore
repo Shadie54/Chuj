@@ -22,3 +22,8 @@ Documents/
 tester_export.txt
 /dist/
 /build/
+
+# Rework rozlíšení — výstupy nástrojov v tools/
+gallery/
+testbed_out/
+testbed_*.png

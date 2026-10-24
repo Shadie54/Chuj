@@ -2,9 +2,14 @@
 
 import ctypes
 try:
-    ctypes.windll.user32.SetProcessDPIAware()
+    # Per-Monitor DPI (Win 8.1+) — správne rozlíšenie aj na druhom monitore
+    # s iným zväčšením; staršie Windows: celosystémové DPI.
+    ctypes.windll.shcore.SetProcessDpiAwareness(2)
 except Exception:
-    pass
+    try:
+        ctypes.windll.user32.SetProcessDPIAware()
+    except Exception:
+        pass
 
 import sys
 import pygame
@@ -24,6 +29,7 @@ from game_setup import load_settings, save_settings, create_game
 # so samostatným launcherom tutorial_main.py (pozri tam). TutorialMenu
 # dostáva len id, main() podľa neho nájde a spustí zvolenú run_fn.
 from tutorial_main import CHAPTERS
+from gui import display
 from game import savegame
 from game import profile as profile_store
 
@@ -40,18 +46,12 @@ def _run_game(window, game_state, ai_players,
 def main():
     pygame.init()
 
-    import config
-    window = pygame.display.set_mode(
-        (config.SCREEN_WIDTH, config.SCREEN_HEIGHT)
-    )
-    pygame.display.set_caption("Chuj")
-
-    # Ikonka okna
-    try:
-        icon = pygame.image.load("assets/graphics/icon.png")
-        pygame.display.set_icon(icon)
-    except FileNotFoundError:
-        pass
+    # Okno (režim, rozlíšenie, ikonka, titulok) otvára výhradne
+    # gui/display.py — podľa príkazového riadka (--resolution 1366x768
+    # --windowed, --safe), premennej CHUJ_RESOLUTION, settings.json alebo
+    # natívneho rozlíšenia monitora. `window` je LOGICKÝ povrch
+    # 1920×1080/1200, nie nutne povrch okna.
+    window = display.get_surface()
 
     settings = load_settings()
 
@@ -98,6 +98,8 @@ def main():
             settings_screen = SettingsScreen(window, settings)
             settings = settings_screen.run()
             save_settings(settings)
+            # Záložka Zobrazenie mohla okno vytvoriť nanovo (iné rozlíšenie).
+            window = display.get_surface()
             # Aktualizuj obtiažnosť ak beží hra
             if active_ai_players is not None:
                 for i, ai in enumerate(active_ai_players):

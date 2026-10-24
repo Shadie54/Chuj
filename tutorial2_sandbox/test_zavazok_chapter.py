@@ -38,6 +38,10 @@ import sys
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
+# Explicitné logické rozlíšenie (gui/display.py). Predtým test bežal na
+# tom, čo nahlásil dummy ovládač (1024×768) — teda na inom rozložení než
+# hra pri 1080p. Rework rozlíšení, krok 2 (claude/11_…ANALYSIS.md, R9).
+os.environ.setdefault("CHUJ_RESOLUTION", "1920x1080")
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -88,12 +92,11 @@ def confirm_declaration_if_needed(screen, game_state, declaration: str):
     chceme) a potom na OK — presne tou istou cestou ako skutočný klik
     myšou, cez gui/preparation_handler.py (nič sa neobchádza).
 
-    Klikáme bližšie k ĺavému okraju tlačidla (nie na stred) — pri
-    headless rozlíšení 1024x768 (default dummy video driveru) sa stred
-    "Nechytím nič" prekrýva s tlačidlom "Chujogram" (samostatný,
-    rozlíšením podmienený layout bug, vedome odložený — pozri
-    konverzáciu). Ľavý okraj je od tohto prekrytia vždy mimo, takže
-    test overuje mechaniku kapitoly, nie tento bug."""
+    Klikáme na STRED tlačidla. Predtým sa klikalo pri ľavom okraji, lebo
+    pri headless 1024×768 (dummy ovládač) sa stred "Nechytím nič"
+    prekrýval s "Chujogramom" (doc 04 §5). Od reworku rozlíšení (krok 2)
+    beží test v logickom priestore 1920×1080, kde sa tlačidlá
+    neprekrývajú — klik na stred je zároveň regresný test R1."""
     rnd = game_state.current_round
     if rnd is None or rnd.phase != "preparation" or screen.dealing:
         return
@@ -101,7 +104,7 @@ def confirm_declaration_if_needed(screen, game_state, declaration: str):
         rect = (screen.phase_renderer._button_decl_all_rect()
                 if declaration == "all"
                 else screen.phase_renderer._button_decl_none_rect())
-        screen._handle_click((rect.left + 20, rect.centery))
+        screen._handle_click(rect.center)
         return
     screen._handle_click(screen.phase_renderer._button_ok_rect().center)
 

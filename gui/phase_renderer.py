@@ -1,35 +1,29 @@
 import pygame, os
+from gui import display, layout
 from config import (
-    SCREEN_WIDTH, SCREEN_HEIGHT,
     COLOR_WHITE, COLOR_GOLD, COLOR_YELLOW,
     FONT_SIZE_MEDIUM, FONT_SIZE_LARGE,
-    TABLE_CENTER_X, TABLE_CENTER_Y,
-    BUTTON_HEIGHT, BUTTON_RADIUS, BUTTON_Y,
-    BUTTON_INFO_X, BUTTON_INFO_Y, BUTTON_INFO_WIDTH, BUTTON_INFO_HEIGHT,
-    BUTTON_MENU_X, BUTTON_MENU_Y, BUTTON_MENU_WIDTH, BUTTON_MENU_HEIGHT,
-    BUTTON_LAST_TRICK_X, BUTTON_LAST_TRICK_Y, BUTTON_LAST_TRICK_WIDTH, BUTTON_LAST_TRICK_HEIGHT,
+    BUTTON_RADIUS,
     COLOR_BUTTON_PRIMARY, COLOR_BUTTON_SECONDARY,
-    get_font, BUTTON_CHUJOGRAM_X, BUTTON_CHUJOGRAM_Y, BUTTON_CHUJOGRAM_W, BUTTON_CHUJOGRAM_H,
-    BUTTON_TIPS_X, BUTTON_TIPS_Y, BUTTON_TIPS_WIDTH, BUTTON_TIPS_HEIGHT
 )
 
 
 class PhaseRenderer:
     """Kreslenie UI overlayov, tlačidiel a správ pre Screen."""
 
-    def __init__(self, surface: pygame.Surface, screen_ref):
-        self.surface = surface
+    def __init__(self, canvas, screen_ref):
+        # canvas = gui/canvas.py::Canvas nad oknom (rework rozlíšení, krok 5)
+        self.canvas = canvas
         self.s = screen_ref
 
-        self.font_medium = get_font(FONT_SIZE_MEDIUM)
-        self.font_large = get_font(FONT_SIZE_LARGE)
+        self.font_medium = self.canvas.font(FONT_SIZE_MEDIUM)
+        self.font_large = self.canvas.font(FONT_SIZE_LARGE)
 
         # Chuj ikonka
         chuj_path = os.path.join("assets", "graphics", "chuj.png")
         try:
-            img = pygame.image.load(chuj_path).convert_alpha()
-            self._chuj_icon = pygame.transform.scale(img, (100, 100))
-        except FileNotFoundError:
+            self._chuj_icon = self.canvas.image(chuj_path, (100, 100))
+        except (FileNotFoundError, pygame.error):
             self._chuj_icon = None
 
         # Declaration badges
@@ -37,9 +31,8 @@ class PhaseRenderer:
         for key in ("all", "none"):
             path = os.path.join("assets", "graphics", f"{key}.png")
             try:
-                img = pygame.image.load(path).convert_alpha()
-                self._declaration_badges[key] = pygame.transform.scale(img, (200, 200))  # test
-            except FileNotFoundError:
+                self._declaration_badges[key] = self.canvas.image(path, (200, 200))
+            except (FileNotFoundError, pygame.error):
                 self._declaration_badges[key] = None
     # ------------------------------------------------------------------
     # Hlavné draw metódy (volané z Screen._draw)
@@ -47,24 +40,17 @@ class PhaseRenderer:
 
     def draw_player_labels(self):
         """Nakreslí menovky hráčov."""
-        font = get_font(28)
-        label_positions = {
-            0: (TABLE_CENTER_X, SCREEN_HEIGHT - 60),
-            1: (SCREEN_WIDTH - 170, TABLE_CENTER_Y),
-            2: (TABLE_CENTER_X, 60),
-            3: (170, TABLE_CENTER_Y),
-        }
+        font = self.canvas.font(28)
+        label_positions = layout.game().label_positions
         for i, player in enumerate(self.s.game_state.players):
             pos = label_positions[i]
             surf = font.render(player.name, True, COLOR_WHITE)
             rect = surf.get_rect(center=pos)
 
             bg_rect = rect.inflate(16, 8)
-            bg = pygame.Surface((bg_rect.width, bg_rect.height), pygame.SRCALPHA)
-            bg.fill((0, 0, 0, 160))
-            self.surface.blit(bg, bg_rect.topleft)
-            pygame.draw.rect(self.surface, COLOR_GOLD, bg_rect, width=1, border_radius=6)
-            self.surface.blit(surf, rect)
+            self.canvas.overlay(pygame.Rect(bg_rect.topleft, (bg_rect.width, bg_rect.height)), (0, 0, 0, 160))
+            self.canvas.rect(COLOR_GOLD, bg_rect, width=1, border_radius=6)
+            self.canvas.blit(surf, rect)
 
             # Ikony napravo/naľavo od menovky — zoradené za sebou
             right_x = bg_rect.right + 6  # pre hráčov 0, 1, 2
@@ -79,7 +65,7 @@ class PhaseRenderer:
                 else:  # všetci ostatní vrátane PC3 — ikonky napravo
                     ir.midleft = (right_x, bg_rect.centery)
                     right_x += ir.width + 4
-                self.surface.blit(icon_surf, ir)
+                self.canvas.blit(icon_surf, ir)
 
             # Chuj ikonka — hráč s najvyšším skóre
             if self._chuj_icon:
@@ -152,19 +138,17 @@ class PhaseRenderer:
         surf = self.font_large.render(self.s.message, True, COLOR_YELLOW)
         msg_w = surf.get_width() + 60
         msg_h = surf.get_height() + 20
-        msg_x = TABLE_CENTER_X - msg_w // 2
-        msg_y = 790 - msg_h // 2
+        tcx = layout.game().table_center[0]
+        msg_x = tcx - msg_w // 2
+        msg_y = layout.game().message_center_y - msg_h // 2
 
-        overlay = pygame.Surface((msg_w, msg_h), pygame.SRCALPHA)
-        overlay.fill((25, 15, 8, 200))
-        self.surface.blit(overlay, (msg_x, msg_y))
-        pygame.draw.rect(
-            self.surface, COLOR_GOLD,
+        self.canvas.overlay(pygame.Rect((msg_x, msg_y), (msg_w, msg_h)), (25, 15, 8, 200))
+        self.canvas.rect(COLOR_GOLD,
             (msg_x, msg_y, msg_w, msg_h),
             width=2, border_radius=8
         )
-        text_rect = surf.get_rect(center=(TABLE_CENTER_X, msg_y + msg_h // 2))
-        self.surface.blit(surf, text_rect)
+        text_rect = surf.get_rect(center=(tcx, msg_y + msg_h // 2))
+        self.canvas.blit(surf, text_rect)
 
     # ------------------------------------------------------------------
     # Interné overlay metódy
@@ -175,60 +159,53 @@ class PhaseRenderer:
 
     def draw_button(self, rect: pygame.Rect, text: str, color: tuple):
         """Nakreslí jedno tlačidlo s hover efektom."""
-        mouse_pos = pygame.mouse.get_pos()
+        mouse_pos = display.mouse_pos()
         is_hover = rect.collidepoint(mouse_pos)
         alpha = 240 if is_hover else 200
 
-        overlay = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
-        overlay.fill((*color, alpha))
-        self.surface.blit(overlay, (rect.x, rect.y))
+        self.canvas.overlay(pygame.Rect((rect.x, rect.y), (rect.width, rect.height)), (*color, alpha))
 
         if is_hover:
-            hover_surf = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
-            hover_surf.fill((255, 255, 255, 25))
-            self.surface.blit(hover_surf, (rect.x, rect.y))
+            self.canvas.overlay(pygame.Rect((rect.x, rect.y), (rect.width, rect.height)), (255, 255, 255, 25))
 
         border_color = COLOR_WHITE if is_hover else COLOR_GOLD
-        pygame.draw.rect(self.surface, border_color, rect, width=2, border_radius=BUTTON_RADIUS)
+        self.canvas.rect(border_color, rect, width=2, border_radius=BUTTON_RADIUS)
 
         surf = self.font_medium.render(text, True, COLOR_WHITE)
         text_rect = surf.get_rect(center=rect.center)
-        self.surface.blit(surf, text_rect)
+        self.canvas.blit(surf, text_rect)
 
     # ------------------------------------------------------------------
     # Button rects
     # ------------------------------------------------------------------
     @staticmethod
     def _button_last_trick_rect() -> pygame.Rect:
-        return pygame.Rect(BUTTON_LAST_TRICK_X, BUTTON_LAST_TRICK_Y,
-                           BUTTON_LAST_TRICK_WIDTH, BUTTON_LAST_TRICK_HEIGHT)
+        return layout.game().column_rect(layout.COLUMN_SLOTS["last_trick"])
 
     @staticmethod
     def _button_tips_rect() -> pygame.Rect:
-        return pygame.Rect(BUTTON_TIPS_X, BUTTON_TIPS_Y,
-                           BUTTON_TIPS_WIDTH, BUTTON_TIPS_HEIGHT)
+        return layout.game().column_rect(layout.COLUMN_SLOTS["tips"])
 
     @staticmethod
     def _button_chujogram_rect() -> pygame.Rect:
-        return pygame.Rect(BUTTON_CHUJOGRAM_X, BUTTON_CHUJOGRAM_Y,
-                           BUTTON_CHUJOGRAM_W, BUTTON_CHUJOGRAM_H)
+        return layout.game().column_rect(layout.COLUMN_SLOTS["chujogram"])
 
     @staticmethod
     def _button_info_rect() -> pygame.Rect:
-        return pygame.Rect(BUTTON_INFO_X, BUTTON_INFO_Y, BUTTON_INFO_WIDTH, BUTTON_INFO_HEIGHT)
+        return layout.game().column_rect(layout.COLUMN_SLOTS["info"])
 
     @staticmethod
     def _button_menu_rect() -> pygame.Rect:
-        return pygame.Rect(BUTTON_MENU_X, BUTTON_MENU_Y, BUTTON_MENU_WIDTH, BUTTON_MENU_HEIGHT)
+        return layout.game().column_rect(layout.COLUMN_SLOTS["menu"])
 
     @staticmethod
     def _button_decl_all_rect() -> pygame.Rect:
-        return pygame.Rect(TABLE_CENTER_X - 420, BUTTON_Y, 260, BUTTON_HEIGHT)
+        return layout.game().decl_all_rect()
 
     @staticmethod
     def _button_decl_none_rect() -> pygame.Rect:
-        return pygame.Rect(TABLE_CENTER_X - 140, BUTTON_Y, 260, BUTTON_HEIGHT)
+        return layout.game().decl_none_rect()
 
     @staticmethod
     def _button_ok_rect() -> pygame.Rect:
-        return pygame.Rect(TABLE_CENTER_X + 140, BUTTON_Y, 120, BUTTON_HEIGHT)
+        return layout.game().ok_rect()

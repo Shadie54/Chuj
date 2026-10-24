@@ -31,7 +31,9 @@ if __name__ == "__main__" and os.environ.get("PYTHONHASHSEED") != "0":
 import argparse
 from tester.tester_screen import TesterScreen
 from tester.random_scenario import random_scenario, save_last_seed, load_last_seed
-from tester.findings_playlist import load_findings, FindingsPlaylist, build_scenario
+from tester.findings_playlist import (
+    load_findings, FindingsPlaylist, build_scenario, FINDINGS_PATH
+)
 
 
 def main():
@@ -41,13 +43,26 @@ def main():
     parser.add_argument("--findings", action="store_true",
                         help="prehrávanie nálezov zo sim_findings.jsonl")
     parser.add_argument("--finding-index", type=int, default=0)
+    # Iný súbor nálezov než predvolený sim_findings.jsonl (implikuje
+    # --findings). Stačí aj samotný názov — hľadá sa potom v priečinku
+    # sim_output vedľa predvoleného súboru.
+    parser.add_argument("--findings-file", default=None,
+                        help="iný .jsonl súbor s nálezmi (názov alebo cesta)")
     args = parser.parse_args()
 
     playlist = None
-    if args.findings:
-        findings = load_findings()
+    if args.findings or args.findings_file:
+        path = FINDINGS_PATH
+        if args.findings_file:
+            path = args.findings_file
+            if not os.path.isabs(path) and not os.path.exists(path):
+                path = os.path.join(os.path.dirname(FINDINGS_PATH), path)
+        try:
+            findings = load_findings(path)
+        except FileNotFoundError:
+            findings = []
         if not findings:
-            print("sim_findings.jsonl je prázdny alebo neexistuje.")
+            print(f"{path} je prázdny alebo neexistuje.")
             return
         playlist = FindingsPlaylist(findings, start_index=args.finding_index)
         scenario = build_scenario(playlist.current)

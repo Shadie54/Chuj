@@ -93,7 +93,7 @@ class TreningScoreDirector:
 
     def attach(self, screen):
         self.screen = screen
-        self.lesson_panel = LessonPanel(screen.screen)
+        self.lesson_panel = LessonPanel(screen.canvas)
 
     def setup_round(self):
         game_state = self.screen.game_state

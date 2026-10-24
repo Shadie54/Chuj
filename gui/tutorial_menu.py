@@ -5,16 +5,24 @@
 # jediné miesto pravdy — tu sa id iba prekladajú na zobrazované mená
 # (CHAPTER_LABELS). Vizuálne kopíruje gui/menu.py (rovnaké farby, rovnaký
 # štýl tlačidiel), aby pôsobilo ako súčasť tej istej obrazovky.
+#
+# Od reworku rozlíšení (krok 4) kreslí rovnako ako gui/menu.py cez
+# gui/canvas.py — natívne rozlíšenie, statická vrstva, tlačidlá navrch.
 
+import os
 import pygame
 import sys
+from gui import display
+from gui.canvas import StaticLayer
 from config import (
-    SCREEN_WIDTH, SCREEN_HEIGHT,
+    SCREEN_WIDTH,
     COLOR_WHITE, COLOR_GOLD, COLOR_GRAY,
     COLOR_BUTTON_PRIMARY, COLOR_BUTTON_SECONDARY,
     FONT_SIZE_LARGE,
-    BUTTON_RADIUS, get_font
+    BUTTON_RADIUS,
 )
+
+BG_PATH = os.path.join("assets", "graphics", "table.jpg")
 
 CHAPTER_LABELS = {
     "zaklady": "Základy",
@@ -31,17 +39,16 @@ class TutorialMenu:
     """
 
     def __init__(self, screen: pygame.Surface, chapter_ids: list[str]):
+        # `screen` (logický povrch) sa nepoužíva — kreslí sa cez Canvas.
         self.screen = screen
+        self.canvas = display.canvas()
         self.clock = pygame.time.Clock()
 
-        self.font_button = get_font(FONT_SIZE_LARGE)
-        self.font_title = get_font(60)
+        self.font_button = self.canvas.font(FONT_SIZE_LARGE)
+        self.font_title = self.canvas.font(60)
 
-        try:
-            self.bg = pygame.image.load("assets/graphics/table.jpg").convert()
-            self.bg = pygame.transform.scale(self.bg, (SCREEN_WIDTH, SCREEN_HEIGHT))
-        except FileNotFoundError:
-            self.bg = None
+        self.has_bg = os.path.exists(BG_PATH)
+        self._layer: StaticLayer | None = None
 
         btn_w = 340
         btn_h = 65
@@ -57,8 +64,8 @@ class TutorialMenu:
         # Rovnaký ochranný posun ako v gui/menu.py — na nižšom rozlíšení by
         # posledné tlačidlo vypadlo pod okraj.
         last_bottom = start_y + (len(buttons_data) - 1) * 85 + btn_h
-        if last_bottom > SCREEN_HEIGHT - 40:
-            start_y -= last_bottom - (SCREEN_HEIGHT - 40)
+        if last_bottom > display.logical_height() - 40:
+            start_y -= last_bottom - (display.logical_height() - 40)
 
         self.buttons = []
         for i, (label, action, color) in enumerate(buttons_data):
@@ -77,9 +84,9 @@ class TutorialMenu:
     def run(self) -> str:
         while True:
             self.clock.tick(60)
-            mouse_pos = pygame.mouse.get_pos()
+            mouse_pos = display.mouse_pos()
 
-            for event in pygame.event.get():
+            for event in display.get_events():
                 if event.type == pygame.QUIT:
                     pygame.quit()
                     sys.exit()
@@ -92,7 +99,7 @@ class TutorialMenu:
 
             self._update_hover(mouse_pos)
             self._draw()
-            pygame.display.flip()
+            display.present()
 
     def _handle_click(self, pos: tuple[int, int]) -> str | None:
         for btn in self.buttons:
@@ -105,16 +112,19 @@ class TutorialMenu:
             btn["hover"] = btn["rect"].collidepoint(mouse_pos)
 
     def _draw(self):
-        if self.bg:
-            self.screen.blit(self.bg, (0, 0))
-        else:
-            self.screen.fill((45, 28, 15))
-
-        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 150))
-        self.screen.blit(overlay, (0, 0))
-
-        self._draw_title()
+        c = self.canvas
+        if self._layer is None:
+            self._layer = StaticLayer(c.target.get_size())
+        if self._layer.needs_redraw("static"):
+            with self._layer.drawing(c, key="static"):
+                if self.has_bg:
+                    c.target.blit(c.background(BG_PATH, c.target.get_size()),
+                                  (0, 0))
+                else:
+                    c.fill_window((45, 28, 15))
+                c.overlay_window((0, 0, 0, 150))
+                self._draw_title()
+        self._layer.blit_to(c.target)
         for btn in self.buttons:
             self._draw_button(btn)
 
@@ -128,35 +138,27 @@ class TutorialMenu:
             centerx=SCREEN_WIDTH // 2,
             bottom=first_btn_y - title_bottom_padding
         )
-        self.screen.blit(shadow, (rect.x + 3, rect.y + 3))
-        self.screen.blit(title, rect)
+        self.canvas.blit(shadow, (rect.x + 3, rect.y + 3))
+        self.canvas.blit(title, rect)
 
     def _draw_button(self, btn: dict):
+        c = self.canvas
         rect = btn["rect"]
         color = btn["color"]
         alpha = 240 if btn["hover"] else 200
 
-        overlay = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
-        overlay.fill((*color, alpha))
-        self.screen.blit(overlay, (rect.x, rect.y))
+        c.overlay(rect, (*color, alpha))
 
         if btn["hover"]:
-            hover_surf = pygame.Surface(
-                (rect.width, rect.height), pygame.SRCALPHA
-            )
-            hover_surf.fill((255, 255, 255, 25))
-            self.screen.blit(hover_surf, (rect.x, rect.y))
+            c.overlay(rect, (255, 255, 255, 25))
 
         border_color = COLOR_GOLD if btn["hover"] else COLOR_GRAY
-        pygame.draw.rect(
-            self.screen, border_color,
-            rect, width=2, border_radius=BUTTON_RADIUS
-        )
+        c.rect(border_color, rect, width=2, border_radius=BUTTON_RADIUS)
 
         text_color = COLOR_GOLD if btn["hover"] else COLOR_WHITE
         text_surf = self.font_button.render(btn["label"], True, text_color)
         text_rect = text_surf.get_rect(center=rect.center)
-        self.screen.blit(text_surf, text_rect)
+        c.blit(text_surf, text_rect)
 
     def __repr__(self) -> str:
         return "TutorialMenu()"

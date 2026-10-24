@@ -2,18 +2,18 @@
 
 import pygame
 from config import (
-    SCREEN_HEIGHT,
-    TABLE_CENTER_X, TABLE_CENTER_Y,
     COLOR_WHITE,
-    FONT_SIZE_MEDIUM, CARD_SIZE_MEDIUM, get_font
+    FONT_SIZE_MEDIUM, CARD_SIZE_MEDIUM,
 )
+from gui import layout
 
 
 class DealAnimation:
-    def __init__(self, screen: pygame.Surface, card_renderer):
-        self.screen = screen
+    def __init__(self, canvas, card_renderer):
+        # canvas = gui/canvas.py::Canvas nad oknom (rework rozlíšení, krok 5)
+        self.canvas = canvas
         self.card_renderer = card_renderer
-        self.font = get_font( FONT_SIZE_MEDIUM)
+        self.font = canvas.font(FONT_SIZE_MEDIUM)
 
         # Cieľové pozície pre každého hráča
         # {player_index: [(x, y), (x, y), ...]} — pozícia každej karty
@@ -43,9 +43,7 @@ class DealAnimation:
     # ------------------------------------------------------------------
 
     def _build_target_positions(self):
-        from config import HAND_CONFIGS
-
-        for player_idx, config in HAND_CONFIGS.items():
+        for player_idx, config in self.card_renderer.hand_configs.items():
             positions = []
             for i in range(8):
                 if config["direction"] == "horizontal":
@@ -119,8 +117,8 @@ class DealAnimation:
                 and now >= self.deal_timer):
             card_data = self.deal_queue[self.current_deal_index]
             self.cards_in_flight.append({
-                "x": float(TABLE_CENTER_X - CARD_SIZE_MEDIUM[0] // 2),
-                "y": float(TABLE_CENTER_Y - CARD_SIZE_MEDIUM[1] // 2),
+                "x": float(layout.game().table_center[0] - CARD_SIZE_MEDIUM[0] // 2),
+                "y": float(layout.game().table_center[1] - CARD_SIZE_MEDIUM[1] // 2),
                 "target_x": float(card_data["target_pos"][0]),
                 "target_y": float(card_data["target_pos"][1]),
                 "target_player": card_data["target_player"],
@@ -173,13 +171,10 @@ class DealAnimation:
     # Kreslenie
     # ------------------------------------------------------------------
 
-    def draw(self, table_bg: pygame.Surface | None):
-        """Nakreslí stav animácie."""
-        # Pozadie
-        if table_bg:
-            self.screen.blit(table_bg, (0, 0))
-        else:
-            self.screen.fill((45, 28, 15))
+    def draw(self, draw_table):
+        """Nakreslí stav animácie. `draw_table` nakreslí pozadie stola
+        (gui/screen.py::_draw_table — cez celé okno, aj pásma)."""
+        draw_table()
 
         # Doletené karty
         for card in self.dealt_cards:
@@ -210,22 +205,18 @@ class DealAnimation:
             angle = 0
 
         img = self.card_renderer._get_card_back(angle=angle)
-        self.screen.blit(img, (int(card["x"]), int(card["y"])))
+        self.canvas.blit(img, (int(card["x"]), int(card["y"])))
 
     def _draw_skip_hint(self):
         """Zobrazí hint na preskočenie."""
         text = self.font.render(
             "Medzerník / klik — preskočiť", True, COLOR_WHITE
         )
-        overlay = pygame.Surface(
-            (text.get_width() + 20, text.get_height() + 10),
-            pygame.SRCALPHA
-        )
-        overlay.fill((25, 15, 8, 180))
-        x = TABLE_CENTER_X - overlay.get_width() // 2
-        y = SCREEN_HEIGHT - 60
-        self.screen.blit(overlay, (x, y))
-        self.screen.blit(text, (x + 10, y + 5))
+        w, h = text.get_width() + 20, text.get_height() + 10
+        x = layout.game().table_center[0] - w // 2
+        y = layout.game().deal_hint_y
+        self.canvas.overlay((x, y, w, h), (25, 15, 8, 180))
+        self.canvas.blit(text, (x + 10, y + 5))
 
     def __repr__(self) -> str:
         return f"DealAnimation(done={self.done}, cards={len(self.deal_queue)})"

@@ -1,5 +1,6 @@
 # gui/screen.py
 
+import os
 import pygame, random
 from game.game_state import GameState
 from game.ai import AI
@@ -19,12 +20,12 @@ from game.advisor import Advisor
 from game.stats_collector import StatsCollector
 from game import profile as profile_store
 from game import savegame
+from gui import display, layout
 from config import (
-    SCREEN_WIDTH, SCREEN_HEIGHT, FPS, DEBUG_MODE,
+    SCREEN_WIDTH, FPS, DEBUG_MODE,
     COLOR_BG,
     FONT_SIZE_MEDIUM, FONT_SIZE_LARGE, FONT_SIZE_SMALL,
-    get_font, CARD_SIZE_MEDIUM, COLOR_GOLD, COLOR_GRAY, COLOR_WHITE,
-    TIP_PANEL_X
+    CARD_SIZE_MEDIUM, COLOR_GOLD, COLOR_GRAY, COLOR_WHITE,
 )
 
 
@@ -47,20 +48,23 @@ class Screen:
         # claude/08_TUTORIAL_REFACTOR_DESIGN.md §4.
         self.director = director
 
-        self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-        pygame.display.set_caption("Chuj")
+        # Okno otvára gui/display.py (jediné miesto so set_mode) — tu sa
+        # len vezme logický povrch. Opätovné set_mode() by pri celej
+        # obrazovke zhodilo režim zobrazenia.
+        self.screen = display.get_surface()
+        # Rework rozlíšení (krok 5): celá herná obrazovka kreslí cez Canvas
+        # priamo do okna v natívnom rozlíšení — pozície ostávajú logické
+        # (gui/layout.py), text a karty sú ostré aj na 4K. Komponenty
+        # (karty, panely, bubliny…) dostávajú tento Canvas namiesto povrchu.
+        self.canvas = display.canvas()
 
         self.settings = settings or {}
         bg_file = self.settings.get("table_bg", "table.jpg")
-        try:
-            self.table_bg = pygame.image.load(
-                f"assets/graphics/{bg_file}"
-            ).convert()
-            self.table_bg = pygame.transform.scale(
-                self.table_bg, (SCREEN_WIDTH, SCREEN_HEIGHT)
-            )
-        except FileNotFoundError:
-            self.table_bg = None
+        # Pozadie sa kreslí „cover" cez celé okno (aj pásma pri 21:9), bez
+        # naťahovania — pozri _draw_table.
+        self.table_bg_path = os.path.join("assets", "graphics", bg_file)
+        if not os.path.exists(self.table_bg_path):
+            self.table_bg_path = None
 
         self.pending_risk_play: tuple | None = None  # (player_index, card, ai)
         self.risk_bubble_timer: int = 0
@@ -72,23 +76,23 @@ class Screen:
         self.game_state = game_state
         self.ai_players = ai_players
 
-        self.card_renderer = CardRenderer(self.screen, debug)
-        self.speech_bubble = SpeechBubble(self.screen)
-        self.info_overlay = InfoOverlay(self.screen)
+        self.card_renderer = CardRenderer(self.canvas, debug)
+        self.speech_bubble = SpeechBubble(self.canvas)
+        self.info_overlay = InfoOverlay(self.canvas)
 
-        self.phase_renderer = PhaseRenderer(self.screen, self)
+        self.phase_renderer = PhaseRenderer(self.canvas, self)
         self.preparation_handler = PreparationHandler(self)
 
-        self.font_small = get_font( FONT_SIZE_SMALL)
-        self.font_medium = get_font( FONT_SIZE_MEDIUM)
-        self.font_large = get_font( FONT_SIZE_LARGE)
+        self.font_small = self.canvas.font(FONT_SIZE_SMALL)
+        self.font_medium = self.canvas.font(FONT_SIZE_MEDIUM)
+        self.font_large = self.canvas.font(FONT_SIZE_LARGE)
 
         # štich stav
         self.trick_waiting: bool = False
         self.trick_display_timer: int = 0
         self._trick_anim_started: bool = False
-        self.trick_animation = TrickAnimation(self.screen, self.card_renderer)
-        self.card_throw_animation = CardThrowAnimation(self.screen, self.card_renderer)
+        self.trick_animation = TrickAnimation(self.canvas, self.card_renderer)
+        self.card_throw_animation = CardThrowAnimation(self.canvas, self.card_renderer)
 
         # Rýchlosť animácií — spoločný násobok z nastavení (nastavuje sa
         # v SettingsScreen), aplikovaný na základnú card_speed oboch tried.
@@ -126,18 +130,18 @@ class Screen:
         self.preparation_done: bool = False
 
         self.chujogram = ChujogramPanel(
-            self.screen,
+            self.canvas,
             [p.name for p in game_state.players]
         )
 
-        self.round_status = RoundStatus(self.screen)
+        self.round_status = RoundStatus(self.canvas)
 
         # Horný pás s názvom kapitoly a tlačidlom "Preskočiť". Zapína ho
         # nastavenie "chapter_banner" (názov kapitoly), ktoré si nastavuje
         # tutoriál — ostrá hra ho nemá, takže tam pás nevznikne vôbec.
         banner_title = self.settings.get("chapter_banner")
         self.chapter_banner = (
-            ChapterBanner(self.screen, banner_title) if banner_title else None
+            ChapterBanner(self.canvas, banner_title) if banner_title else None
         )
 
         self.declaration_failed_timer: int = 0
@@ -161,7 +165,7 @@ class Screen:
             )
         self.advisor = game_state.advisor
         self.tips_enabled: bool = bool(self.settings.get("tips_enabled", False))
-        self.tip_panel = TipPanel(self.screen)
+        self.tip_panel = TipPanel(self.canvas)
         self.current_tip = None
 
         # ------------------------------------------------------------------
@@ -225,7 +229,7 @@ class Screen:
         while self.running:
             self.clock.tick(FPS)
             self.step_frame()
-            pygame.display.flip()
+            display.present()
 
         finished = self.game_state.phase == "game_over"
 
@@ -280,6 +284,7 @@ class Screen:
         Kreslenie na obrazovku (pygame.display.flip) tu zámerne NIE JE —
         o to sa stará volajúci.
         """
+
         if (self.game_over_timer and
                 pygame.time.get_ticks() >= self.game_over_timer):
             self.running = False
@@ -298,7 +303,7 @@ class Screen:
 
         if self.dealing and self.deal_animation:
             self.deal_animation.update()
-            self.deal_animation.draw(self.table_bg)
+            self.deal_animation.draw(self._draw_table)
             self.speech_bubble.draw()
             if self.deal_animation.done:
                 self.dealing = False
@@ -388,7 +393,7 @@ class Screen:
             hands
         )
         # Deal animácia
-        self.deal_animation = DealAnimation(self.screen, self.card_renderer)
+        self.deal_animation = DealAnimation(self.canvas, self.card_renderer)
         self.deal_animation.start(current_round.first_player_index)
         self.dealing = True
 
@@ -398,7 +403,7 @@ class Screen:
 
     def _handle_events(self):
         """Spracuje pygame udalosti."""
-        for event in pygame.event.get():
+        for event in display.get_events():
             if event.type == pygame.QUIT:
                 self.running = False
 
@@ -828,7 +833,7 @@ class Screen:
         # jeho pravý okraj, nech sa neprekrývajú.
         if self.current_tip is not None:
             chuj_right = self.chujogram.panel_x + self.chujogram.panel_w
-            offset = max(0, int(chuj_right + 20 - TIP_PANEL_X))
+            offset = max(0, int(chuj_right + 20 - self.tip_panel.x))
             self.tip_panel.draw(self.current_tip, x_offset=offset)
         self.speech_bubble.draw()
         self.phase_renderer.draw_message()
@@ -843,11 +848,13 @@ class Screen:
             self._draw_last_trick_overlay()
 
     def _draw_table(self):
-        """Nakreslí stôl."""
-        if self.table_bg:
-            self.screen.blit(self.table_bg, (0, 0))
+        """Nakreslí stôl — pozadie „cover" cez celé okno vrátane pásiem."""
+        c = self.canvas
+        if self.table_bg_path:
+            c.target.blit(c.background(self.table_bg_path, c.target.get_size()),
+                          (0, 0))
         else:
-            self.screen.fill(COLOR_BG)
+            c.fill_window(COLOR_BG)
 
     def _draw_hands(self):
         """Nakreslí karty všetkých hráčov."""
@@ -901,8 +908,7 @@ class Screen:
 
     def _draw_last_trick_overlay(self):
         """Nakreslí overlay s posledným štichom."""
-        import os
-        from config import CARDS_MEDIUM_PATH, CARD_SIZE_MEDIUM
+        c = self.canvas
 
         tricks = self.game_state.current_round.tricks
         if not tricks:
@@ -910,9 +916,7 @@ class Screen:
             return
 
         # Tmavé pozadie
-        dark = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-        dark.fill((0, 0, 0, 200))
-        self.screen.blit(dark, (0, 0))
+        c.overlay_window((0, 0, 0, 200))
 
         last_trick = tricks[-1]
         winner_index = last_trick.get_winner_index()
@@ -922,47 +926,39 @@ class Screen:
         gap = 30
         total_w = len(played) * (card_w + gap) - gap
         x0 = SCREEN_WIDTH // 2 - total_w // 2
-        y0 = SCREEN_HEIGHT // 2 - card_h // 2 - 40
+        y0 = layout.game().l_h // 2 - card_h // 2 - 40
 
         # Nadpis
         title = self.font_large.render("POSLEDNÝ ŠTICH", True, COLOR_GOLD)
-        self.screen.blit(title, title.get_rect(
-            centerx=SCREEN_WIDTH // 2, top=y0 - 60
-        ))
+        c.blit(title, title.get_rect(centerx=SCREEN_WIDTH // 2, top=y0 - 60))
 
         for player_idx, card in played:
             i = [p for p, _ in played].index(player_idx)
             cx = x0 + i * (card_w + gap)
             is_winner = (player_idx == winner_index)
 
-            # Karta
-            path = os.path.join(CARDS_MEDIUM_PATH, f"{card.suit}-{card.rank}.png")
-            try:
-                img = pygame.image.load(path).convert_alpha()
-                img = pygame.transform.scale(img, CARD_SIZE_MEDIUM)
-                self.screen.blit(img, (cx, y0))
-            except FileNotFoundError:
-                pass
+            # Karta (z cache CardRenderer/Canvas — predtým sa načítavala
+            # z disku každú snímku)
+            c.blit(self.card_renderer._get_card_image(card), (cx, y0))
 
             # Border
             border_color = COLOR_GOLD if is_winner else COLOR_GRAY
             border_width = 3 if is_winner else 1
-            pygame.draw.rect(self.screen, border_color,
-                             (cx, y0, card_w, card_h),
-                             width=border_width, border_radius=6)
+            c.rect(border_color, (cx, y0, card_w, card_h),
+                   width=border_width, border_radius=6)
 
             # Meno hráča
             name = self.game_state.players[player_idx].name
             name_surf = self.font_medium.render(
                 name, True, COLOR_GOLD if is_winner else COLOR_WHITE
             )
-            self.screen.blit(name_surf, name_surf.get_rect(
+            c.blit(name_surf, name_surf.get_rect(
                 centerx=cx + card_w // 2, top=y0 + card_h + 8
             ))
 
         # Hint
         hint = self.font_small.render("Klikni pre zavretie", True, COLOR_GRAY)
-        self.screen.blit(hint, hint.get_rect(
+        c.blit(hint, hint.get_rect(
             centerx=SCREEN_WIDTH // 2, top=y0 + card_h + 50
         ))
 
@@ -1220,4 +1216,4 @@ class Screen:
             current_round.start_trick()
 
     def __repr__(self) -> str:
-        return f"Screen({SCREEN_WIDTH}x{SCREEN_HEIGHT}, debug={self.debug})"
+        return f"Screen({SCREEN_WIDTH}x{display.logical_height()}, debug={self.debug})"

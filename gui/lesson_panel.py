@@ -17,9 +17,10 @@ import pygame
 from config import (
     COLOR_WHITE, COLOR_GOLD, COLOR_GRAY, COLOR_PANEL_BG,
     COLOR_BUTTON_PRIMARY, BUTTON_RADIUS,
-    FONT_SIZE_SMALL, FONT_SIZE_MEDIUM, get_font,
-    TABLE_CENTER_X, CARD_SIZE_MEDIUM, HAND_CONFIGS,
+    FONT_SIZE_SMALL, FONT_SIZE_MEDIUM,
 )
+from gui import layout
+
 
 # Panel začína pod horným pásom s názvom kapitoly.
 PANEL_TOP = 90
@@ -40,19 +41,23 @@ BUTTON_H = 46
 class LessonPanel:
     """Panel s výkladom lekcie pri ľavom okraji obrazovky."""
 
-    def __init__(self, screen: pygame.Surface):
-        self.screen = screen
-        self.font_small = get_font(FONT_SIZE_SMALL)
-        self.font_medium = get_font(FONT_SIZE_MEDIUM)
+    def __init__(self, canvas):
+        # canvas = gui/canvas.py::Canvas nad oknom (rework rozlíšení, krok 5).
+        # Fonty sú ScaledFont — metriky (size, get_height) sú logické, takže
+        # zalamovanie textu nižšie funguje pri každom rozlíšení rovnako.
+        self.canvas = canvas
+        self.font_small = canvas.font(FONT_SIZE_SMALL)
+        self.font_medium = canvas.font(FONT_SIZE_MEDIUM)
 
         # Panel smie prekryť iba ruku Počítača 3 (karty rubom, na priebeh
         # to nemá vplyv) — nesmie však zasiahnuť ani do stredu stola
         # (karty štichu), ani do vlastnej ruky hráča dole. Obe hranice
         # počítame z reálnej geometrie stola a ruky (config konštanty),
         # takže to funguje pri akomkoľvek rozlíšení.
-        table_left_x = TABLE_CENTER_X - 150 - CARD_SIZE_MEDIUM[0] // 2
-        self.max_right = table_left_x - 40
-        self.max_bottom = HAND_CONFIGS[0]["y"] - 30
+        # (gui/layout.py: ľavá karta štichu − 40 px; vrch ruky hráča − 30 px)
+        game_layout = layout.game()
+        self.max_right = game_layout.lesson_max_right
+        self.max_bottom = game_layout.lesson_max_bottom
 
         # Spodná a pravá hrana naposledy nakresleného panelu — číta ich
         # kreslenie prehľadu trestných kariet, aby sa panelu vyhlo.
@@ -142,36 +147,33 @@ class LessonPanel:
         self.last_bottom = py + panel_h
         self.last_right = px + panel_w
 
-        surface = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
-        surface.fill((*COLOR_PANEL_BG, 235))
-        self.screen.blit(surface, (px, py))
-        pygame.draw.rect(
-            self.screen, COLOR_GOLD, (px, py, panel_w, panel_h),
+        self.canvas.overlay(pygame.Rect((px, py), (panel_w, panel_h)), (*COLOR_PANEL_BG, 235))
+        self.canvas.rect(COLOR_GOLD, (px, py, panel_w, panel_h),
             width=2, border_radius=14
         )
 
         if counter:
             counter_surf = self.font_small.render(counter, True, COLOR_GRAY)
-            self.screen.blit(counter_surf, (px + 20, py + 14))
+            self.canvas.blit(counter_surf, (px + 20, py + 14))
 
         ty = py + TEXT_TOP_OFFSET
         text_x = px + PANEL_PAD_X
 
         for label_text, is_active in labels:
             color = COLOR_GOLD if is_active else COLOR_GRAY
-            self.screen.blit(body_font.render(label_text, True, color),
+            self.canvas.blit(body_font.render(label_text, True, color),
                              (text_x, ty))
             ty += label_line_h
         if labels:
             ty += 14
 
         if title:
-            self.screen.blit(body_font.render(title, True, COLOR_GOLD),
+            self.canvas.blit(body_font.render(title, True, COLOR_GOLD),
                              (text_x, ty))
             ty += line_h + 10
 
         for line in lines:
-            self.screen.blit(body_font.render(line, True, COLOR_WHITE),
+            self.canvas.blit(body_font.render(line, True, COLOR_WHITE),
                              (text_x, ty))
             ty += line_h
 
@@ -179,7 +181,7 @@ class LessonPanel:
             ty += line_h          # prázdny riadok pred inštrukciou
 
         for line in instruction_lines:
-            self.screen.blit(body_font.render(line, True, COLOR_GOLD),
+            self.canvas.blit(body_font.render(line, True, COLOR_GOLD),
                              (text_x, ty))
             ty += line_h
 
@@ -194,14 +196,11 @@ class LessonPanel:
             py + panel_h - BUTTON_H - 16,
             btn_w, BUTTON_H
         )
-        overlay = pygame.Surface((btn_w, BUTTON_H), pygame.SRCALPHA)
-        overlay.fill((*COLOR_BUTTON_PRIMARY, 230))
-        self.screen.blit(overlay, self.next_button.topleft)
-        pygame.draw.rect(
-            self.screen, COLOR_GOLD, self.next_button,
+        self.canvas.overlay(pygame.Rect(self.next_button.topleft, (btn_w, BUTTON_H)), (*COLOR_BUTTON_PRIMARY, 230))
+        self.canvas.rect(COLOR_GOLD, self.next_button,
             width=2, border_radius=BUTTON_RADIUS
         )
-        self.screen.blit(
+        self.canvas.blit(
             text_surf, text_surf.get_rect(center=self.next_button.center)
         )
         return self.next_button

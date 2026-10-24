@@ -12,14 +12,19 @@
 
 # DPI awareness MUSÍ byť nastavená pred importom pygame/config — inak
 # Windows nahlási zmenšené "virtualizované" rozlíšenie (napr. 125% scaling
-# na notebooku) a config.py si podľa neho zle spočíta SCREEN_WIDTH/HEIGHT,
-# takže karty vpravo/dole (PC1, ruka hráča) vypadnú mimo viditeľné plátno.
+# na notebooku) a gui/display.py by podľa neho zle zvolil rozlíšenie okna
+# (rozmazaný obraz, okno väčšie než skutočná plocha).
 # Rovnaký guard ako v main.py.
 import ctypes
 try:
-    ctypes.windll.user32.SetProcessDPIAware()
+    # Per-Monitor DPI (Win 8.1+) — správne rozlíšenie aj na druhom monitore
+    # s iným zväčšením; staršie Windows: celosystémové DPI.
+    ctypes.windll.shcore.SetProcessDpiAwareness(2)
 except Exception:
-    pass
+    try:
+        ctypes.windll.user32.SetProcessDPIAware()
+    except Exception:
+        pass
 
 import sys
 
@@ -28,13 +33,15 @@ from gui.screen import Screen
 from gui.game_over_screen import GameOverScreen
 from gui.lesson_panel import LessonPanel
 from game_setup import load_settings, create_game
-from config import DEBUG_MODE, SCREEN_WIDTH, SCREEN_HEIGHT, COLOR_BG, FPS
+from config import DEBUG_MODE, FPS
 from tutorial.tutorial_director import TutorialDirector
 from tutorial.scripted_ai import ScriptedAI
 from tutorial.scripted_round import build_tutorial_game_state
 from tutorial.zavazok_director import ZavazokDirector
 from tutorial.trening_score_director import TreningScoreDirector
 from game.ai import AI
+from gui import display
+from gui.canvas import draw_backdrop
 
 TRENING_INTRO_TEXT = (
     "Teraz si zahráš naostro!\n\n"
@@ -60,19 +67,14 @@ def _show_trening_intro_panel() -> None:
     Pri zatvorení okna (QUIT) počas panela skončí rovnako, ako by
     skončila ktorákoľvek iná obrazovka v hre (pygame.quit() + exit) —
     rovnaký vzor ako gui/tutorial_menu.py::TutorialMenu.run()."""
-    surface = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+    # Kreslí sa cez Canvas priamo do okna (rework rozlíšení, krok 5).
+    canvas = display.canvas()
     clock = pygame.time.Clock()
-    lesson_panel = LessonPanel(surface)
-
-    try:
-        bg = pygame.image.load("assets/graphics/table.jpg").convert()
-        bg = pygame.transform.scale(bg, (SCREEN_WIDTH, SCREEN_HEIGHT))
-    except FileNotFoundError:
-        bg = None
+    lesson_panel = LessonPanel(canvas)
 
     while True:
         clock.tick(FPS)
-        for event in pygame.event.get():
+        for event in display.get_events():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
@@ -80,20 +82,14 @@ def _show_trening_intro_panel() -> None:
                     and lesson_panel.next_button.collidepoint(event.pos)):
                 return
 
-        if bg:
-            surface.blit(bg, (0, 0))
-        else:
-            surface.fill(COLOR_BG)
-        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 150))
-        surface.blit(overlay, (0, 0))
+        draw_backdrop(canvas, (0, 0, 0, 150))
 
         lesson_panel.draw(
             title="Tréningová hra",
             paragraphs=TRENING_INTRO_TEXT,
             button_label="Hraj →",
         )
-        pygame.display.flip()
+        display.present()
 
 
 def run_chapter_zaklady() -> str:

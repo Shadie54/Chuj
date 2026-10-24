@@ -1,17 +1,20 @@
 # gui/settings_screen.py
 
+import math
 import os
 import re
 import pygame
 import sys
+from gui import display
+from gui.canvas import StaticLayer, draw_backdrop
 from config import (
-    SCREEN_WIDTH, SCREEN_HEIGHT,
+    SCREEN_WIDTH,
     COLOR_WHITE, COLOR_GOLD, COLOR_GRAY, COLOR_DARK_GRAY, COLOR_BLACK,
     COLOR_GREEN, COLOR_YELLOW, COLOR_RED,
     COLOR_BUTTON_PRIMARY, COLOR_BUTTON_SECONDARY,
     COLOR_PANEL_BG,
     FONT_SIZE_LARGE, FONT_SIZE_MEDIUM, FONT_SIZE_SMALL,
-    BUTTON_RADIUS, get_font,
+    BUTTON_RADIUS,
     ANIMATION_SPEED_MIN, ANIMATION_SPEED_MAX, ANIMATION_SPEED_DEFAULT
 )
 
@@ -56,25 +59,40 @@ def _bg_label(fname: str) -> str:
     return f"Stôl {int(m.group(1))}"
 
 
+# Záložky (rozhodnutie usera 2026-10-24): "Hra" = všetko, čo tu bolo
+# doteraz, "Zobrazenie" = režim a veľkosť okna (rework rozlíšení, krok 7).
+# Posledná otvorená záložka sa pamätá počas jedného spustenia hry.
+TABS = (("hra", "Hra"), ("zobrazenie", "Zobrazenie"))
+_last_tab = "hra"
+
+# O koľko sa obsah záložky "Hra" posunul nadol kvôli pásu záložiek.
+TAB_BAR_TOP = 152
+TAB_H = 46
+TAB_W = 240
+TAB_SHIFT = 50
+
+# Po prepnutí zobrazenia sa hra o toľko ms sama vráti k pôvodnému, ak
+# hráč zmenu nepotvrdí (napr. okno sa mu zobrazilo mimo monitora).
+CONFIRM_MS = 15000
+
+
 class SettingsScreen:
     def __init__(self, screen: pygame.Surface, settings: dict):
+        # `screen` (logický povrch) sa nepoužíva — kreslí sa cez Canvas
+        # (rework rozlíšení, krok 4).
         self.screen = screen
+        self.canvas = display.canvas()
+        self._layer: StaticLayer | None = None
+        self.active_tab = _last_tab
         self.clock = pygame.time.Clock()
         self.settings = settings.copy()
         if "animation_speed" not in self.settings:
             self.settings["animation_speed"] = ANIMATION_SPEED_DEFAULT
 
-        self.font_title   = get_font(64)
-        self.font_large   = get_font(FONT_SIZE_LARGE)
-        self.font_medium  = get_font(FONT_SIZE_MEDIUM)
-        self.font_small   = get_font(FONT_SIZE_SMALL)
-
-        # Pozadie obrazovky
-        try:
-            self.bg = pygame.image.load("assets/graphics/table.jpg").convert()
-            self.bg = pygame.transform.scale(self.bg, (SCREEN_WIDTH, SCREEN_HEIGHT))
-        except FileNotFoundError:
-            self.bg = None
+        self.font_title   = self.canvas.font(64)
+        self.font_large   = self.canvas.font(FONT_SIZE_LARGE)
+        self.font_medium  = self.canvas.font(FONT_SIZE_MEDIUM)
+        self.font_small   = self.canvas.font(FONT_SIZE_SMALL)
 
         self.difficulties = ["easy", "medium", "hard"]
         self.difficulty_labels = {
@@ -94,7 +112,16 @@ class SettingsScreen:
         panel_x = center_x - self.panel_width // 2
 
         gap = 26
-        content_top = 180
+        content_top = 180 + TAB_SHIFT
+
+        # Pás záložiek pod nadpisom
+        tabs_total_w = len(TABS) * TAB_W + (len(TABS) - 1) * 16
+        tabs_x = center_x - tabs_total_w // 2
+        self.tab_rects = {
+            key: pygame.Rect(tabs_x + i * (TAB_W + 16), TAB_BAR_TOP, TAB_W, TAB_H)
+            for i, (key, _label) in enumerate(TABS)
+        }
+        self.tab_hover: str | None = None
 
         # ------------------------------------------------------------
         # Panel 1 — AI obtiažnosť (popis a tlačidlá vodorovne v riadku)
@@ -223,9 +250,142 @@ class SettingsScreen:
 
         # Tlačidlo späť
         self.back_button = {
-            "rect":  pygame.Rect(center_x - 150, SCREEN_HEIGHT - 70, 300, 50),
+            "rect":  pygame.Rect(center_x - 150, display.logical_height() - 70, 300, 50),
             "hover": False
         }
+
+        self._init_display_tab(panel_x)
+
+    # ------------------------------------------------------------------
+    # Záložka Zobrazenie — rozloženie a stav výberu
+    # ------------------------------------------------------------------
+
+    def _init_display_tab(self, panel_x: int):
+        mode = display.current_mode()
+        self.window_sizes = display.window_sizes()
+        top = 180 + TAB_SHIFT
+
+        # Panel 1 — režim (Celá obrazovka / Okno)
+        self.panel_mode = pygame.Rect(panel_x, top, self.panel_width, 230)
+        bw, bh, bgap = 320, 56, 30
+        x0 = self.center_x - (2 * bw + bgap) // 2
+        by = self.panel_mode.top + 75
+        self.mode_buttons = [
+            {"windowed": False, "label": "Celá obrazovka",
+             "rect": pygame.Rect(x0, by, bw, bh), "hover": False},
+            {"windowed": True, "label": "Okno",
+             "rect": pygame.Rect(x0 + bw + bgap, by, bw, bh), "hover": False},
+        ]
+
+        # Panel 2 — veľkosť okna, mriežka po 4 (len v režime Okno)
+        cols, sw, sh, sgap, row_h = 4, 200, 52, 18, 70
+        rows = max(1, math.ceil(len(self.window_sizes) / cols))
+        self.panel_size = pygame.Rect(panel_x, self.panel_mode.bottom + 26,
+                                      self.panel_width, 65 + rows * row_h + 20)
+        self.size_buttons = []
+        for i, size in enumerate(self.window_sizes):
+            r, c = divmod(i, cols)
+            in_row = min(cols, len(self.window_sizes) - r * cols)
+            row_w = in_row * sw + (in_row - 1) * sgap
+            x = self.center_x - row_w // 2 + c * (sw + sgap)
+            y = self.panel_size.top + 65 + r * row_h + (row_h - sh) // 2
+            self.size_buttons.append(
+                {"size": size, "rect": pygame.Rect(x, y, sw, sh), "hover": False})
+
+        # "Použiť" — pod posledným viditeľným panelom
+        self._apply_rect_full = pygame.Rect(
+            self.center_x - 150, self.panel_mode.bottom + 30, 300, 56)
+        self._apply_rect_window = pygame.Rect(
+            self.center_x - 150, self.panel_size.bottom + 30, 300, 56)
+        self.apply_hover = False
+
+        # Výber čakajúci na "Použiť"
+        self.pending_windowed = mode.windowed and bool(self.window_sizes)
+        self.pending_size = self._initial_window_size(mode)
+
+        # Potvrdzovací dialóg po prepnutí: {"old": DisplayMode, "deadline": ms}
+        self.confirm: dict | None = None
+        cy = display.logical_height() // 2
+        self.confirm_panel = pygame.Rect(self.center_x - 380, cy - 150, 760, 300)
+        self.confirm_keep = pygame.Rect(self.center_x - 250, cy + 50, 230, 56)
+        self.confirm_revert = pygame.Rect(self.center_x + 20, cy + 50, 230, 56)
+        self.confirm_hover: str | None = None
+
+    def _initial_window_size(self, mode) -> tuple[int, int] | None:
+        """Veľkosť okna predvolená v mriežke: aktuálne okno, inak
+        zapamätaná veľkosť zo settings.json, inak najväčšia, čo sa zmestí."""
+        if mode.windowed:
+            return (mode.width, mode.height)
+        saved = self.settings.get("display")
+        if isinstance(saved, dict):
+            try:
+                size = (int(saved["width"]), int(saved["height"]))
+            except (KeyError, TypeError, ValueError):
+                size = None
+            if size in self.window_sizes:
+                return size
+        return self.window_sizes[-1] if self.window_sizes else None
+
+    def _apply_rect(self) -> pygame.Rect:
+        return self._apply_rect_window if self.pending_windowed \
+            else self._apply_rect_full
+
+    def _display_changed(self) -> bool:
+        """Líši sa výber od aktuálneho zobrazenia? (inak je Použiť sivé)"""
+        mode = display.current_mode()
+        if self.pending_windowed != mode.windowed:
+            return True
+        if self.pending_windowed:
+            return self.pending_size != (mode.width, mode.height)
+        return (mode.width, mode.height) != display.desktop_size()
+
+    # ------------------------------------------------------------------
+    # Prepnutie zobrazenia za behu + potvrdenie
+    # ------------------------------------------------------------------
+
+    def _rebuild(self):
+        """Po zmene okna: nový Canvas (mierka), fonty, miniatúry aj
+        rozloženie podľa novej logickej výšky — stav výberu ostáva."""
+        keep = (self.settings, self.active_tab, self.pending_windowed,
+                self.pending_size, self.bg_scroll)
+        self.__init__(display.get_surface(), self.settings)
+        (self.settings, self.active_tab, self.pending_windowed,
+         self.pending_size, self.bg_scroll) = keep
+
+    def _apply_display(self):
+        old = display.current_mode()
+        if self.pending_windowed and self.pending_size:
+            w, h = self.pending_size
+            new = display.DisplayMode(w, h, True, "settings")
+        else:
+            new = display.fullscreen_mode()
+        display.apply_mode(new)
+        self._rebuild()
+        self.confirm = {"old": old,
+                        "deadline": pygame.time.get_ticks() + CONFIRM_MS}
+
+    def _confirm_keep(self):
+        """Ponechať — až teraz sa voľba zapíše (main.py uloží settings)."""
+        entry = {"mode": "window" if self.pending_windowed else "borderless"}
+        if self.pending_size:
+            # Veľkosť okna sa pamätá aj pri celej obrazovke (rozhodnutie
+            # usera) — po návrate do režimu Okno je predvolená.
+            entry["width"], entry["height"] = self.pending_size
+        self.settings["display"] = entry
+        self.confirm = None
+
+    def _confirm_revert(self):
+        old = self.confirm["old"]
+        display.apply_mode(old)
+        self._rebuild()
+        mode = display.current_mode()
+        self.pending_windowed = mode.windowed and bool(self.window_sizes)
+        self.pending_size = self._initial_window_size(mode)
+        self.confirm = None
+
+    def _confirm_seconds_left(self) -> int:
+        left = self.confirm["deadline"] - pygame.time.get_ticks()
+        return max(0, math.ceil(left / 1000))
 
     # ------------------------------------------------------------------
     # Načítanie miniatúr
@@ -234,9 +394,9 @@ class SettingsScreen:
     def _load_thumbnails(self, thumb_w: int, thumb_h: int):
         for fname in self.bg_options:
             try:
-                img = pygame.image.load(f"assets/graphics/{fname}").convert()
-                self.bg_thumbnails[fname] = pygame.transform.scale(img, (thumb_w, thumb_h))
-            except FileNotFoundError:
+                self.bg_thumbnails[fname] = self.canvas.image(
+                    f"assets/graphics/{fname}", (thumb_w, thumb_h))
+            except (FileNotFoundError, pygame.error):
                 self.bg_thumbnails[fname] = None
 
     # ------------------------------------------------------------------
@@ -246,9 +406,19 @@ class SettingsScreen:
     def run(self) -> dict:
         while True:
             self.clock.tick(60)
-            mouse_pos = pygame.mouse.get_pos()
+            mouse_pos = display.mouse_pos()
 
-            for event in pygame.event.get():
+            if self.confirm is not None:
+                self._run_confirm_events()
+                if (self.confirm is not None
+                        and self._confirm_seconds_left() == 0):
+                    self._confirm_revert()
+                self._update_hover(display.mouse_pos())
+                self._draw()
+                display.present()
+                continue
+
+            for event in display.get_events():
                 if event.type == pygame.QUIT:
                     pygame.quit()
                     sys.exit()
@@ -259,7 +429,8 @@ class SettingsScreen:
 
                 if event.type == pygame.MOUSEBUTTONDOWN:
                     if event.button == 1:
-                        if self._slider_hit(event.pos):
+                        if (self.active_tab == "hra"
+                                and self._slider_hit(event.pos)):
                             self.slider_dragging = True
                             self._update_slider_from_pos(event.pos[0])
                         else:
@@ -277,7 +448,29 @@ class SettingsScreen:
 
             self._update_hover(mouse_pos)
             self._draw()
-            pygame.display.flip()
+            display.present()
+
+    def _run_confirm_events(self):
+        """Udalosti počas dialógu "Ponechať toto zobrazenie?" — Enter =
+        ponechať, Esc = vrátiť; ostatné klikanie je zablokované."""
+        for event in display.get_events():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if event.type == pygame.KEYDOWN:
+                if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                    self._confirm_keep()
+                    return
+                if event.key == pygame.K_ESCAPE:
+                    self._confirm_revert()
+                    return
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                if self.confirm_keep.collidepoint(event.pos):
+                    self._confirm_keep()
+                    return
+                if self.confirm_revert.collidepoint(event.pos):
+                    self._confirm_revert()
+                    return
 
     # ------------------------------------------------------------------
     # Slider — rýchlosť animácií
@@ -307,6 +500,21 @@ class SettingsScreen:
     # ------------------------------------------------------------------
 
     def _handle_click(self, pos: tuple[int, int]) -> str | None:
+        global _last_tab
+        for key, rect in self.tab_rects.items():
+            if rect.collidepoint(pos):
+                self.active_tab = _last_tab = key
+                return None
+
+        if self.back_button["rect"].collidepoint(pos):
+            return "back"
+
+        if self.active_tab == "zobrazenie":
+            return self._handle_display_click(pos)
+
+        if self.active_tab != "hra":
+            return None
+
         for name, buttons in self.ai_buttons.items():
             for btn in buttons:
                 if btn["rect"].collidepoint(pos):
@@ -331,12 +539,34 @@ class SettingsScreen:
                 self.settings["table_bg"] = self.bg_options[idx]
                 return None
 
-        if self.back_button["rect"].collidepoint(pos):
-            return "back"
+        return None
 
+    def _handle_display_click(self, pos: tuple[int, int]) -> None:
+        for btn in self.mode_buttons:
+            if btn["rect"].collidepoint(pos):
+                if btn["windowed"] and not self.window_sizes:
+                    return None          # okno sa na tento monitor nezmestí
+                self.pending_windowed = btn["windowed"]
+                return None
+        if self.pending_windowed:
+            for btn in self.size_buttons:
+                if btn["rect"].collidepoint(pos):
+                    self.pending_size = btn["size"]
+                    return None
+        if self._apply_rect().collidepoint(pos) and self._display_changed():
+            self._apply_display()
         return None
 
     def _update_hover(self, mouse_pos: tuple[int, int]):
+        for btn in self.mode_buttons + self.size_buttons:
+            btn["hover"] = btn["rect"].collidepoint(mouse_pos)
+        self.apply_hover = self._apply_rect().collidepoint(mouse_pos)
+        self.confirm_hover = (
+            "keep" if self.confirm_keep.collidepoint(mouse_pos) else
+            "revert" if self.confirm_revert.collidepoint(mouse_pos) else None)
+        self.tab_hover = next(
+            (key for key, rect in self.tab_rects.items()
+             if rect.collidepoint(mouse_pos)), None)
         for buttons in self.ai_buttons.values():
             for btn in buttons:
                 btn["hover"] = btn["rect"].collidepoint(mouse_pos)
@@ -351,17 +581,140 @@ class SettingsScreen:
     # ------------------------------------------------------------------
 
     def _draw(self):
-        if self.bg:
-            self.screen.blit(self.bg, (0, 0))
+        c = self.canvas
+        if self._layer is None:
+            self._layer = StaticLayer(c.target.get_size())
+        if self._layer.needs_redraw("static"):
+            with self._layer.drawing(c, key="static"):
+                draw_backdrop(c, (0, 0, 0, 150))
+                self._draw_title()
+        self._layer.blit_to(c.target)
+
+        self._draw_tabs()
+        if self.active_tab == "zobrazenie":
+            self._draw_display_tab()
         else:
-            self.screen.fill((45, 28, 15))
+            self._draw_game_tab()
 
-        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 150))
-        self.screen.blit(overlay, (0, 0))
+        self._draw_back_button()
 
-        self._draw_title()
+        if self.confirm is not None:
+            self._draw_confirm()
 
+    def _draw_tabs(self):
+        for key, label in TABS:
+            rect = self.tab_rects[key]
+            active = key == self.active_tab
+            hover = key == self.tab_hover and not active
+            fill = (45, 30, 12, 235) if active else (
+                (35, 22, 10, 220) if hover else (20, 12, 5, 200))
+            self.canvas.overlay(rect, fill)
+            self.canvas.rect(COLOR_GOLD if active or hover else COLOR_DARK_GRAY,
+                             rect, width=2, border_radius=BUTTON_RADIUS)
+            surf = self.font_medium.render(
+                label, True, COLOR_GOLD if active else COLOR_WHITE)
+            self.canvas.blit(surf, surf.get_rect(center=rect.center))
+
+    def _draw_display_tab(self):
+        mode = display.current_mode()
+        vp = display.viewport()
+        c = self.canvas
+
+        # Panel 1 — režim
+        self._draw_panel(self.panel_mode, "REŽIM ZOBRAZENIA")
+        for btn in self.mode_buttons:
+            enabled = not btn["windowed"] or bool(self.window_sizes)
+            self._draw_choice(btn["rect"], btn["label"],
+                              selected=btn["windowed"] == self.pending_windowed,
+                              hover=btn["hover"], enabled=enabled)
+        dw, dh = display.desktop_size()
+        if not self.window_sizes:
+            hint = "Okno sa na tento monitor nezmestí (je menší než 1366 × 768)."
+        elif self.pending_windowed:
+            hint = "Okno s rámom — veľkosť zvoľte nižšie."
+        else:
+            hint = f"Natívne rozlíšenie monitora: {dw} × {dh}"
+        surf = self.font_small.render(hint, True, COLOR_GRAY)
+        c.blit(surf, surf.get_rect(centerx=self.center_x,
+                                   centery=self.panel_mode.top + 158))
+        current = (f"Aktuálne: {mode.width} × {mode.height}, "
+                   + ("okno" if mode.windowed else "celá obrazovka")
+                   + f", mierka obrazu {round(vp.scale * 100)} %")
+        surf = self.font_small.render(current, True, COLOR_WHITE)
+        c.blit(surf, surf.get_rect(centerx=self.center_x,
+                                   centery=self.panel_mode.top + 196))
+
+        # Panel 2 — veľkosť okna
+        if self.pending_windowed:
+            self._draw_panel(self.panel_size, "VEĽKOSŤ OKNA")
+            for btn in self.size_buttons:
+                w, h = btn["size"]
+                self._draw_choice(btn["rect"], f"{w} × {h}",
+                                  selected=btn["size"] == self.pending_size,
+                                  hover=btn["hover"], enabled=True)
+
+        # Použiť
+        rect = self._apply_rect()
+        enabled = self._display_changed() and self.confirm is None
+        if enabled:
+            color = COLOR_BUTTON_PRIMARY if self.apply_hover else COLOR_BUTTON_SECONDARY
+            c.overlay(rect, (*color, 220))
+            c.rect(COLOR_GOLD, rect, width=2, border_radius=BUTTON_RADIUS)
+            text = self.font_large.render("Použiť", True, COLOR_WHITE)
+        else:
+            c.overlay(rect, (25, 15, 5, 150))
+            c.rect(COLOR_DARK_GRAY, rect, width=1, border_radius=BUTTON_RADIUS)
+            text = self.font_large.render("Použiť", True, COLOR_DARK_GRAY)
+        c.blit(text, text.get_rect(center=rect.center))
+
+        if mode.source in ("cli", "safe"):
+            note = self.font_small.render(
+                "Hra je spustená s parametrom príkazového riadka — pri štarte "
+                "má prednosť pred uloženým nastavením.", True, COLOR_GRAY)
+            c.blit(note, note.get_rect(centerx=self.center_x, top=rect.bottom + 18))
+
+    def _draw_choice(self, rect: pygame.Rect, label: str, selected: bool,
+                     hover: bool, enabled: bool):
+        """Prepínacie tlačidlo (režim, veľkosť okna) — štýl ako obtiažnosť."""
+        c = self.canvas
+        if not enabled:
+            fill, border, bw, color = (25, 15, 5, 150), COLOR_DARK_GRAY, 1, COLOR_DARK_GRAY
+        elif selected:
+            fill, border, bw, color = (*COLOR_GOLD, 230), COLOR_GOLD, 3, (0, 0, 0)
+        elif hover:
+            fill, border, bw, color = (*COLOR_GOLD, 120), COLOR_GOLD, 1, COLOR_WHITE
+        else:
+            fill, border, bw, color = (40, 25, 10, 180), COLOR_GRAY, 1, COLOR_WHITE
+        c.overlay(rect, fill)
+        c.rect(border, rect, width=bw, border_radius=BUTTON_RADIUS)
+        text = self.font_medium.render(label, True, color)
+        c.blit(text, text.get_rect(center=rect.center))
+
+    def _draw_confirm(self):
+        """Dialóg "Ponechať toto zobrazenie?" s odpočtom návratu."""
+        c = self.canvas
+        c.overlay_window((0, 0, 0, 170))
+        panel = self.confirm_panel
+        c.overlay(panel, (*COLOR_PANEL_BG, 240), border_radius=14)
+        c.rect(COLOR_GOLD, panel, width=2, border_radius=14)
+        title = self.font_large.render("Ponechať toto zobrazenie?", True, COLOR_GOLD)
+        c.blit(title, title.get_rect(centerx=panel.centerx, top=panel.top + 40))
+        secs = self._confirm_seconds_left()
+        text = self.font_medium.render(
+            f"Návrat k predchádzajúcemu zobrazeniu o {secs} s", True, COLOR_WHITE)
+        c.blit(text, text.get_rect(centerx=panel.centerx, top=panel.top + 110))
+        for key, rect, label in (("keep", self.confirm_keep, "Ponechať"),
+                                 ("revert", self.confirm_revert, "Vrátiť")):
+            hover = self.confirm_hover == key
+            color = COLOR_BUTTON_PRIMARY if hover or key == "keep" \
+                else COLOR_BUTTON_SECONDARY
+            c.overlay(rect, (*color, 230))
+            c.rect(COLOR_GOLD, rect, width=3 if hover else 2,
+                   border_radius=BUTTON_RADIUS)
+            surf = self.font_large.render(label, True, COLOR_WHITE)
+            c.blit(surf, surf.get_rect(center=rect.center))
+
+    def _draw_game_tab(self):
         self._draw_panel(self.panel_ai, "OBTIAŽNOSŤ POČÍTAČOV")
         self._draw_ai_sections()
 
@@ -372,15 +725,12 @@ class SettingsScreen:
         self._draw_bg_section()
         self._draw_bg_arrows()
 
-        self._draw_back_button()
-
     def _draw_title(self):
         title = self.font_title.render("NASTAVENIA", True, COLOR_GOLD)
         title_rect = title.get_rect(center=(SCREEN_WIDTH // 2, 95))
-        self.screen.blit(title, title_rect)
+        self.canvas.blit(title, title_rect)
 
-        pygame.draw.line(
-            self.screen, COLOR_GOLD,
+        self.canvas.line(COLOR_GOLD,
             (SCREEN_WIDTH // 2 - 260, 135),
             (SCREEN_WIDTH // 2 + 260, 135),
             width=2
@@ -388,17 +738,14 @@ class SettingsScreen:
 
     def _draw_panel(self, rect: pygame.Rect, title: str):
         """Nakreslí zaoblený panel s tmavým pozadím, zlatým okrajom a nadpisom."""
-        panel_surf = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
-        panel_surf.fill((*COLOR_PANEL_BG, 210))
-        self.screen.blit(panel_surf, (rect.x, rect.y))
-        pygame.draw.rect(self.screen, COLOR_GOLD, rect, width=2, border_radius=14)
+        self.canvas.overlay(rect, (*COLOR_PANEL_BG, 210))
+        self.canvas.rect(COLOR_GOLD, rect, width=2, border_radius=14)
 
         label = self.font_medium.render(title, True, COLOR_GOLD)
         label_rect = label.get_rect(midleft=(rect.left + 28, rect.top + 30))
-        self.screen.blit(label, label_rect)
+        self.canvas.blit(label, label_rect)
 
-        pygame.draw.line(
-            self.screen, COLOR_DARK_GRAY,
+        self.canvas.line(COLOR_DARK_GRAY,
             (rect.left + 24, rect.top + 52),
             (rect.right - 24, rect.top + 52),
             width=1
@@ -414,12 +761,11 @@ class SettingsScreen:
 
             label_surf = self.font_medium.render(name, True, COLOR_WHITE)
             label_rect = label_surf.get_rect(midleft=(self.ai_label_x, row_centery))
-            self.screen.blit(label_surf, label_rect)
+            self.canvas.blit(label_surf, label_rect)
 
             if row_idx > 0:
                 divider_y = buttons[0]["rect"].top - 14
-                pygame.draw.line(
-                    self.screen, COLOR_DARK_GRAY,
+                self.canvas.line(COLOR_DARK_GRAY,
                     (self.panel_ai.left + 24, divider_y),
                     (self.panel_ai.right - 24, divider_y),
                     width=1
@@ -431,22 +777,18 @@ class SettingsScreen:
                 is_selected = (diff == current)
                 base_color  = self.difficulty_colors[diff]
 
-                overlay = pygame.Surface(
-                    (btn["rect"].width, btn["rect"].height), pygame.SRCALPHA
-                )
                 if is_selected:
-                    overlay.fill((*base_color, 230))
+                    fill = (*base_color, 230)
                 elif btn["hover"]:
-                    overlay.fill((*base_color, 120))
+                    fill = (*base_color, 120)
                 else:
-                    overlay.fill((40, 25, 10, 180))
-                self.screen.blit(overlay, (btn["rect"].x, btn["rect"].y))
+                    fill = (40, 25, 10, 180)
+                self.canvas.overlay(btn["rect"], fill)
 
                 border_color = base_color if is_selected or btn["hover"] \
                     else COLOR_GRAY
                 border_width = 3 if is_selected else 1
-                pygame.draw.rect(
-                    self.screen, border_color,
+                self.canvas.rect(border_color,
                     btn["rect"], width=border_width,
                     border_radius=BUTTON_RADIUS
                 )
@@ -456,7 +798,7 @@ class SettingsScreen:
                     self.difficulty_labels[diff], True, text_color
                 )
                 text_rect = text.get_rect(center=btn["rect"].center)
-                self.screen.blit(text, text_rect)
+                self.canvas.blit(text, text_rect)
 
     def _draw_speed_slider(self):
         track = self.slider_rect
@@ -464,13 +806,12 @@ class SettingsScreen:
         # Popisky nad traťou
         lbl_slow = self.font_small.render("Pomalšie", True, COLOR_GRAY)
         lbl_fast = self.font_small.render("Rýchlejšie", True, COLOR_GRAY)
-        self.screen.blit(lbl_slow, (track.left, track.top - 28))
+        self.canvas.blit(lbl_slow, (track.left, track.top - 28))
         lbl_fast_rect = lbl_fast.get_rect(topright=(track.right, track.top - 28))
-        self.screen.blit(lbl_fast, lbl_fast_rect)
+        self.canvas.blit(lbl_fast, lbl_fast_rect)
 
         # Trať (nevyplnená)
-        pygame.draw.line(
-            self.screen, COLOR_DARK_GRAY,
+        self.canvas.line(COLOR_DARK_GRAY,
             (track.left, track.centery), (track.right, track.centery),
             width=6
         )
@@ -478,20 +819,19 @@ class SettingsScreen:
         handle_x, handle_y = self._slider_handle_pos()
 
         # Trať (vyplnená časť po handle)
-        pygame.draw.line(
-            self.screen, COLOR_GOLD,
+        self.canvas.line(COLOR_GOLD,
             (track.left, track.centery), (handle_x, handle_y),
             width=6
         )
 
         handle_color = COLOR_YELLOW if self.slider_dragging else COLOR_GOLD
-        pygame.draw.circle(self.screen, handle_color, (handle_x, handle_y), self.slider_handle_radius)
-        pygame.draw.circle(self.screen, COLOR_BLACK, (handle_x, handle_y), self.slider_handle_radius, width=2)
+        self.canvas.circle(handle_color, (handle_x, handle_y), self.slider_handle_radius)
+        self.canvas.circle(COLOR_BLACK, (handle_x, handle_y), self.slider_handle_radius, width=2)
 
         value = self.settings.get("animation_speed", ANIMATION_SPEED_DEFAULT)
         value_text = self.font_medium.render(f"{value:.1f}×", True, COLOR_WHITE)
         value_rect = value_text.get_rect(midtop=(self.center_x, track.bottom + 16))
-        self.screen.blit(value_text, value_rect)
+        self.canvas.blit(value_text, value_rect)
 
     def _draw_bg_section(self):
         current = self.settings.get("table_bg", "table.jpg")
@@ -503,22 +843,19 @@ class SettingsScreen:
             fname = self.bg_options[idx]
 
             is_selected = (fname == current)
-            is_hover    = rect.collidepoint(pygame.mouse.get_pos())
+            is_hover    = rect.collidepoint(display.mouse_pos())
 
             thumb = self.bg_thumbnails.get(fname)
             if thumb:
-                self.screen.blit(thumb, rect)
+                self.canvas.blit(thumb, rect)
             else:
-                fallback = pygame.Surface((rect.w, rect.h))
-                fallback.fill((40, 25, 10))
-                self.screen.blit(fallback, rect)
+                self.canvas.rect((40, 25, 10), rect)
 
             border_color = COLOR_GOLD if is_selected else (
                 COLOR_WHITE if is_hover else COLOR_GRAY
             )
             border_width = 3 if is_selected else 1
-            pygame.draw.rect(
-                self.screen, border_color, rect,
+            self.canvas.rect(border_color, rect,
                 width=border_width, border_radius=6
             )
 
@@ -529,7 +866,7 @@ class SettingsScreen:
             lbl_rect = lbl.get_rect(
                 centerx=rect.centerx, top=rect.bottom + 6
             )
-            self.screen.blit(lbl, lbl_rect)
+            self.canvas.blit(lbl, lbl_rect)
 
     def _draw_bg_arrows(self):
         """Malé trojuholníkové šípky — posúvajú okno viditeľných miniatúr
@@ -562,25 +899,22 @@ class SettingsScreen:
                 (cx - half_w, cy + half_h),
                 (cx + half_w, cy),
             ]
-        pygame.draw.polygon(self.screen, color, points)
+        self.canvas.polygon(color, points)
 
     def _draw_back_button(self):
         rect  = self.back_button["rect"]
         color = COLOR_BUTTON_PRIMARY if self.back_button["hover"] \
             else COLOR_BUTTON_SECONDARY
 
-        overlay = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
-        overlay.fill((*color, 220))
-        self.screen.blit(overlay, (rect.x, rect.y))
+        self.canvas.overlay(rect, (*color, 220))
 
-        pygame.draw.rect(
-            self.screen, COLOR_GOLD,
+        self.canvas.rect(COLOR_GOLD,
             rect, width=2, border_radius=BUTTON_RADIUS
         )
 
         text      = self.font_large.render("← Späť", True, COLOR_WHITE)
         text_rect = text.get_rect(center=rect.center)
-        self.screen.blit(text, text_rect)
+        self.canvas.blit(text, text_rect)
 
     def __repr__(self) -> str:
         return "SettingsScreen()"

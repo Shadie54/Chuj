@@ -2,7 +2,7 @@
 #
 # Panel s tipom od AI — ľavý dolný roh. Tento priestor je voľný pri
 # akomkoľvek rozlíšení: ruka Počítača 3 je vľavo hore (končí nad ním) a
-# ruka hráča začína až napravo od neho (pozri HAND_CONFIGS v config.py).
+# ruka hráča začína až napravo od neho (pozri hand_configs v gui/layout.py).
 #
 # Vizuál zámerne kopíruje panel KOLO (gui/round_status.py) — tmavé
 # priehľadné pozadie, zlatý rám, zlatý nadpis — aby pôsobili ako jedna
@@ -14,27 +14,24 @@
 
 import pygame
 
+from gui import layout
 from config import (
-    COLOR_GOLD, COLOR_WHITE, COLOR_GRAY,
-    CARD_SIZE_SMALL, CARDS_SMALL_PATH,
-    TIP_PANEL_X, TIP_PANEL_Y, TIP_PANEL_W, TIP_PANEL_H,
-    get_font,
+    COLOR_GOLD, COLOR_WHITE,
+    CARD_SIZE_SMALL,
 )
 
 
 class TipPanel:
-    def __init__(self, screen: pygame.Surface):
-        self.screen = screen
-        self.font_title = get_font(24)
-        self.font_head = get_font(26)
-        self.font_body = get_font(20)
+    def __init__(self, canvas):
+        # canvas = gui/canvas.py::Canvas nad oknom (rework rozlíšení, krok 5)
+        self.canvas = canvas
+        self.font_title = self.canvas.font(24)
+        self.font_head = self.canvas.font(26)
+        self.font_body = self.canvas.font(20)
 
-        self.x = TIP_PANEL_X
-        self.y = TIP_PANEL_Y
-        self.w = TIP_PANEL_W
-        self.h = TIP_PANEL_H
+        # Vľavo dole, ukotvený k spodnému okraju (gui/layout.py)
+        self.x, self.y, self.w, self.h = layout.game().tip_panel_rect()
 
-        self._card_cache: dict[str, pygame.Surface] = {}
 
     # ------------------------------------------------------------------
 
@@ -94,15 +91,14 @@ class TipPanel:
         self._draw_bg(x, y, h)
 
         title = self.font_title.render("TIP", True, COLOR_GOLD)
-        self.screen.blit(title, (x + 14, y + 10))
-        pygame.draw.line(
-            self.screen, COLOR_GOLD,
+        self.canvas.blit(title, (x + 14, y + 10))
+        self.canvas.line(COLOR_GOLD,
             (x + 10, y + 40), (x + self.w - 10, y + 40), width=1
         )
 
         cy = y + 52
         for i, img in enumerate(images):
-            self.screen.blit(img, (x + 14 + i * (card_w + 8), cy))
+            self.canvas.blit(img, (x + 14 + i * (card_w + 8), cy))
 
         ty = cy if side_by_side else cy + (card_h + 10 if images else 0)
         text_x = x + text_x_rel
@@ -111,7 +107,7 @@ class TipPanel:
         for line in head_lines:
             if ty + 28 > max_y:
                 break
-            self.screen.blit(
+            self.canvas.blit(
                 self.font_head.render(line, True, COLOR_GOLD), (text_x, ty)
             )
             ty += 28
@@ -120,7 +116,7 @@ class TipPanel:
         for line in body_lines:
             if ty + 22 > max_y:
                 break
-            self.screen.blit(
+            self.canvas.blit(
                 self.font_body.render(line, True, COLOR_WHITE), (text_x, ty)
             )
             ty += 22
@@ -128,27 +124,19 @@ class TipPanel:
     # ------------------------------------------------------------------
 
     def _draw_bg(self, x: int, y: int, h: int):
-        overlay = pygame.Surface((self.w, h), pygame.SRCALPHA)
-        overlay.fill((20, 12, 5, 210))
-        self.screen.blit(overlay, (x, y))
-        pygame.draw.rect(
-            self.screen, COLOR_GOLD, (x, y, self.w, h),
+        self.canvas.overlay(pygame.Rect((x, y), (self.w, h)), (20, 12, 5, 210))
+        self.canvas.rect(COLOR_GOLD, (x, y, self.w, h),
             width=2, border_radius=10
         )
 
     def _card_image(self, card, size: tuple[int, int] | None = None):
+        """Karta v logickej veľkosti — Canvas vyberie najmenší dostatočne
+        veľký asset (pri 4K medium/large namiesto zväčšenej small)."""
         size = size or CARD_SIZE_SMALL
-        name = f"{card.suit}-{card.rank}"
-        key = f"{name}@{size[0]}x{size[1]}"
-        if key not in self._card_cache:
-            try:
-                img = pygame.image.load(
-                    f"{CARDS_SMALL_PATH}/{name}.png"
-                ).convert_alpha()
-                self._card_cache[key] = pygame.transform.scale(img, size)
-            except (FileNotFoundError, pygame.error):
-                self._card_cache[key] = None
-        return self._card_cache[key]
+        try:
+            return self.canvas.card(f"{card.suit}-{card.rank}.png", lsize=size)
+        except (FileNotFoundError, pygame.error):
+            return None
 
     @staticmethod
     def _wrap(text: str, font: pygame.font.Font, max_width: int) -> list[str]:

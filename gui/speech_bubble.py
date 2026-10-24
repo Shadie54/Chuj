@@ -2,20 +2,20 @@
 
 import pygame
 import os
+from gui import layout
 from config import (
-    TABLE_CENTER_X,
     COLOR_WHITE, COLOR_GOLD, COLOR_YELLOW, COLOR_GREEN, COLOR_RED,
-    FONT_SIZE_LARGE, FONT_SIZE_MEDIUM,
-    SUIT_ICONS_PATH, SCREEN_WIDTH, SCREEN_HEIGHT, get_font,
-    HAND_CONFIGS, CARD_SIZE_MEDIUM
+    FONT_SIZE_MEDIUM,
+    SUIT_ICONS_PATH,
 )
 
 
 class SpeechBubble:
-    def __init__(self, screen: pygame.Surface):
-        self.screen = screen
-        self.font_large = get_font(FONT_SIZE_MEDIUM + 4)
-        self.font_medium = get_font(FONT_SIZE_MEDIUM)
+    def __init__(self, canvas):
+        # canvas = gui/canvas.py::Canvas nad oknom (rework rozlíšení, krok 5)
+        self.canvas = canvas
+        self.font_large = self.canvas.font(FONT_SIZE_MEDIUM + 4)
+        self.font_medium = self.canvas.font(FONT_SIZE_MEDIUM)
 
         self._icon_cache: dict[str, pygame.Surface] = {}
 
@@ -30,7 +30,7 @@ class SpeechBubble:
         # Pozície bublín pre každého hráča.
         #
         # Hráč (0) a PC2 (2) sedia na tej istej zvislej osi ako karty
-        # štichu v strede stola (TRICK_START_POSITIONS) — pri pôvodných
+        # štichu v strede stola (layout.trick_positions) — pri pôvodných
         # hodnotách (820/380) preto bublina po štichu ("+N") zasahovala
         # priamo do práve zahranej karty (u PC2 dokonca celá bublina
         # ležala vnútri karty). Nové hodnoty (945/245) sú spočítané tak,
@@ -38,37 +38,30 @@ class SpeechBubble:
         # (gui/phase_renderer.py::draw_player_labels) aj pre najvyšší typ
         # bubliny (TROMF s ikonkou, ~132px vrátane chvosta) — overené
         # vykreslením oboch prípadov na 1920×1080.
-        self.bubble_positions = {
-            0: (TABLE_CENTER_X, 945),  # hráč dole — medzi kartou a menovkou
-            1: (SCREEN_WIDTH - 520, 380),  # PC1 vpravo — viac doľava od kariet (bolo -380)
-            2: (TABLE_CENTER_X, 245),  # PC2 hore — medzi kartou a menovkou (bolo 380/180)
-            3: (520, 380),  # PC3 vľavo — viac doprava od kariet (bolo 380)
-        }
+        # Od reworku rozlíšení (krok 5) z gui/layout.py — ukotvené ako ruky
+        # (pri 1080p presne 945 / (W−520, 380) / 245 / (520, 380)).
+        self.bubble_positions = dict(layout.game().bubble_positions)
 
         # Bodová bublina po štichu (show_round_result) pre hráča (0) a PC2
         # (2) má VLASTNÚ pozíciu, inú než bubble_positions vyššie. Dôvod:
         # hráč (0) aj PC2 (2) majú ruku kariet nakreslenú vodorovne presne
-        # na TABLE_CENTER_X (HAND_CONFIGS) — bublina uprostred (945/245)
+        # na TABLE_CENTER_X (layout.hand_configs) — bublina uprostred (945/245)
         # tak pri plnej ruke (8 kariet) zasahovala priamo do vlastných
         # kariet hráča (overené vykreslením). PC1 (1) a PC3 (3) majú ruku
         # zvislú mimo tejto osi, tam k prekryvu nedochádza — pre nich
         # bodová bublina ostáva na bubble_positions.
         # Hráč: nad jeho prvou kartou (ľavý koniec ruky) — úplne vľavo
         # (pred rukou) by zasahovala do panelu TIP (gui/tip_panel.py,
-        # TIP_PANEL_X=20..380 — prvá karta začína až na x=400). O 50px
-        # vyššie než samotný vrch karty (HAND_CONFIGS[0]["y"]), nech nad
+        # x=20..380 — prvá karta začína až na x=400). O 50px
+        # vyššie než samotný vrch karty (hand_configs[0]["y"]), nech nad
         # ňou ostane viac vzduchu.
         # PC2: vpravo od jeho (rovnako širokej) ruky hore, tesne pri
         # kartách — medzera 90px necháva miesto pre chvost (max. šírka
         # bubliny "+130"/48px polovica + 24px chvost = 72px) aj s
         # rezervou, bez dotyku poslednej karty.
-        hand0_first_card_center = HAND_CONFIGS[0]["x"] + CARD_SIZE_MEDIUM[0] // 2
-        hand2_right = (HAND_CONFIGS[2]["x"] + 7 * HAND_CONFIGS[2]["offset"]
-                       + CARD_SIZE_MEDIUM[0])  # 7 = posledná z max. 8 kariet
-        self.round_result_positions = {
-            0: (hand0_first_card_center, HAND_CONFIGS[0]["y"] - 50),
-            2: (hand2_right + 90, 190),
-        }
+        # Výpočet (prvá karta ruky hráča, 50 px nad ňou; vpravo od ruky
+        # PC2 + 90 px) je v gui/layout.py::build_game_layout.
+        self.round_result_positions = dict(layout.game().round_result_positions)
 
     # ------------------------------------------------------------------
     # Pridanie bubliny
@@ -223,13 +216,10 @@ class SpeechBubble:
         by = cy - bubble_h
 
         # Pozadie bubliny
-        overlay = pygame.Surface((bubble_w, bubble_h), pygame.SRCALPHA)
-        overlay.fill((20, 12, 5, 220))
-        self.screen.blit(overlay, (bx, by))
+        self.canvas.overlay(pygame.Rect((bx, by), (bubble_w, bubble_h)), (20, 12, 5, 220))
 
         # Okraj
-        pygame.draw.rect(
-            self.screen, bubble["color"],
+        self.canvas.rect(bubble["color"],
             (bx, by, bubble_w, bubble_h),
             width=2, border_radius=12
         )
@@ -243,7 +233,7 @@ class SpeechBubble:
             centerx=cx,
             top=by + padding
         )
-        self.screen.blit(text_surf, text_rect)
+        self.canvas.blit(text_surf, text_rect)
 
         # Ikonka farby (ak je tromf)
         if bubble["suit"]:
@@ -253,7 +243,7 @@ class SpeechBubble:
                     centerx=cx,
                     top=by + padding + text_h + 8
                 )
-                self.screen.blit(icon, icon_rect)
+                self.canvas.blit(icon, icon_rect)
 
     def _draw_tail(self, cx: int, base_y: int, by: int, bubble_w: int, bubble_h: int,
                    direction: str, color: tuple):
@@ -294,7 +284,7 @@ class SpeechBubble:
                 (bx - tail_size * 2, mid_y)
             ]
 
-        pygame.draw.polygon(self.screen, color, points)
+        self.canvas.polygon(color, points)
 
     def _load_icon(self, suit: str, size: int) -> pygame.Surface | None:
         """Načíta ikonku farby."""
@@ -302,10 +292,8 @@ class SpeechBubble:
         if key not in self._icon_cache:
             path = os.path.join(SUIT_ICONS_PATH, f"{suit}-icon@medium.png")
             try:
-                img = pygame.image.load(path).convert_alpha()
-                img = pygame.transform.scale(img, (size, size))
-                self._icon_cache[key] = img
-            except FileNotFoundError:
+                self._icon_cache[key] = self.canvas.image(path, (size, size))
+            except (FileNotFoundError, pygame.error):
                 self._icon_cache[key] = None
         return self._icon_cache[key]
 

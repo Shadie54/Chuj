@@ -6,9 +6,15 @@ pygame.init()
 # ------------------------------------------------------------------
 # Obrazovka
 # ------------------------------------------------------------------
-_info = pygame.display.Info()
-SCREEN_WIDTH = _info.current_w
-SCREEN_HEIGHT = _info.current_h
+# Rework rozlíšení (claude/11_RESOLUTION_REWORK_ANALYSIS.md): hra kreslí v
+# LOGICKOM priestore, nie vo fyzickom rozlíšení monitora. Šírka je vždy
+# SCREEN_WIDTH = 1920. Výška je 1080…1200 podľa pomeru strán okna a môže sa
+# zmeniť aj za behu (Nastavenia → Zobrazenie) — preto tu NIE JE konštanta
+# SCREEN_HEIGHT, ale gui.display.logical_height(). Okno, mierku a prepočet
+# myši rieši gui/display.py, rozloženie hernej obrazovky gui/layout.py.
+from gui.display import LOGICAL_W
+
+SCREEN_WIDTH = LOGICAL_W
 FPS = 60
 
 # ------------------------------------------------------------------
@@ -135,130 +141,22 @@ FONT_SIZE_LARGE = 32
 FONT_SIZE_XLARGE = 48
 
 # ------------------------------------------------------------------
-# GUI — Pozície (4 hráči)
+# GUI — rozloženie
 # ------------------------------------------------------------------
+# Pozície rúk, štichu, tlačidiel a panelov hernej obrazovky počíta
+# gui/layout.py podľa logickej výšky okna. Pôvodné pevné konštanty
+# (HAND_CONFIGS, TRICK_START_POSITIONS, BUTTON_*_Y, TIP_PANEL_*,
+# ROUND_STATUS_* …) odstránil krok 8 reworku rozlíšení. Logická šírka je
+# stála, takže vodorovný stred stola ostáva konštantou.
 TABLE_CENTER_X = SCREEN_WIDTH // 2
-TABLE_CENTER_Y = SCREEN_HEIGHT // 2
-
-CARD_OVERLAP = 30
-CARD_FAN_OFFSET = 60
-
-# Ruky hráčov
-# Hráč 0 — dole (horizontálne)
-HUMAN_HAND_X = 200
-HUMAN_HAND_Y = 860
-
-# Počítač 1 — vľavo (vertikálne)
-PC1_HAND_X = 30
-PC1_HAND_Y = 150
-
-# Počítač 2 — hore (horizontálne, otočené)
-PC2_HAND_X = 200
-PC2_HAND_Y = 30
-
-# Počítač 3 — vpravo (vertikálne, otočené)
-PC3_HAND_X = SCREEN_WIDTH - 30 - CARD_SIZE_MEDIUM[1]
-PC3_HAND_Y = 150
-
-# Pozície štichov na stole
-TRICK_POS = {
-    0: (TABLE_CENTER_X, TABLE_CENTER_Y + 120),      # hráč — dole
-    1: (TABLE_CENTER_X + 150, TABLE_CENTER_Y),       # PC1 — vpravo
-    2: (TABLE_CENTER_X, TABLE_CENTER_Y - 120),       # PC2 — hore
-    3: (TABLE_CENTER_X - 150, TABLE_CENTER_Y),       # PC3 — vľavo
-}
-
-# ------------------------------------------------------------------
-# Pozície rúk hráčov — použité v card_renderer, deal_animation, screen
-# ------------------------------------------------------------------
-HAND_CONFIGS = {
-    0: {"direction": "horizontal", "x": 400,  "y": 860,  "offset": 100},  # Hráč — dole
-    1: {"direction": "vertical",   "x": 1600, "y": 150,  "offset": 65},   # PC1 — vpravo (bolo vľavo)
-    2: {"direction": "horizontal", "x": 400,  "y": -50,  "offset": 100},  # PC2 — hore
-    3: {"direction": "vertical",   "x": 30,   "y": 150,  "offset": 65},   # PC3 — vľavo (bolo vpravo)
-}
-
-# Štartové pozície štichov na stole
-TRICK_START_POSITIONS = {
-    0: (TABLE_CENTER_X, TABLE_CENTER_Y + 120),
-    1: (TABLE_CENTER_X + 150, TABLE_CENTER_Y),
-    2: (TABLE_CENTER_X, TABLE_CENTER_Y - 120),
-    3: (TABLE_CENTER_X - 150, TABLE_CENTER_Y),
-}
 
 # ------------------------------------------------------------------
 # GUI — Tlačidlá
 # ------------------------------------------------------------------
-BUTTON_WIDTH = 180
-BUTTON_HEIGHT = 50
 BUTTON_RADIUS = 8
-BUTTON_Y = TABLE_CENTER_Y + CARD_SIZE_MEDIUM[1] // 2 + 18
 
 COLOR_BUTTON_PRIMARY = (180, 110, 45)
 COLOR_BUTTON_SECONDARY = (60, 45, 30)
-
-# Tlačidlá vpravo dole
-
-# Tlačidlá vpravo dole
-BUTTON_W = 200
-BUTTON_H = 50
-BUTTON_X = SCREEN_WIDTH - 600
-
-# Tlačidlo "Zoradiť" (ručné zoradenie ruky) odstránené 2026-09-26 —
-# pozostatok z prvej verzie hry, nepoužívalo sa (automatické zoradenie
-# po rozdaní v gui/screen.py to už rieši samo).
-#
-# Po jeho odstránení sa celý stĺpec posunul o jedno miesto (60px)
-# NIŽŠIE, nie vyššie: spodné tlačidlo (Menu) tak zostalo na svojom
-# pôvodnom mieste pri spodnom okraji a voľné miesto ostalo navrchu, kde
-# neprekáža. Prvý pokus (rovnaký deň) zatiahol namiesto toho Pravidlá a
-# Menu nahor — tým pod Menu vzniklo mŕtve miesto, preto táto oprava.
-#
-# Stĺpec zdola nahor: Menu, Pravidlá, Chujogram, Posledný štich, Tipy.
-BUTTON_TIPS_X = BUTTON_X
-BUTTON_TIPS_Y = SCREEN_HEIGHT - 330
-BUTTON_TIPS_WIDTH = BUTTON_W
-BUTTON_TIPS_HEIGHT = BUTTON_H
-
-BUTTON_LAST_TRICK_X = BUTTON_X
-BUTTON_LAST_TRICK_Y = SCREEN_HEIGHT - 270
-BUTTON_LAST_TRICK_WIDTH = BUTTON_W
-BUTTON_LAST_TRICK_HEIGHT = BUTTON_H
-
-BUTTON_CHUJOGRAM_X = BUTTON_X
-BUTTON_CHUJOGRAM_Y = SCREEN_HEIGHT - 210
-BUTTON_CHUJOGRAM_W = BUTTON_W
-BUTTON_CHUJOGRAM_H = BUTTON_H
-
-BUTTON_INFO_X = BUTTON_X
-BUTTON_INFO_Y = SCREEN_HEIGHT - 150
-BUTTON_INFO_WIDTH = BUTTON_W
-BUTTON_INFO_HEIGHT = BUTTON_H
-
-BUTTON_MENU_X = BUTTON_X
-BUTTON_MENU_Y = SCREEN_HEIGHT - 90
-BUTTON_MENU_WIDTH = BUTTON_W
-BUTTON_MENU_HEIGHT = BUTTON_H
-
-# ------------------------------------------------------------------
-# Panel s tipom od AI — ľavý dolný roh
-# ------------------------------------------------------------------
-# Tento obdĺžnik je voľný: ruka Počítača 3 je vľavo hore a končí nad ním
-# (HAND_CONFIGS[3]: y=150 + 7*65 + výška otočenej karty), ruka hráča
-# začína až napravo (HAND_CONFIGS[0]: x=400).
-TIP_PANEL_W = 360
-# Max výška — panel je ukotvený spodnou hranou a rastie nahor len podľa
-# obsahu (pozri gui/tip_panel.py). Horná hranica je daná rukou Počítača 3
-# vľavo, ktorá končí okolo y≈786 pri 1080p.
-TIP_PANEL_H = 270
-TIP_PANEL_X = 20
-TIP_PANEL_Y = SCREEN_HEIGHT - TIP_PANEL_H - 20
-
-# Round status panel — pravý horný roh
-ROUND_STATUS_W = 350
-ROUND_STATUS_H = 260
-ROUND_STATUS_X = SCREEN_WIDTH - 370
-ROUND_STATUS_Y = SCREEN_HEIGHT - ROUND_STATUS_H - 20    # vpravo dole
 
 
 # ------------------------------------------------------------------
@@ -266,8 +164,6 @@ ROUND_STATUS_Y = SCREEN_HEIGHT - ROUND_STATUS_H - 20    # vpravo dole
 # ------------------------------------------------------------------
 BULLET_RADIUS = 8
 BULLET_COLOR = COLOR_GOLD
-CHUJOGRAM_X = 20
-CHUJOGRAM_Y = 20
 
 # ------------------------------------------------------------------
 # Obrázok zadnej strany karty
@@ -277,12 +173,27 @@ CARD_BACK_IMAGE = "card-back.png"
 # ------------------------------------------------------------------
 # HELPER METÓDA PRE FONT
 # ------------------------------------------------------------------
+_FONT_CACHE: dict[int, pygame.font.Font] = {}
+
+
 def get_font(size: int) -> pygame.font.Font:
-    """Vráti font s podporou Unicode znakov (♥ ● ♠ ♣)."""
-    for font_name in ("tahoma", "arial", ):
-        try:
-            font = pygame.font.SysFont(font_name, size)
-            return font
-        except:
-            continue
-    return get_font( size)  # fallback
+    """Vráti font s podporou Unicode znakov (♥ ● ♠ ♣).
+
+    Fonty sa cachujú — SysFont pri každom volaní hľadá a otvára súbor
+    fontu a niektoré miesta volajú get_font() každú snímku (napr.
+    menovky hráčov). Objekt fontu sa nikde nemení (set_bold a pod.),
+    takže zdieľanie je bezpečné a vykreslenie je identické."""
+    font = _FONT_CACHE.get(size)
+    if font is None:
+        font = None
+        for font_name in ("tahoma", "arial"):
+            try:
+                font = pygame.font.SysFont(font_name, size)
+                break
+            except Exception:
+                continue
+        if font is None:
+            # Pôvodný fallback volal get_font() rekurzívne (nekonečne).
+            font = pygame.font.Font(None, size)
+        _FONT_CACHE[size] = font
+    return font

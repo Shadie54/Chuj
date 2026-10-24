@@ -142,7 +142,7 @@ class ZavazokDirector:
 
     def attach(self, screen):
         self.screen = screen
-        self.lesson_panel = LessonPanel(screen.screen)
+        self.lesson_panel = LessonPanel(screen.canvas)
 
     @property
     def current_stage(self) -> dict:

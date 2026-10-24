@@ -1,73 +1,74 @@
 # gui/card_renderer.py
 
 import pygame
-import os
 from game.card import Card
 from game.trick import Trick
 from config import (
-    CARDS_MEDIUM_PATH, CARDS_SMALL_PATH, CARD_BACK_IMAGE,
+    CARD_BACK_IMAGE,
     CARD_SIZE_MEDIUM, CARD_SIZE_SMALL,
     COLOR_GREEN, COLOR_WHITE,
-    HAND_CONFIGS, TRICK_START_POSITIONS, get_font
 )
+from gui import layout
 
 
 class CardRenderer:
-    def __init__(self, screen: pygame.Surface, debug: bool = False):
-        self.screen = screen
+    """Kreslenie kariet v rukách a na stole.
+
+    Od reworku rozlíšení (krok 5) kreslí cez gui/canvas.py: pozície ostávajú
+    v logických súradniciach (gui/layout.py), obrázky kariet sa berú z
+    najmenšieho dostatočne veľkého assetu (pri 4K cards-large) a sú ostré.
+    `canvas` je Canvas nad oknom (gui/display.py::canvas())."""
+
+    def __init__(self, canvas, debug: bool = False):
+        self.canvas = canvas
         self.debug = debug
-        self._cache: dict[str, pygame.Surface] = {}     # cache načítaných obrázkov
-        self.hand_configs = HAND_CONFIGS
-        self.trick_positions = TRICK_START_POSITIONS
+        # Pozície rúk a štichu podľa logickej výšky okna (gui/layout.py —
+        # pri 16:10 je ruka hráča ukotvená dole, stôl v strede).
+        game_layout = layout.game()
+        self.hand_configs = game_layout.hand_configs
+        self.trick_positions = game_layout.trick_positions
+        self._placeholders: dict = {}
+
     # ------------------------------------------------------------------
     # Načítanie obrázkov
     # ------------------------------------------------------------------
 
-    def _load_image(self, filename: str, size: tuple, path: str,
-                    angle: int = 0) -> pygame.Surface:
+    def _load_image(self, filename: str, size: tuple, angle: int = 0):
         """
-        Načíta obrázok z disku alebo z cache — vrátane už otočenej verzie.
+        Obrázok karty (LSurf) v logickej veľkosti `size`, voliteľne otočený.
 
-        `angle` je súčasťou cache kľúča: karty v rukách súperov sa každú
-        snímku kreslia otočené o pevný uhol podľa miesta pri stole (ten sa
-        medzi snímkami nemení), takže `pygame.transform.rotate()` stačí
-        spraviť raz pri prvom výskyte danej dvojice (súbor, uhol) a ďalej
-        len vracať hotový Surface z cache — namiesto alokovania nového
-        Surface pri KAŽDOM blit()e. Pri meraní (frametime_probe.py,
-        2026-09-30) toto meralo r=0.53 koreláciu medzi počtom rotate()
-        volaní za snímku a jej trvaním.
+        Cache (vrátane otočenej verzie) drží Canvas — karty v rukách súperov
+        sa každú snímku kreslia otočené o pevný uhol, takže rotate() stačí
+        raz (pozri meranie frametime_probe.py, 2026-09-30).
         """
-        key = f"{path}/{filename}@{angle}"
-        if key not in self._cache:
-            full_path = os.path.join(path, filename)
-            try:
-                img = pygame.image.load(full_path).convert_alpha()
-                img = pygame.transform.scale(img, size)
-            except FileNotFoundError:
-                # Ak obrázok chýba — nakreslíme placeholder
-                img = pygame.Surface(size, pygame.SRCALPHA)
-                img.fill((200, 200, 200))
-                font = get_font( 18)
-                text = font.render(filename[:10], True, (0, 0, 0))
-                img.blit(text, (5, size[1] // 2 - 10))
-            if angle:
-                img = pygame.transform.rotate(img, angle)
-            self._cache[key] = img
-        return self._cache[key]
+        try:
+            return self.canvas.card(filename, angle=angle, lsize=size)
+        except (FileNotFoundError, pygame.error):
+            # Ak obrázok chýba — nakreslíme placeholder
+            key = (filename, size, angle)
+            if key not in self._placeholders:
+                img = self.canvas.new_surface(size, alpha=False)
+                img.phys.fill((200, 200, 200))
+                text = self.canvas.font(18).render(filename[:10], True, (0, 0, 0))
+                img.phys.blit(text.phys, (round(5 * self.canvas.s),
+                                          round((size[1] // 2 - 10) * self.canvas.s)))
+                if angle:
+                    img.phys = pygame.transform.rotate(img.phys, angle)
+                    if angle % 180:
+                        img.lw, img.lh = img.lh, img.lw
+                self._placeholders[key] = img
+            return self._placeholders[key]
 
     def _get_card_image(self, card: Card, size: str = "medium",
-                        angle: int = 0) -> pygame.Surface:
-        """Vráti obrázok karty, voliteľne už otočený (a cachovaný)."""
-        path = CARDS_MEDIUM_PATH if size == "medium" else CARDS_SMALL_PATH
+                        angle: int = 0):
+        """Vráti obrázok karty (LSurf), voliteľne už otočený (a cachovaný)."""
         card_size = CARD_SIZE_MEDIUM if size == "medium" else CARD_SIZE_SMALL
-        return self._load_image(card.image_name, card_size, path, angle)
+        return self._load_image(card.image_name, card_size, angle)
 
-    def _get_card_back(self, size: str = "medium",
-                       angle: int = 0) -> pygame.Surface:
-        """Vráti obrázok zadnej strany karty, voliteľne už otočený (a cachovaný)."""
-        path = CARDS_MEDIUM_PATH if size == "medium" else CARDS_SMALL_PATH
+    def _get_card_back(self, size: str = "medium", angle: int = 0):
+        """Vráti obrázok zadnej strany karty (LSurf), voliteľne otočený."""
         card_size = CARD_SIZE_MEDIUM if size == "medium" else CARD_SIZE_SMALL
-        return self._load_image(CARD_BACK_IMAGE, card_size, path, angle)
+        return self._load_image(CARD_BACK_IMAGE, card_size, angle)
 
     # ------------------------------------------------------------------
     # Kreslenie ruky hráča
@@ -133,7 +134,7 @@ class CardRenderer:
                 else:
                     img = self._get_card_back(angle=angle)
 
-            self.screen.blit(img, (x, y))  # ← teraz na správnej pozícii
+            self.canvas.blit(img, (x, y))
 
             # Zvýraznenie hrateľných kariet
             if highlight_playable and show_faces:
@@ -184,7 +185,7 @@ class CardRenderer:
     def _draw_highlight(self, x: int, y: int, size: tuple, color: tuple):
         """Nakreslí farebný okraj okolo karty."""
         rect = pygame.Rect(x - 2, y - 2, size[0] + 4, size[1] + 4)
-        pygame.draw.rect(self.screen, color, rect, width=3, border_radius=5)
+        self.canvas.rect(color, rect, width=3, border_radius=5)
 
     # ------------------------------------------------------------------
     # Kreslenie štichu na stole
@@ -203,13 +204,12 @@ class CardRenderer:
             pos = self.trick_positions[player_index]
             img = self._get_card_image(card)
             rect = img.get_rect(center=pos)
-            self.screen.blit(img, rect)
+            self.canvas.blit(img, rect)
 
             # V debug móde zobraz index hráča
             if self.debug:
-                font = get_font( 20)
-                label = font.render(str(player_index), True, COLOR_WHITE)
-                self.screen.blit(label, (rect.x, rect.y - 15))
+                label = self.canvas.font(20).render(str(player_index), True, COLOR_WHITE)
+                self.canvas.blit(label, (rect.x, rect.y - 15))
 
     # ------------------------------------------------------------------
     # Detekcia kliku na kartu
@@ -244,4 +244,4 @@ class CardRenderer:
         return None
 
     def __repr__(self) -> str:
-        return f"CardRenderer(debug={self.debug}, cached={len(self._cache)} images)"
+        return f"CardRenderer(debug={self.debug})"

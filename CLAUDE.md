@@ -10,7 +10,11 @@ python main.py                      # hra
 python tester_main.py               # tester, posledný seed
 python tester_main.py --seed 12345  # reprodukcia konkrétneho rozdania
 python tester_main.py --random      # náhodný scenár
+python main.py --resolution 1366x768 --windowed   # hra v inom rozlíšení (vývoj)
+python main.py --safe               # núdzový štart v okne 1280×720
 ```
+GUI kreslí v logickom priestore 1920×(1080…1200) cez `display.canvas()`;
+rozloženie hernej obrazovky je v `gui/layout.py`. Rozlíšenia: doc 11.
 
 ## Mapa súborov (game/)
 - `card.py`, `deck.py`, `hand.py`, `trick.py` — základné entity

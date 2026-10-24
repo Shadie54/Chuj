@@ -1,25 +1,26 @@
 # gui/chujogram_panel.py
 
 import pygame
+from gui import display, layout
 from config import (
-    SCREEN_HEIGHT,
     COLOR_WHITE, COLOR_GRAY, COLOR_GOLD,
     BULLET_RADIUS, BULLET_COLOR,
-    NUM_PLAYERS, get_font, ROUND_STATUS_H
+    NUM_PLAYERS
 )
 
 class ChujogramPanel:
-    def __init__(self, screen: pygame.Surface, player_names: list[str]):
-        self.screen = screen
+    def __init__(self, canvas, player_names: list[str]):
+        # canvas = gui/canvas.py::Canvas nad oknom (rework rozlíšení, krok 5)
+        self.canvas = canvas
         self.player_names = player_names  # fixné poradie od začiatku hry
 
-        self.font_small = get_font(22)  # bolo 28
-        self.font_medium = get_font(28)  # bolo 36
-        self.font_large = get_font(36)  # bolo 48
+        self.font_small = self.canvas.font(22)  # bolo 28
+        self.font_medium = self.canvas.font(28)  # bolo 36
+        self.font_large = self.canvas.font(36)  # bolo 48
 
         # Rozmery panelu
         self.panel_w = 480
-        self.panel_h = SCREEN_HEIGHT
+        self.panel_h = layout.game().l_h
         self.panel_y = 0
 
         # Animácia
@@ -85,7 +86,7 @@ class ChujogramPanel:
                 self.panel_x, self.panel_y,
                 self.panel_w, self.panel_h
             )
-            mouse_pos = pygame.mouse.get_pos()
+            mouse_pos = display.mouse_pos()
             if panel_rect.collidepoint(mouse_pos):
                 self.scroll_y = max(
                     0, self.scroll_y - event.y * self.scroll_speed
@@ -112,15 +113,10 @@ class ChujogramPanel:
             return
 
         # Pozadie panelu
-        panel_surf = pygame.Surface(
-            (self.panel_w, self.panel_h), pygame.SRCALPHA
-        )
-        panel_surf.fill((15, 8, 3, 235))
-        self.screen.blit(panel_surf, (self.panel_x, self.panel_y))
+        self.canvas.overlay(pygame.Rect((self.panel_x, self.panel_y), (self.panel_w, self.panel_h)), (15, 8, 3, 235))
 
         # Pravý okraj
-        pygame.draw.line(
-            self.screen, COLOR_GOLD,
+        self.canvas.line(COLOR_GOLD,
             (self.panel_x + self.panel_w, 0),
             (self.panel_x + self.panel_w, self.panel_h),
             width=2
@@ -138,10 +134,10 @@ class ChujogramPanel:
             centerx=self.panel_x + self.panel_w // 2,
             top=8  # bolo 10, ok
         )
-        self.screen.blit(title, title_rect)
+        self.canvas.blit(title, title_rect)
 
         # Oddeľovacia čiara
-        pygame.draw.line(self.screen, COLOR_GOLD,
+        self.canvas.line(COLOR_GOLD,
                          (self.panel_x + 5, self.header_h),
                          (self.panel_x + self.panel_w - 5, self.header_h), width=1)
 
@@ -151,17 +147,17 @@ class ChujogramPanel:
             short_name = name[:10]
             surf = self.font_small.render(short_name, True, COLOR_WHITE)
             rect = surf.get_rect(centerx=x, top=57)
-            self.screen.blit(surf, rect)
+            self.canvas.blit(surf, rect)
 
             # Vertikálna čiara medzi stĺpcami
             if i > 0:
-                pygame.draw.line(self.screen, COLOR_GRAY,
+                self.canvas.line(COLOR_GRAY,
                                  (self.panel_x + self.content_x + i * self.col_w, 54),  # bolo 42
                                  (self.panel_x + self.content_x + i * self.col_w, self.panel_h - 5),
                                  width=1)
 
         # Čiara pod hlavičkou
-        pygame.draw.line(self.screen, COLOR_GOLD,
+        self.canvas.line(COLOR_GOLD,
                          (self.panel_x + 5, self.header_h),
                          (self.panel_x + self.panel_w - 5, self.header_h), width=1)
 
@@ -174,7 +170,7 @@ class ChujogramPanel:
             self.panel_x, self.header_h,
             self.panel_w, self.panel_h - self.header_h
         )
-        self.screen.set_clip(clip_rect)
+        self.canvas.set_clip(clip_rect)
 
         bullet_positions = []
 
@@ -184,8 +180,7 @@ class ChujogramPanel:
             # Vodorovná čiara po každých 4 kolách
             if round_idx > 0 and round_idx % 4 == 0:
                 line_y = y - 5
-                pygame.draw.line(
-                    self.screen, COLOR_GOLD,
+                self.canvas.line(COLOR_GOLD,
                     (self.panel_x + 5, line_y),
                     (self.panel_x + self.panel_w - 5, line_y),
                     width=1
@@ -211,19 +206,17 @@ class ChujogramPanel:
                         str(score), True, COLOR_WHITE
                     )
                     score_rect = score_surf.get_rect(centerx=x, top=y)
-                    self.screen.blit(score_surf, score_rect)
+                    self.canvas.blit(score_surf, score_rect)
 
                 has_bullet = round_bullets[player_idx] if \
                     player_idx < len(round_bullets) else 0
 
                 if has_bullet:
                     bullet_y = y + 30
-                    pygame.draw.circle(
-                        self.screen, BULLET_COLOR,
+                    self.canvas.circle(BULLET_COLOR,
                         (x, bullet_y), BULLET_RADIUS
                     )
-                    pygame.draw.circle(
-                        self.screen, COLOR_WHITE,
+                    self.canvas.circle(COLOR_WHITE,
                         (x, bullet_y), BULLET_RADIUS, width=1
                     )
                     round_bullet_positions.append((x, bullet_y))
@@ -233,7 +226,7 @@ class ChujogramPanel:
             bullet_positions.append(round_bullet_positions)
 
         self._draw_connections(bullet_positions)
-        self.screen.set_clip(None)
+        self.canvas.set_clip(None)
 
     def _draw_connections(self, bullet_positions: list):
         """Nakreslí spojnice medzi guličkami."""
@@ -243,8 +236,7 @@ class ChujogramPanel:
             # Horizontálne spojnice v rovnakom kole
             if len(active) > 1:
                 for i in range(len(active) - 1):
-                    pygame.draw.line(
-                        self.screen, BULLET_COLOR,
+                    self.canvas.line(BULLET_COLOR,
                         active[i][1], active[i + 1][1],
                         width=2
                     )
@@ -258,8 +250,7 @@ class ChujogramPanel:
                 if prev_active and curr_active:
                     # Spoj poslednú guličku predchádzajúceho kola
                     # s prvou guličkou aktuálneho kola
-                    pygame.draw.line(
-                        self.screen, BULLET_COLOR,
+                    self.canvas.line(BULLET_COLOR,
                         prev_active[-1], curr_active[0],
                         width=2
                     )

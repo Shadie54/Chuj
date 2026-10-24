@@ -1,13 +1,12 @@
 # gui/card_throw_animation.py
 
-import pygame
-from config import TRICK_START_POSITIONS
+from gui import layout
 
 
 class CardThrowAnimation:
     """
     Veľmi rýchla animácia — karta letí z ruky hráča (odkiaľ bola
-    zahraná) na svoje miesto na stole (TRICK_START_POSITIONS).
+    zahraná) na svoje miesto na stole (layout.trick_positions).
 
     Na rozdiel od TrickAnimation (ktorá zbiera už kompletný štich
     k víťazovi na konci) toto rieši samotné odhodenie JEDNEJ karty
@@ -15,15 +14,15 @@ class CardThrowAnimation:
     (karta sa dnes objaví na stole okamžite, bez prechodu).
     """
 
-    def __init__(self, screen: pygame.Surface, card_renderer):
-        self.screen = screen
+    def __init__(self, canvas, card_renderer):
+        self.canvas = canvas      # gui/canvas.py::Canvas (rework rozlíšení)
         self.card_renderer = card_renderer
         self.in_flight: dict[int, dict] = {}  # player_index -> card dict
         self.card_speed: float = 100.0        # veľmi rýchla, kratšia dráha než TrickAnimation
 
     def start(self, player_index: int, card, start_pos: tuple[int, int]):
         """Spustí let karty z start_pos (stred karty v ruke) do jej miesta na stole."""
-        target_x, target_y = TRICK_START_POSITIONS[player_index]
+        target_x, target_y = layout.game().trick_positions[player_index]
         sx, sy = start_pos
         self.in_flight[player_index] = {
             "card": card,
@@ -68,7 +67,7 @@ class CardThrowAnimation:
         for c in self.in_flight.values():
             img = self.card_renderer._get_card_image(c["card"])
             rect = img.get_rect(center=(int(c["x"]), int(c["y"])))
-            self.screen.blit(img, rect)
+            self.canvas.blit(img, rect)
 
     def is_in_flight(self, player_index: int) -> bool:
         return player_index in self.in_flight

@@ -1,28 +1,21 @@
 # gui/trick_animation.py
 
 import pygame
-from config import (
-    SCREEN_WIDTH, SCREEN_HEIGHT,
-    TRICK_START_POSITIONS
-)
+from gui import layout
 
 
 class TrickAnimation:
-    def __init__(self, screen: pygame.Surface, card_renderer):
-        self.screen = screen
+    def __init__(self, canvas, card_renderer):
+        self.canvas = canvas      # gui/canvas.py::Canvas (rework rozlíšení)
         self.card_renderer = card_renderer
         self.cards_in_flight: list[dict] = []
         self.done: bool = True
         self.card_speed: float = 40.0       # rýchla animácia
         self._talon_anim_started: bool = False
 
-        # Cieľové pozície pre každého hráča (stred ruky)
-        self.target_positions = {
-            0: (SCREEN_WIDTH // 2, 930),  # hráč dole — stred ruky (y=860 + trochu)
-            1: (1620, 410),  # PC1 vpravo — x=1600+, stred y ruky (150 + 4*65/2)
-            2: (SCREEN_WIDTH // 2, 20),  # PC2 hore — stred ruky (y=-50, viditeľný okraj)
-            3: (50, 410),  # PC3 vľavo — x=30+, stred y ruky
-        }
+        # Cieľové pozície pre každého hráča (stred ruky) — gui/layout.py,
+        # ukotvené rovnako ako ruky (pri 1080p: 930 / (1620,410) / 20 / (50,410)).
+        self.target_positions = layout.game().trick_collect_targets
 
     def start(self, played_cards: list[tuple[int, object]],
               winner_index: int):
@@ -36,7 +29,7 @@ class TrickAnimation:
         target_x, target_y = self.target_positions[winner_index]
 
         # Štartové pozície kariet na stole
-        start_positions = TRICK_START_POSITIONS
+        start_positions = layout.game().trick_positions
 
         for i, (player_idx, card) in enumerate(played_cards):
             sx, sy = start_positions[player_idx]
@@ -96,11 +89,11 @@ class TrickAnimation:
             if now < self._start_time + card["delay"]:
                 # Karta ešte neletí — nakresli ju na mieste
                 img = self.card_renderer._get_card_image(card["card"])
-                self.screen.blit(img, (int(card["x"]), int(card["y"])))
+                self.canvas.blit(img, (int(card["x"]), int(card["y"])))
                 continue
 
             img = self.card_renderer._get_card_image(card["card"])
-            self.screen.blit(img, (int(card["x"]), int(card["y"])))
+            self.canvas.blit(img, (int(card["x"]), int(card["y"])))
 
     @property
     def is_done(self) -> bool:

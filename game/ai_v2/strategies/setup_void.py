@@ -33,6 +33,16 @@ class SetupVoid(Strategy):
             if card not in ctx.playable:
                 continue
 
+            # Void má zmysel len vtedy, keď sa farba môže ešte niekedy
+            # vyniesť. Ak mimo mojej ruky už žiadna karta tejto farby nie
+            # je, moja karta je posledná v hre: void nič neprinesie a
+            # karta je navyše istá výhra štichu (ostatní sú void a môžu
+            # voľne zhodiť čokoľvek). Nahlásené 2026-10-24, seed
+            # 1310220294 — počítač vyniesol poslednú guľu Q● namiesto
+            # zeleného horníka a ostatní sa zbavili K♠.
+            if not self.memory.remaining[suit]:
+                continue
+
             if suit in ("leaf", "acorn"):
                 if not self.memory.is_special_gone(suit):
                     if self._is_trap(card, ctx):

@@ -2,51 +2,45 @@
 
 import pygame
 import os
+from gui import layout
 from config import (
     COLOR_WHITE, COLOR_GRAY, COLOR_GOLD,
     COLOR_GREEN, COLOR_RED, COLOR_YELLOW,
-    ROUND_STATUS_X, ROUND_STATUS_Y, ROUND_STATUS_W, ROUND_STATUS_H,
-    NO_PENALTY_STREAK, get_font, SUIT_ICONS_PATH
+    NO_PENALTY_STREAK, SUIT_ICONS_PATH
 )
 
 
 class RoundStatus:
-    def __init__(self, screen: pygame.Surface):
-        self.screen = screen
-        self.font_small = get_font( 24)  # bolo 20
-        self.font_medium = get_font( 30)  # bolo 26
-        self.font_large = get_font( 38)  # bolo 32
+    def __init__(self, canvas):
+        # canvas = gui/canvas.py::Canvas nad oknom (rework rozlíšení, krok 5)
+        self.canvas = canvas
+        self.font_small = self.canvas.font(24)  # bolo 20
+        self.font_medium = self.canvas.font(30)  # bolo 26
+        self.font_large = self.canvas.font(38)  # bolo 32
 
         # Declaration badges
         self._declaration_badges = {}
         for key in ("all", "none"):
             path = os.path.join("assets", "graphics", f"{key}.png")
             try:
-                img = pygame.image.load(path).convert_alpha()
-                self._declaration_badges[key] = pygame.transform.scale(img, (45, 45))  # bolo 30 (test +50%)
-            except FileNotFoundError:
+                self._declaration_badges[key] = self.canvas.image(path, (45, 45))  # bolo 30 (test +50%)
+            except (FileNotFoundError, pygame.error):
                 self._declaration_badges[key] = None
 
         # Rozmery
-        self.x = ROUND_STATUS_X
-        self.y = ROUND_STATUS_Y
-        self.w = ROUND_STATUS_W
-        self.h = ROUND_STATUS_H
+        # Vpravo dole, ukotvený k spodnému okraju (gui/layout.py)
+        self.x, self.y, self.w, self.h = layout.game().round_status_rect()
 
         # Gulička rozmery
         self.bullet_r = 8
         self.bullet_spacing = 20
 
-        icon_h = 25
         self._icons = {}
         for suit in ("leaf", "acorn"):
             path = os.path.join(SUIT_ICONS_PATH, f"{suit}-icon@small.png")
             try:
-                img = pygame.image.load(path).convert_alpha()
-                w, h = img.get_size()
-                new_w = int(w * icon_h / h)
-                self._icons[suit] = pygame.transform.scale(img, (30,30))
-            except FileNotFoundError:
+                self._icons[suit] = self.canvas.image(path, (30, 30))
+            except (FileNotFoundError, pygame.error):
                 self._icons[suit] = None
 
     # ------------------------------------------------------------------
@@ -65,11 +59,8 @@ class RoundStatus:
 
     def _draw_bg(self):
         """Nakreslí pozadie panelu."""
-        overlay = pygame.Surface((self.w, self.h), pygame.SRCALPHA)
-        overlay.fill((20, 12, 5, 210))
-        self.screen.blit(overlay, (self.x, self.y))
-        pygame.draw.rect(
-            self.screen, COLOR_GOLD,
+        self.canvas.overlay(pygame.Rect((self.x, self.y), (self.w, self.h)), (20, 12, 5, 210))
+        self.canvas.rect(COLOR_GOLD,
             (self.x, self.y, self.w, self.h),
             width=2, border_radius=10
         )
@@ -85,7 +76,7 @@ class RoundStatus:
             left=self.x + 30,  # bolo centerx
             top=self.y + 8
         )
-        self.screen.blit(title, title_rect)
+        self.canvas.blit(title, title_rect)
 
         if deal_seed is not None:
             # Len pre zobrazenie — oddeľovač tisícok medzerou (napr. 27 856 498),
@@ -96,9 +87,9 @@ class RoundStatus:
                 right=self.x + self.w - 8,
                 centery=title_rect.centery  # rovnaká výška ako KOLO
             )
-            self.screen.blit(seed, seed_rect)
+            self.canvas.blit(seed, seed_rect)
 
-        pygame.draw.line(self.screen, COLOR_GOLD,
+        self.canvas.line(COLOR_GOLD,
                          (self.x + 10, self.y + 43),
                          (self.x + self.w - 10, self.y + 43), width=1)
 
@@ -122,7 +113,7 @@ class RoundStatus:
             name_surf = self.font_small.render(
                 player.name[:10], True, name_color
             )
-            self.screen.blit(name_surf, (self.x + 10, y))
+            self.canvas.blit(name_surf, (self.x + 10, y))
 
             streak_end_x = self.x + 10 + NO_PENALTY_STREAK * self.bullet_spacing + self.bullet_r
             icon_x = max(self.x + 10 + name_surf.get_width() + 6, streak_end_x + 10)
@@ -133,13 +124,13 @@ class RoundStatus:
                     if current_round.illuminated_by.get(suit) == i:
                         icon = self._icons.get(suit)
                         if icon:
-                            self.screen.blit(icon, (icon_x, y + 2))
+                            self.canvas.blit(icon, (icon_x, y + 2))
                             icon_x += icon.get_width() + 4
             # Declaration badge
             if current_round and current_round.declaration_player == i:
                 badge = self._declaration_badges.get(current_round.declaration_type)
                 if badge:
-                    self.screen.blit(badge, (icon_x, y + 2))
+                    self.canvas.blit(badge, (icon_x, y + 2))
                     icon_x += badge.get_width() + 4
 
             # Body aktuálneho kola
@@ -156,7 +147,7 @@ class RoundStatus:
                 right=self.x + self.w - 10,
                 top=y
             )
-            self.screen.blit(pts_surf, pts_rect)
+            self.canvas.blit(pts_surf, pts_rect)
 
             # Zelené guličky — séria bez trestných bodov
             streak = player.no_penalty_streak
@@ -169,16 +160,16 @@ class RoundStatus:
             cx = x + i * self.bullet_spacing + self.bullet_r
             if i < streak:
                 # Plná zelená
-                pygame.draw.circle(self.screen, COLOR_GREEN, (cx, y), self.bullet_r)
-                pygame.draw.circle(self.screen, COLOR_WHITE, (cx, y), self.bullet_r, width=1)
+                self.canvas.circle(COLOR_GREEN, (cx, y), self.bullet_r)
+                self.canvas.circle(COLOR_WHITE, (cx, y), self.bullet_r, width=1)
             else:
                 # Prázdna sivá
-                pygame.draw.circle(self.screen, COLOR_GRAY, (cx, y), self.bullet_r, width=1)
+                self.canvas.circle(COLOR_GRAY, (cx, y), self.bullet_r, width=1)
 
         # Bonus text ak dosiahol max
         if streak >= max_show:
             bonus_surf = self.font_small.render("-10b!", True, COLOR_GREEN)
-            self.screen.blit(bonus_surf, (x + max_show * self.bullet_spacing + 5, y - 6))
+            self.canvas.blit(bonus_surf, (x + max_show * self.bullet_spacing + 5, y - 6))
 
     def __repr__(self) -> str:
         return "RoundStatus()"

@@ -31,6 +31,10 @@ import sys
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
+# Explicitné logické rozlíšenie (gui/display.py). Predtým test bežal na
+# tom, čo nahlásil dummy ovládač (1024×768) — teda na inom rozložení než
+# hra pri 1080p. Rework rozlíšení, krok 2 (claude/11_…ANALYSIS.md, R9).
+os.environ.setdefault("CHUJ_RESOLUTION", "1920x1080")
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
