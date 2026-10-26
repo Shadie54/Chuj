@@ -1,8 +1,8 @@
 # CHUJ — kartová hra (Python 3.11+, pygame)
 
 4 hráči (1 človek + 3 AI), 32 kariet, hrá sa proti smeru hodinových ručičiek.
-Detaily: `docs/00_GAME_RULES.md` (pravidlá), `docs/01_PROJECT_STRUCTURE.md` (štruktúra),
-`docs/02_AI_REFERENCE.md` (AI pipeline — čítaj LEN pri práci na AI logike).
+Detaily: `00_GAME_RULES.md` (pravidlá), `01_PROJECT_STRUCTURE.md` (štruktúra),
+`02_AI_REFERENCE.md` + `AI_V2_HANDOFF.md` (AI pipeline — čítaj LEN pri práci na AI logike).
 
 ## Spustenie
 ```
@@ -21,23 +21,26 @@ rozloženie hernej obrazovky je v `gui/layout.py`. Rozlíšenia: doc 11.
 - `player.py` — skóre, záväzky, finalize_round, update_streak
 - `round.py` — fázy kola: dealing → preparation → tricks → scoring
 - `game_state.py` — hráči, kolá, chujogram
-- `ai.py` — vstupný bod AI (decide_card → router → sweep → situation → selector)
+- `ai.py` — vstupný bod AI (decide_card → router → sweep → ai_v2.AIEngine), **jediný AI systém od 2026-09-15**
 - `ai_memory.py` — pamäť + SuitProfile (trap/escape/safe karty)
 - `ai_hand_eval.py` — HandEval, GameContext, DecisionContext
-- `ai_situation.py` — SituationDetector (L-*/F-* situácie)
-- `ai_card_select.py` — CardSelector (SAFE/TAKE/OPEN/RISK mode)
-- `ai_sweep.py` — SweepPipeline L1–L7
 - `ai_declaration.py` — záväzok "none" + vysvietenie
 - `ai_play_none.py`, `ai_play_all.py` — vyhlásené hry
-- `ai_strategies_const.py` — Situation/Mode/Strategy konštanty
+- `ai_v2/engine.py` — AIEngine, vstupný bod card-play enginu
+- `ai_v2/context.py` — AIContext, TrickOutcome, card_outcome()
+- `ai_v2/selector.py` — StrategySelector — agregácia návrhov, výber karty
+- `ai_v2/strategies/*.py` — 11 stratégií (DumpSpecial, DumpHeart, DumpDangerous,
+  DumpHigh, AvoidTrick, ForceSpecial, SetupVoid, AcceptTrick, RiskSpecial, Wait,
+  LeadSafe), každá `is_active()`/`propose()`/`weight()` — pozri `AI_V2_HANDOFF.md`
+- `ai_sweep/pipeline.py` — SweepPipeline L1–L7 (pozri `claude/03_SWEEP_V2_HANDOFF.md`)
 
 `gui/` — GUI (neupravuj pri práci na AI logike). `tester/` — headless tester + pygame screen.
 
 ## Rozdelenie zodpovedností (dodržuj striktne)
 - `ai_memory.py` — LEN pamäť a inferencia
-- `ai_situation.py` — LEN detekcia situácie
-- `ai_card_select.py` — LEN selekcia karty
-- `ai.py` — LEN rozhodovacia logika
+- `ai_v2/strategies/*.py` — LEN návrh kariet pre svoju situáciu (is_active/propose)
+- `ai_v2/selector.py` — LEN agregácia návrhov a výber karty
+- `ai.py` — LEN routovanie (easy/sweep/declaration/ai_v2)
 - `round.py` — herná logika a fázy; `player.py` — stav hráča, bodovanie
 
 ## Konvencie
@@ -49,11 +52,13 @@ rozloženie hernej obrazovky je v `gui/layout.py`. Rozlíšenia: doc 11.
 - Nespúšťaj hru/tester bez vyžiadania — pygame otvára okno
 
 ## Diagnostika AI bugov
-AI loguje stratégie vo formáte `[AI meno] SITUÁCIA | MODE | STRATÉGIA: detail`
-(napr. `L-SAFE | SAFE | L1-SAFE_LEAD: escape bell: 9●`).
-Kódy stratégií: `ai_strategies_const.py`. Seed rozdania reprodukuje identické kolo.
+AI loguje stratégie vo formáte `[AI meno] VARIANT: detail`
+(napr. `[AI Počítač 1] RISK_TRAP: risk trap: Q♣ (P=0.7)`). Variant = label,
+ktorý daná stratégia vráti z `propose()` (napr. `UNDERPLAY`, `FORCE`, `VOID`,
+`RISK_TRAP`) — pozri `ai_v2/strategies/*.py` a `AI_V2_HANDOFF.md`.
+Seed rozdania reprodukuje identické kolo (`python tester_main.py --seed X`).
 Logy hry: `Documents/Chuj/logs/`.
 
 ## Po zmene AI logiky
-Ak zmena mení správanie popísané v `docs/02_AI_REFERENCE.md`, aktualizuj
+Ak zmena mení správanie popísané v `02_AI_REFERENCE.md`, aktualizuj
 príslušnú sekciu dokumentu (kompaktne, bez duplikácie).

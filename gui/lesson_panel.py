@@ -17,9 +17,9 @@ import pygame
 from config import (
     COLOR_WHITE, COLOR_GOLD, COLOR_GRAY, COLOR_PANEL_BG,
     COLOR_BUTTON_PRIMARY, BUTTON_RADIUS,
-    FONT_SIZE_SMALL, FONT_SIZE_MEDIUM,
+    FONT_SIZE_SMALL, FONT_SIZE_MEDIUM, SCREEN_WIDTH,
 )
-from gui import layout
+from gui import layout, display
 
 
 # Panel začína pod horným pásom s názvom kapitoly.
@@ -36,6 +36,23 @@ LINE_H_MEDIUM, LABEL_LINE_H_MEDIUM = 32, 30
 LINE_H_SMALL, LABEL_LINE_H_SMALL = 24, 24
 
 BUTTON_H = 46
+
+
+def chujogram_offset(screen) -> int:
+    """Posun pre x_offset na lesson_panel.draw(), spoločný pre všetky
+    kapitoly s panelom pri ľavom okraji (tutorial_director.py,
+    zavazok_director.py, trening_score_director.py).
+
+    Chujogram je vysúvací pás cez celú výšku vľavo — ak je čo i len
+    čiastočne vysunutý, panel posunieme doprava za jeho pravý okraj, nech
+    sa neprekrývajú. Pred 2026-10-26 to riešil len tutorial_director.py
+    vlastnou metódou _chujogram_offset() — presunuté sem, aby ju nemuseli
+    ostatné kapitoly duplikovať."""
+    chujogram = getattr(screen, "chujogram", None)
+    if chujogram is None:
+        return 0
+    right = chujogram.panel_x + chujogram.panel_w
+    return max(0, int(right + 20 - PANEL_LEFT))
 
 
 class LessonPanel:
@@ -77,7 +94,9 @@ class LessonPanel:
              bullets: list[str] | None = None,
              instruction: str | None = None,
              button_label: str | None = None,
-             x_offset: int = 0) -> pygame.Rect:
+             x_offset: int = 0,
+             center: bool = False,
+             screen_center: bool = False) -> pygame.Rect:
         """
         Nakreslí panel a vráti obdĺžnik tlačidla "Ďalej".
 
@@ -94,6 +113,16 @@ class LessonPanel:
             (hráč má najprv vykonať akciu, ktorú mu prikazuje inštrukcia).
         x_offset: posun doprava, keď je vysunutý Chujogram (ten zaberá
             vlastný pás naľavo). Panel sa tým zároveň zúži.
+        center: True vycentruje nadpis aj každý riadok textu vodorovne
+            v rámci celej šírky panelu (namiesto bežného zarovnania k
+            ľavému okraju). Odrážky/inštrukcia/labels centrovanie
+            nepodporujú — zatiaľ to nepotrebujú (len tutorial/
+            zavazok_director.py::OUTRO_TEXT).
+        screen_center: True umiestni celý panel (box aj tlačidlo) do
+            stredu obrazovky namiesto zvyčajnej pozície pri ľavom
+            okraji — pre obrazovky BEZ stola/rúk v pozadí, kde sa
+            vyhýbanie kartám (max_right/max_bottom) nerieši (napr.
+            tutorial_main.py::_show_trening_intro_panel()).
 
         Vracia prázdny Rect, keď sa tlačidlo nekreslí — volajúci tak
         nemusí riešiť None.
@@ -144,6 +173,11 @@ class LessonPanel:
                 body_font, line_h, label_line_h
             )
         panel_h = min(panel_h, available_h)
+
+        if screen_center:
+            px = (SCREEN_WIDTH - panel_w) // 2
+            py = (display.logical_height() - panel_h) // 2
+
         self.last_bottom = py + panel_h
         self.last_right = px + panel_w
 
@@ -167,14 +201,19 @@ class LessonPanel:
         if labels:
             ty += 14
 
+        def line_x(surf_width: int) -> int:
+            if not center:
+                return text_x
+            return px + (panel_w - surf_width) // 2
+
         if title:
-            self.canvas.blit(body_font.render(title, True, COLOR_GOLD),
-                             (text_x, ty))
+            title_surf = body_font.render(title, True, COLOR_GOLD)
+            self.canvas.blit(title_surf, (line_x(title_surf.get_width()), ty))
             ty += line_h + 10
 
         for line in lines:
-            self.canvas.blit(body_font.render(line, True, COLOR_WHITE),
-                             (text_x, ty))
+            line_surf = body_font.render(line, True, COLOR_WHITE)
+            self.canvas.blit(line_surf, (line_x(line_surf.get_width()), ty))
             ty += line_h
 
         if lines and instruction_lines:

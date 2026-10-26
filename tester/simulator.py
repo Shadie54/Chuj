@@ -112,6 +112,13 @@ class SimConfig:
     # pre ručnú analýzu 90+ logiky všade inde (LeadSafe.HIGH_SCORE,
     # AcceptTrick, DumpHeart, ai_declaration.py, ...). Vznik: 2026-10-22.
     watch_high_score_round: bool = True
+    # DumpSpecial VOID tiebreak (AI_V2_HANDOFF.md §8) — zaznamená KAŽDÚ
+    # situáciu, kde je hráč void vo vedenej farbe a má medzi hrateľnými
+    # kartami naraz OBOCH horníkov (leaf aj acorn). Pre každú horníkovú
+    # farbu uloží rezervy + ich trap/escape rozdelenie (živé, z AIMemory)
+    # a akú kartu si AI dnes reálne vybralo — materiál na doladenie
+    # kritérií urgentnosti (chat 2026-10-26). Vznik: 2026-10-26.
+    watch_dump_special_void_tie: bool = True
 
 
 # ------------------------------------------------------------------
@@ -303,6 +310,66 @@ def _watch_decision(sim_logger: SimLogger, ai, player, card):
     })
 
 
+def _watch_dump_special_void_tie(sim_logger: SimLogger, ai, player,
+                                  rnd, playable: list, card):
+    """
+    Watcher pre SimConfig.watch_dump_special_void_tie — pozri komentár
+    pri poli. Zachytí každú situáciu, kde je hráč void vo vedenej farbe
+    a medzi hrateľnými kartami má naraz OBOCH horníkov (leaf aj acorn).
+    Nezávislé od AI/stratégie — počíta si rezervy a trap/escape
+    rozdelenie priamo cez ai.memory.build_suit_profile(), rovnaké dáta,
+    ktoré by videla DumpSpecial.propose(), keby ich dnes používala.
+    """
+    if not sim_logger.config.watch_dump_special_void_tie:
+        return
+
+    trick = rnd.current_trick
+    if len(trick.played_cards) == 0:
+        return  # je leader — nejde o DumpSpecial VOID situáciu
+
+    lead_suit = trick.lead_suit
+    if any(c.suit == lead_suit for c in player.hand.cards):
+        return  # má vedenú farbu — nie je void
+
+    leaf_special = next(
+        (c for c in playable if c.is_special and c.suit == "leaf"), None
+    )
+    acorn_special = next(
+        (c for c in playable if c.is_special and c.suit == "acorn"), None
+    )
+    if leaf_special is None or acorn_special is None:
+        return  # nemá (hrateľných) oboch horníkov naraz
+
+    trick_cards = [c for _, c in trick.played_cards]
+    profiles = {
+        suit: ai.memory.build_suit_profile(suit, player.hand.cards, trick_cards)
+        for suit in ("leaf", "acorn")
+    }
+
+    def _suit_info(suit: str) -> dict:
+        profile = profiles[suit]
+        reserve_cards = [c for c in profile.my_cards if not c.is_special]
+        trap_reserves = [c for c in profile.trap_cards if not c.is_special]
+        escape_reserves = [c for c in profile.escape_cards if not c.is_special]
+        return {
+            "reserves": len(reserve_cards),
+            "reserve_cards": [str(c) for c in reserve_cards],
+            "trap_reserves": [str(c) for c in trap_reserves],
+            "escape_reserves": [str(c) for c in escape_reserves],
+            "remaining_in_game": ai.memory.get_remaining_count(suit),
+        }
+
+    sim_logger.findings.add({
+        "type": "dump_special_void_tie",
+        **sim_logger.round_context,
+        "trick_number": sim_logger.trick_number + 1,
+        "player": player.name,
+        "leaf": _suit_info("leaf"),
+        "acorn": _suit_info("acorn"),
+        "chosen_card": str(card),
+    })
+
+
 def _run_tricks(game_state: GameState, ai_players: list,
                 sim_logger: SimLogger):
     """Odohrá štichy kola (s prerušením pri zlyhanom zväzku)."""
@@ -326,6 +393,7 @@ def _run_tricks(game_state: GameState, ai_players: list,
                 playable, rnd.current_trick, rnd.trick_number, all_scores
             )
             _watch_decision(sim_logger, ai, player, card)
+            _watch_dump_special_void_tie(sim_logger, ai, player, rnd, playable, card)
 
             ok = rnd.play_card(player_idx, card)
             if not ok:
@@ -561,6 +629,7 @@ def main():
     parser.add_argument("--no-sweep-ev-audit-watch", action="store_true")
     parser.add_argument("--no-gate2-audit-watch", action="store_true")
     parser.add_argument("--no-high-score-round-watch", action="store_true")
+    parser.add_argument("--no-dump-special-void-tie-watch", action="store_true")
     args = parser.parse_args()
 
     config = SimConfig(
@@ -578,6 +647,7 @@ def main():
         watch_sweep_ev_audit=not args.no_sweep_ev_audit_watch,
         watch_gate2_audit=not args.no_gate2_audit_watch,
         watch_high_score_round=not args.no_high_score_round_watch,
+        watch_dump_special_void_tie=not args.no_dump_special_void_tie_watch,
     )
     print(f"Spúšťam simuláciu: {config.num_games} hier (seed={config.seed})")
     run(config)

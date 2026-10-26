@@ -824,6 +824,15 @@ class Screen:
         self.trick_animation.draw()
         if self._shows("player_labels"):
             self.phase_renderer.draw_player_labels()
+        # Pás kapitoly kreslíme PRED chujogramom (nie po ňom) — chujogram má
+        # takmer nepriezračné pozadie a prekryje tú časť pásu, s ktorou sa
+        # prelína (jeho vlastná hlavička v ľavých 480px), takže zostane
+        # čitateľný. Titulok pásu je centrovaný na strede celej obrazovky,
+        # mimo tohto pásma, takže zostáva plne viditeľný ako doteraz.
+        # (Nález 2026-10-26: predtým sa kreslil AŽ PO chujograme, takže ho
+        # jeho čierny overlay cez celú šírku dodatočne zatemnil.)
+        if self.chapter_banner is not None:
+            self.chapter_banner.draw()
         self.chujogram.draw(self.game_state.bullet_history,self.game_state.round_scores_history)
         if self._shows("round_status"):
             self.round_status.draw(self.game_state.players,self.game_state.current_round)
@@ -837,12 +846,11 @@ class Screen:
             self.tip_panel.draw(self.current_tip, x_offset=offset)
         self.speech_bubble.draw()
         self.phase_renderer.draw_message()
-        # Panel s výkladom lekcie a pás kapitoly. Zámerne POD overlayami
-        # (Pravidlá, Posledný štich) — tie ich majú prekryť, nie naopak.
+        # Panel s výkladom lekcie. Zámerne POD overlayami (Pravidlá,
+        # Posledný štich) — tie ho majú prekryť, nie naopak. (Pás kapitoly
+        # sa teraz kreslí skôr, pred chujogramom — pozri _draw() vyššie.)
         if self.director is not None:
             self.director.draw()
-        if self.chapter_banner is not None:
-            self.chapter_banner.draw()
         self.info_overlay.draw()
         if self.show_last_trick:
             self._draw_last_trick_overlay()

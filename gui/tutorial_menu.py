@@ -26,7 +26,7 @@ BG_PATH = os.path.join("assets", "graphics", "table.jpg")
 
 CHAPTER_LABELS = {
     "zaklady": "Základy",
-    "zavazky": "Záväzok",
+    "zavazky": "Záväzky a pravidlá",
     "trening": "Tréningová hra",
 }
 

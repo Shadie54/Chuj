@@ -24,7 +24,9 @@ from config import (
     SCREEN_WIDTH, TABLE_CENTER_X,
 )
 from game.card import Card
-from gui.lesson_panel import LessonPanel, PANEL_LEFT, PANEL_TOP, BUTTON_H
+from gui.lesson_panel import (
+    LessonPanel, PANEL_TOP, BUTTON_H, chujogram_offset,
+)
 from tutorial.scripted_round import apply_scripted_deal
 from tutorial.tutorial_steps import (
     STEPS, BRANCH_B_STEPS, build_tutorial_hands,
@@ -443,6 +445,28 @@ class TutorialDirector:
         návrh §9 č. 1). Skutočný záväzok by naskriptované kolo rozbil."""
         return True
 
+    def blink(self, element: str) -> bool:
+        """Pripomienka pre gui/phase_renderer.py (generický hák, pozri
+        PhaseRenderer._blink) — pulzujúce tlačidlo presne vtedy, keď
+        krok vyžaduje, aby na neho hráč klikol, inak sa nedá pokračovať
+        (rovnaké dve podmienky ako _hide_button())."""
+        step = self.current_step()
+        if step is None:
+            return False
+        if element == "chujogram":
+            return step.get("key") == "chujogram_wait" and not self.chujogram_opened
+        if element == "last_trick":
+            return bool(step.get("requires_last_trick_view")
+                        and not self.last_trick_viewed)
+        if element == "ok" and step["kind"] == "phase_list":
+            # Fáza "zavazok" je tu nanečisto (suppress_declaration() == True)
+            # — jediná skutočná akcia je potvrdiť tlačidlom OK, rovnaký
+            # dôvod na blikanie ako v tutorial/zavazok_director.py pri
+            # stupni "sweep" (Nález 2026-10-26).
+            phase = step["phases"][self.phase_index]
+            return phase["key"] == "zavazok"
+        return False
+
     def draw(self):
         """
         Nakreslí panel s výkladom (gui/lesson_panel.py).
@@ -488,7 +512,7 @@ class TutorialDirector:
         )
         self.lesson_panel.draw(
             counter=f"Krok {min(self.step_index + 1, len(STEPS))}/{len(STEPS)}",
-            x_offset=self._chujogram_offset(),
+            x_offset=chujogram_offset(self.screen),
             **content
         )
 
@@ -1010,16 +1034,6 @@ class TutorialDirector:
         human = self.screen.game_state.human_index
         return any(index == human
                    for index, _ in rnd.current_trick.played_cards)
-
-    def _chujogram_offset(self) -> int:
-        """Chujogram je vysúvací pás cez celú výšku vľavo — ak je čo i len
-        čiastočne vysunutý, panel posunieme doprava za jeho pravý okraj.
-        Rovnaký výpočet ako pre panel s tipom v gui/screen.py::_draw."""
-        chujogram = getattr(self.screen, "chujogram", None)
-        if chujogram is None:
-            return 0
-        right = chujogram.panel_x + chujogram.panel_w
-        return max(0, int(right + 20 - PANEL_LEFT))
 
     def _trick_winner(self, index: int):
         """Víťaz už UZAVRETÉHO štichu, alebo None ak ešte neskončil."""

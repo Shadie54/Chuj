@@ -1,4 +1,4 @@
-import pygame, os
+import pygame, os, math
 from gui import display, layout
 from config import (
     COLOR_WHITE, COLOR_GOLD, COLOR_YELLOW,
@@ -97,7 +97,7 @@ class PhaseRenderer:
                 self.s.game_state.current_round.trick_number > 0):
             self.draw_button(
                 self._button_last_trick_rect(), "Posledný štich",
-                COLOR_BUTTON_SECONDARY
+                COLOR_BUTTON_SECONDARY, blink=self._blink("last_trick")
             )
         if shows("tips"):
             tips_on = getattr(self.s, "tips_enabled", False)
@@ -107,9 +107,15 @@ class PhaseRenderer:
                 COLOR_BUTTON_PRIMARY if tips_on else COLOR_BUTTON_SECONDARY
             )
         if shows("chujogram"):
-            self.draw_button(self._button_chujogram_rect(), "Chujogram", COLOR_BUTTON_SECONDARY)
+            self.draw_button(
+                self._button_chujogram_rect(), "Chujogram", COLOR_BUTTON_SECONDARY,
+                blink=self._blink("chujogram")
+            )
         if shows("info"):
-            self.draw_button(self._button_info_rect(), "Pravidlá", COLOR_BUTTON_SECONDARY)
+            self.draw_button(
+                self._button_info_rect(), "Pravidlá", COLOR_BUTTON_SECONDARY,
+                blink=self._blink("info")
+            )
         if shows("menu"):
             self.draw_button(self._button_menu_rect(), "Menu", COLOR_BUTTON_SECONDARY)
 
@@ -121,15 +127,33 @@ class PhaseRenderer:
                 color_all = (COLOR_BUTTON_PRIMARY if self.s.active_declaration == "all"
                              else COLOR_BUTTON_SECONDARY)
                 self.draw_button(
-                    self._button_decl_all_rect(), "Beriem všetko  [-20b]", color_all
+                    self._button_decl_all_rect(), "Beriem všetko  [-20b]", color_all,
+                    blink=self._blink("decl_all")
                 )
                 color_none = (COLOR_BUTTON_PRIMARY if self.s.active_declaration == "none"
                               else COLOR_BUTTON_SECONDARY)
                 self.draw_button(
-                    self._button_decl_none_rect(), "Nechytím nič  [-10b]", color_none
+                    self._button_decl_none_rect(), "Nechytím nič  [-10b]", color_none,
+                    blink=self._blink("decl_none")
                 )
             if shows("ok"):
-                self.draw_button(self._button_ok_rect(), "OK", COLOR_BUTTON_PRIMARY)
+                self.draw_button(
+                    self._button_ok_rect(), "OK", COLOR_BUTTON_PRIMARY,
+                    blink=self._blink("ok")
+                )
+
+    def _blink(self, element: str) -> bool:
+        """Má tlačidlo pulzovať — pripomienka, že na neho treba kliknúť?
+
+        Voliteľný hák directora, analogický k Screen._shows() (napr.
+        tutorial/tutorial_director.py, tutorial/zavazok_director.py).
+        V ostrej hre director blink() nemá, getattr vráti None a nič
+        sa nemení. Kľúče: "decl_all", "decl_none", "ok", "last_trick",
+        "chujogram", "info".
+        """
+        hint = getattr(self.s.director, "blink", None)
+        return bool(hint and hint(element))
+
     def draw_message(self):
         """Zobrazí dočasnú správu v strede obrazovky."""
         if not self.s.message or pygame.time.get_ticks() >= self.s.message_timer:
@@ -157,8 +181,13 @@ class PhaseRenderer:
     # Primitív tlačidla
     # ------------------------------------------------------------------
 
-    def draw_button(self, rect: pygame.Rect, text: str, color: tuple):
-        """Nakreslí jedno tlačidlo s hover efektom."""
+    def draw_button(self, rect: pygame.Rect, text: str, color: tuple, blink: bool = False):
+        """Nakreslí jedno tlačidlo s hover efektom.
+
+        blink=True: pulzujúci biely rám/glow (sínusovka, cyklus ~1.2s),
+        nezávislý od myši — upozornenie, že na toto tlačidlo treba
+        kliknúť (pozri PhaseRenderer.draw_buttons, director.blink_declaration).
+        """
         mouse_pos = display.mouse_pos()
         is_hover = rect.collidepoint(mouse_pos)
         alpha = 240 if is_hover else 200
@@ -168,8 +197,20 @@ class PhaseRenderer:
         if is_hover:
             self.canvas.overlay(pygame.Rect((rect.x, rect.y), (rect.width, rect.height)), (255, 255, 255, 25))
 
-        border_color = COLOR_WHITE if is_hover else COLOR_GOLD
-        self.canvas.rect(border_color, rect, width=2, border_radius=BUTTON_RADIUS)
+        if blink:
+            pulse = abs(math.sin(math.pi * (pygame.time.get_ticks() % 1200) / 1200))
+            glow_alpha = int(40 + 90 * pulse)
+            self.canvas.overlay(
+                pygame.Rect((rect.x, rect.y), (rect.width, rect.height)),
+                (255, 255, 255, glow_alpha)
+            )
+            border_color = COLOR_WHITE
+            border_width = 2 + round(2 * pulse)
+        else:
+            border_color = COLOR_WHITE if is_hover else COLOR_GOLD
+            border_width = 2
+
+        self.canvas.rect(border_color, rect, width=border_width, border_radius=BUTTON_RADIUS)
 
         surf = self.font_medium.render(text, True, COLOR_WHITE)
         text_rect = surf.get_rect(center=rect.center)

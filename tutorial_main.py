@@ -26,6 +26,7 @@ except Exception:
     except Exception:
         pass
 
+import os
 import sys
 
 import pygame
@@ -53,7 +54,7 @@ TRENING_INTRO_TEXT = (
 )
 
 
-def _show_trening_intro_panel() -> None:
+def _show_trening_intro_panel(bg_path: str | None = None) -> None:
     """Krátky úvodný panel (poradca) PRED prvým kolom tréningovej hry.
 
     ÚMYSELNE samostatná mini-slučka, BEZ gui/screen.py::Screen a BEZ
@@ -63,6 +64,16 @@ def _show_trening_intro_panel() -> None:
     nechalo stôl stáť navždy (nájdené v hre 2026-10-21). Táto funkcia
     teda nič z reálnej hry nepoužíva, len LessonPanel nad jednoduchým
     pozadím.
+
+    bg_path: cesta k hráčovmu vlastnému "table_bg" (pozri
+    run_chapter_trening) — bez neho by draw_backdrop() použil natvrdo
+    zadaný default (rovnaký, aký má menu), čo pri reálnej hre pôsobilo
+    nepatrične (Nález 2026-10-26). BEZ tmavého overlaya (na rozdiel od
+    menu) — v reálnej hre sa stôl takto nikdy celoplošne nestmavuje,
+    len samotný LessonPanel má vlastné tlmené pozadie. Panel aj text
+    sú vycentrované na stred obrazovky (screen_center/center) — na
+    rozdiel od bežných panelov v hre tu nie je žiadna ruka/stôl so
+    štichom, ktorému by sa panel musel vyhýbať.
 
     Pri zatvorení okna (QUIT) počas panela skončí rovnako, ako by
     skončila ktorákoľvek iná obrazovka v hre (pygame.quit() + exit) —
@@ -82,12 +93,17 @@ def _show_trening_intro_panel() -> None:
                     and lesson_panel.next_button.collidepoint(event.pos)):
                 return
 
-        draw_backdrop(canvas, (0, 0, 0, 150))
+        if bg_path:
+            draw_backdrop(canvas, bg_path=bg_path)
+        else:
+            draw_backdrop(canvas)
 
         lesson_panel.draw(
             title="Tréningová hra",
             paragraphs=TRENING_INTRO_TEXT,
             button_label="Hraj →",
+            center=True,
+            screen_center=True,
         )
         display.present()
 
@@ -140,15 +156,15 @@ def run_chapter_zaklady() -> str:
 
 
 def run_chapter_zavazky() -> str:
-    """Kapitola 2 — Záväzok. NA ROZDIEL OD kapitoly 1 ide o reálnu,
-    nenaskriptovanú hru: hráč sám skúša splniť záväzok proti
-    skutočnému AI (game/ai.py::AI, "easy" — tí sa sami nikdy
-    nevyhlásia, pozri game/ai_declaration.py::decide_declaration), bez
-    vedenia za ruku. Dva stupne v tomto poradí: "Beriem všetko" (seed
-    160), potom "Nechytím nič" (5 seedov, zamiešané na začiatku
-    kapitoly). Návrh a overenie — vrátane toho, prečo práve tieto
-    seedy — pozri tutorial/zavazok_director.py a
-    tutorial2_sandbox/test_zavazok_chapter.py (10/10 headless behov).
+    """Kapitola 2 — Záväzky a špeciálne pravidlá. NA ROZDIEL OD
+    kapitoly 1 ide o reálnu, nenaskriptovanú hru: hráč sám skúša
+    splniť záväzok (resp. sweep) proti skutočnému AI (game/ai.py::AI,
+    "easy"/"hard" — pozri tutorial/zavazok_director.py), bez vedenia
+    za ruku. Tri stupne v tomto poradí: "Beriem všetko" (seed 160),
+    "Nechytím nič" (5 seedov, zamiešané na začiatku kapitoly) a
+    "Lov na trestné karty" (5 seedov). Návrh a overenie — vrátane
+    toho, prečo práve tieto seedy — pozri tutorial/zavazok_director.py
+    a tutorial2_sandbox/test_zavazok_chapter.py (10/10 headless behov).
 
     Záväzok sa NEZAMYKÁ — hráč ho vyhlasuje sám, cez bežné tlačidlá
     Beriem všetko/Nechytím nič/OK (fáza "preparation" sa nijako
@@ -160,8 +176,8 @@ def run_chapter_zavazky() -> str:
 
     Vracia "skip"/"menu" rovnako ako ostatné kapitoly (pozri
     run_chapter_zaklady) — tu sa prakticky vždy vráti "skip"
-    (dokončenie oboch stupňov), "menu" len cez bežné tlačidlo Menu v
-    hre."""
+    (dokončenie všetkých troch stupňov), "menu" len cez bežné tlačidlo
+    Menu v hre."""
     director = ZavazokDirector()
     game_state = build_tutorial_game_state(first_player_index=0)
 
@@ -175,7 +191,7 @@ def run_chapter_zavazky() -> str:
     settings = dict(load_settings())
     # Tipy by sa bili s panelom výkladu (rovnaký dôvod ako v kapitole 1).
     settings["tips_enabled"] = False
-    settings["chapter_banner"] = "TUTORIÁL — ZÁVÄZOK"
+    settings["chapter_banner"] = "TUTORIÁL — ZÁVÄZKY A ŠPECIÁLNE PRAVIDLÁ"
 
     screen = Screen(game_state, ai_players, debug=DEBUG_MODE,
                     new_game=True, settings=settings, director=director)
@@ -213,9 +229,15 @@ def run_chapter_trening() -> str:
     vysvetlenia pravidiel "90b" a "reset na 100b". Nová instancia na
     každé "Hraj znova" (nový while cyklus nižšie) — vysvetlenia sa tak
     môžu zobraziť znova v novej hre."""
-    _show_trening_intro_panel()
-
     settings = dict(load_settings())
+
+    # Pozadie úvodného panelu = hráčovo vlastné "table_bg" (rovnaká
+    # cesta ako gui/screen.py::Screen.__init__), nech panel vyzerá ako
+    # súčasť reálnej hry, nie ako menu (Nález 2026-10-26).
+    bg_file = settings.get("table_bg", "table.jpg")
+    bg_path = os.path.join("assets", "graphics", bg_file)
+    _show_trening_intro_panel(bg_path=bg_path if os.path.exists(bg_path) else None)
+
     # Tipy chceme v tréningovej kapitole vždy, bez ohľadu na to, ako ich
     # má hráč nastavené v ostrej hre. Meníme len túto lokálnu kópiu — do
     # settings.json sa nič nezapisuje (prepnutie tlačidlom priamo v hre

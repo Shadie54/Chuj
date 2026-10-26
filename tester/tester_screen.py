@@ -20,6 +20,36 @@ from config import (
 )
 
 # ------------------------------------------------------------------
+# Schránka (copy/paste seedu) — cez tkinter, nie pygame.scrap (ten je na
+# niektorých platformách nespoľahlivý/vyžaduje init). Tichý no-op/""
+# pri akomkoľvek zlyhaní — tester na schránke nemá závisieť.
+# ------------------------------------------------------------------
+
+def _clipboard_copy(text: str) -> None:
+    try:
+        import tkinter
+        root = tkinter.Tk()
+        root.withdraw()
+        root.clipboard_clear()
+        root.clipboard_append(text)
+        root.update()
+        root.destroy()
+    except Exception:
+        pass
+
+
+def _clipboard_paste() -> str:
+    try:
+        import tkinter
+        root = tkinter.Tk()
+        root.withdraw()
+        text = root.clipboard_get()
+        root.destroy()
+        return text
+    except Exception:
+        return ""
+
+# ------------------------------------------------------------------
 # Lokálne farby
 # ------------------------------------------------------------------
 
@@ -197,6 +227,12 @@ class TesterScreen:
                     elif event.key == pygame.K_ESCAPE:
                         self.seed_input_active = False
                         self.seed_input = ""
+                    elif (event.key == pygame.K_v
+                          and event.mod & pygame.KMOD_CTRL):
+                        pasted = _clipboard_paste()
+                        self.seed_input += "".join(
+                            ch for ch in pasted if ch.isdigit()
+                        )
                     elif event.unicode.isdigit():
                         self.seed_input += event.unicode
                 else:
@@ -275,6 +311,13 @@ class TesterScreen:
 
     def _handle_sidebar_click(self, pos: tuple[int, int]):
         rects = self._build_sidebar_rects()
+
+        # Klik na názov scenára — skopíruje seed do schránky
+        if rects["scenario_name"].collidepoint(pos):
+            seed = self._current_seed()
+            if seed is not None:
+                _clipboard_copy(str(seed))
+            return
 
         # Seed input — spracuj pred ostatnými
         if rects["seed_input"].collidepoint(pos):
@@ -369,6 +412,16 @@ class TesterScreen:
         self.last_step = None
         pygame.display.set_caption(f"Chuj Tester — {new_sc.name}")
 
+    def _current_seed(self) -> int | None:
+        """Seed aktuálneho scenára z jeho mena (vzor "random_seed_<seed>",
+        pozri tester/random_scenario.py) — rovnaký výpočet ako na
+        viacerých iných miestach v tomto súbore. None, ak sa nedá
+        rozobrať (napr. scenár bez tohto mena)."""
+        try:
+            return int(self.scenario.name.split("_")[-1])
+        except (ValueError, AttributeError):
+            return None
+
     # ------------------------------------------------------------------
     # Sidebar — výpočet rectov
     # ------------------------------------------------------------------
@@ -378,6 +431,11 @@ class TesterScreen:
         rects = {}
         x = SB_PAD
         y = SB_PAD + 40  # 40px pre názov scenára
+
+        # Klik na názov scenára = skopíruje seed do schránky (pozri
+        # _handle_sidebar_click). Zhoduje sa s plochou, kam sa v
+        # _draw_sidebar() vykresľuje scenario.name.
+        rects["scenario_name"] = pygame.Rect(SB_PAD, SB_PAD, SB_INNER_W, 36)
 
         def btn(key, w=SB_INNER_W, h=SB_BTN_H):
             nonlocal y

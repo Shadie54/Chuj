@@ -34,7 +34,7 @@
 import pygame
 
 from config import HIGH_SCORE_THRESHOLD
-from gui.lesson_panel import LessonPanel
+from gui.lesson_panel import LessonPanel, chujogram_offset
 
 NINETY_PLAYER_TEXT = (
     "Dosiahol si hranicu 90 bodov!\n\n"
@@ -181,6 +181,7 @@ class TreningScoreDirector:
             title=PANEL_TITLE,
             paragraphs=self.pending_text,
             button_label=PANEL_BUTTON,
+            x_offset=chujogram_offset(self.screen),
         )
 
     def shows(self, element: str) -> bool:

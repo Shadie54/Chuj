@@ -149,8 +149,7 @@ def main():
             active_game_state, active_ai_players = create_game(settings)
             result, active_game_state, active_ai_players = _run_game(
                 window, active_game_state, active_ai_players,
-                settings=settings  # ← chýba
-
+                settings=settings
             )
 
             if result == "game_over" and active_game_state.loser is not None:
