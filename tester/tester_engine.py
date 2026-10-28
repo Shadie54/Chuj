@@ -523,6 +523,11 @@ class TesterEngine:
         # Round uzatvorí štich — priradí karty víťazovi, inkrementuje counter
         self.round.finish_trick()
 
+        # Zlyhaný záväzok ("all"/"none") → kolo končí okamžite, rovnako
+        # ako v gui/screen.py a tester/simulator.py.
+        if self.round.check_declaration_failed():
+            self.round.phase = "scoring"
+
         # Zaznamenaj pre GUI
         self.completed_tricks.append(TrickHistory(
             leader=leader,

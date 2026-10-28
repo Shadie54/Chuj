@@ -2,12 +2,11 @@
 
 import pygame
 import os
+from gui import display, ui_style
+from gui.rules_demo import TrickRulesDemo
 from config import (
     SCREEN_WIDTH,
-    COLOR_WHITE, COLOR_GOLD, COLOR_GRAY,
-    COLOR_BUTTON_SECONDARY,
-    COLOR_PENALTY, COLOR_BONUS, COLOR_ILLUMINATED, SUIT_ICONS_PATH,
-    RANKS, COLOR_PANEL_BG, COLOR_DARK_GRAY, BUTTON_RADIUS
+    COLOR_WHITE, COLOR_GOLD, SUIT_ICONS_PATH,
 )
 
 # Vizuál panelov (pozadie/rámik/zaoblenie) zjednotený so zvyškom hry —
@@ -16,6 +15,36 @@ from config import (
 # a celý zaoblený zlatý rámik, nie len tenký pásik pri okraji.
 _PANEL_BG_ALPHA = 210
 _PANEL_BORDER_RADIUS = 14
+
+# Grafický rework 2026-10-28 (koncept "Pravidlá a bodovanie"): rám okna,
+# nadpis, záložky, krížik a celá záložka Bodovanie sú v štýle
+# gui/ui_style.py. Záložka Pravidlá zatiaľ ostáva pôvodná (grafika k nej
+# sa pripravuje).
+FRAME_MARGIN_X = 60
+FRAME_MARGIN_Y = 18
+SECTION_FILL = (27, 18, 11, 255)
+SECTION_RADIUS = 12
+SUBSECTION_FILL = (20, 13, 8, 255)
+BADGE_FILL = (150, 34, 26)
+BADGE_BORDER = (226, 92, 70)
+BADGE_TEXT = (255, 238, 225)
+ILLUM_COLOR = (240, 196, 92)          # údaje o vysvietení
+CLOSE_R = 24
+
+
+CARD_RATIO = 181 / 293                # šírka / výška karty
+FAN_STEP = 0.36                       # krok vejára (podiel šírky karty)
+
+# Obdĺžnikový výrez ikonky (zlomky šírky/výšky: x0, x1, y0, y1) — vejár
+# kariet je široký, takže na šírku sa reže menej a na výšku viac (pomer 3:2).
+DECL_CROP = (0.08, 0.92, 0.22, 0.78)
+
+# Ikonky záložky Pravidlá (assets/graphics) — prvý existujúci súbor sa
+# použije. Dodané ikonky stačí uložiť pod prvým menom, kód netreba meniť.
+RULES_ICON_FILES = {
+    "goal": ("trophy.png", "chuj.png"),             # Cieľ hry
+    "scoring": ("scoresheet.png", "chujogram.png"),  # krok Bodovanie
+}
 
 
 class InfoOverlay:
@@ -38,16 +67,29 @@ class InfoOverlay:
         self._medium_line_h = self.font_medium.get_height() + 8
         self._small_line_h = self.font_small.get_height() + 6
 
-        self.btn_close = pygame.Rect(SCREEN_WIDTH - 60, 20, 40, 40)
+        self.font_title = self.canvas.font(46)
+        self.font_section = self.canvas.font(30)
+        self.font_text = self.canvas.font(24)
+        self.font_badge = self.canvas.font(24)
+
+        # Rám okna (celá obrazovka s okrajom), krížik vpravo hore
+        self.frame = pygame.Rect(FRAME_MARGIN_X, FRAME_MARGIN_Y,
+                                 SCREEN_WIDTH - 2 * FRAME_MARGIN_X,
+                                 display.logical_height() - 2 * FRAME_MARGIN_Y)
+        ccx, ccy = self.frame.right - 48, self.frame.top + 46
+        self.btn_close = pygame.Rect(ccx - CLOSE_R - 4, ccy - CLOSE_R - 4,
+                                     2 * CLOSE_R + 8, 2 * CLOSE_R + 8)
 
         self.active_tab = "bodovanie"
 
-        tab_w, tab_h = 220, 45
+        # Záložky — spojené vedľa seba pod nadpisom
+        tab_w, tab_h = 240, 46
         cx = SCREEN_WIDTH // 2
-        self.tab_bodovanie = pygame.Rect(cx - tab_w - 10, 75, tab_w, tab_h)
-        self.tab_pravidla  = pygame.Rect(cx + 10,         75, tab_w, tab_h)
+        self.tab_bodovanie = pygame.Rect(cx - tab_w, 100, tab_w, tab_h)
+        self.tab_pravidla  = pygame.Rect(cx,         100, tab_w, tab_h)
 
-        self.content_y = 135
+        # Pôvodný obsah záložky Pravidlá — pod záložkami, vnútri rámu
+        self.content_y = self.tab_bodovanie.bottom + 10
         # ikonky farieb
         self._suit_icons: dict[str, pygame.Surface] = {}
         self._load_suit_icons()
@@ -56,13 +98,24 @@ class InfoOverlay:
         # round_status.py), nie nová grafika.
         self._load_declaration_icons()
         self._load_chuj_icon()
+        # Animovaná ukážka pravidiel štichov (záložka Pravidlá)
+        self.rules_demo = TrickRulesDemo(self.canvas)
     # ------------------------------------------------------------------
     # Viditeľnosť
     # ------------------------------------------------------------------
 
-    def show(self):    self.visible = True
-    def hide(self):    self.visible = False
-    def toggle(self):  self.visible = not self.visible
+    def show(self):
+        self.visible = True
+        self.rules_demo.reset()          # ukážka štichov vždy od scény 1
+
+    def hide(self):
+        self.visible = False
+
+    def toggle(self):
+        if self.visible:
+            self.hide()
+        else:
+            self.show()
 
     # ------------------------------------------------------------------
     # Udalosti
@@ -83,8 +136,12 @@ class InfoOverlay:
                 self.active_tab = "bodovanie"
                 return True
             if self.tab_pravidla.collidepoint(event.pos):
+                if self.active_tab != "pravidla":
+                    self.rules_demo.reset()
                 self.active_tab = "pravidla"
                 return True
+            if self.active_tab == "pravidla":
+                self.rules_demo.handle_click(event.pos)
             return True
         return False
 
@@ -95,23 +152,18 @@ class InfoOverlay:
     def draw(self):
         if not self.visible:
             return
+        c = self.canvas
 
-        # Stmavenie cez celé okno (aj pásma pri 21:9)
-        self.canvas.overlay_window((0, 0, 0, 245))
+        # Stmavenie hry cez celé okno (aj pásma pri 21:9) a nepriehľadný
+        # rám okna so zlatohnedým okrajom
+        c.overlay_window((0, 0, 0, 200))
+        c.overlay(self.frame, (17, 11, 7, 255), border_radius=ui_style.PANEL_RADIUS)
+        ui_style.draw_panel(c, self.frame)
 
-        # Nadpis
-        title = self.font_large.render("PRAVIDLÁ A BODOVANIE", True, COLOR_GOLD)
-        self.canvas.blit(title, title.get_rect(centerx=SCREEN_WIDTH // 2, top=18))
-        self.canvas.line(COLOR_GOLD, (80, 68), (SCREEN_WIDTH - 80, 68), 1)
-
-        # Zavrieť
-        self.canvas.rect(COLOR_BUTTON_SECONDARY,
-                         self.btn_close, border_radius=BUTTON_RADIUS)
-        self.canvas.rect(COLOR_GOLD,
-                         self.btn_close, width=2, border_radius=BUTTON_RADIUS)
-        x = self.font_medium.render("X", True, COLOR_WHITE)
-        self.canvas.blit(x, x.get_rect(center=self.btn_close.center))
-
+        ui_style.draw_screen_title(c, "PRAVIDLÁ A BODOVANIE", self.font_title,
+                                   (SCREEN_WIDTH // 2, self.frame.top + 36),
+                                   line_half_w=300, line_gap=32)
+        self._draw_close(self.btn_close.collidepoint(display.mouse_pos()))
         self._draw_tabs()
 
         if self.active_tab == "bodovanie":
@@ -119,330 +171,660 @@ class InfoOverlay:
         else:
             self._draw_rules()
 
+    def _draw_close(self, hover: bool):
+        c = self.canvas
+        cx, cy = self.btn_close.center
+        c.circle((24, 16, 10), (cx, cy), CLOSE_R)
+        c.circle(ui_style.BTN_BORDER_HOVER if hover else ui_style.GOLD_SOFT,
+                 (cx, cy), CLOSE_R, width=2)
+        color = ui_style.BTN_TEXT_HOVER if hover else ui_style.GOLD
+        d = 9
+        c.line(color, (cx - d, cy - d), (cx + d, cy + d), width=3)
+        c.line(color, (cx - d, cy + d), (cx + d, cy - d), width=3)
+
     # ------------------------------------------------------------------
     # Záložky
     # ------------------------------------------------------------------
 
     def _draw_tabs(self):
+        mouse = display.mouse_pos()
         for tab, label, key in (
             (self.tab_bodovanie, "Bodovanie", "bodovanie"),
             (self.tab_pravidla,  "Pravidlá",  "pravidla"),
         ):
             active = self.active_tab == key
-            self.canvas.rect((45, 30, 12) if active else (20, 12, 5),
-                             tab, border_radius=BUTTON_RADIUS)
-            self.canvas.rect(COLOR_GOLD, tab, width=2,
-                             border_radius=BUTTON_RADIUS)
-            surf = self.font_small.render(label, True,
-                                          COLOR_GOLD if active else COLOR_GRAY)
-            self.canvas.blit(surf, surf.get_rect(center=tab.center))
+            ui_style.draw_button(self.canvas, tab, label, self.font_text,
+                                 1 if active else 3,
+                                 hover=not active and tab.collidepoint(mouse),
+                                 shadow=False)
 
     # ------------------------------------------------------------------
     # Záložka: BODOVANIE
     # ------------------------------------------------------------------
 
     def _draw_scoring(self):
-        y = self.content_y + 20
+        """Záložka Bodovanie (koncept 2026-10-28, 2. verzia): hore trestné
+        karty (vejár srdcí + horníci) a vysvietenie horníkov, dole
+        aktuálny chuj / bonusy / zvláštne pravidlá bodovania."""
+        f = self.frame
+        x0, x1 = f.left + 30, f.right - 30
+        top = self.tab_bodovanie.bottom + 26
+        bottom = f.bottom - 26
+        gap = 18
+        # Pomer horný : dolný rad ako v koncepte (≈ 62 : 38)
+        h1 = round((bottom - top - gap) * 0.62)
+        h3 = bottom - top - gap - h1
 
-        def draw_section(x, cy, title, content_fn, col_w):
-            """Dynamická sekcia — content_fn(x, y, col_w) -> výška obsahu."""
-            # Zisti výšku obsahu
-            content_h = content_fn(x, cy, col_w, measure_only=True)
-            box_h = self._header_h + content_h + 20
+        # ── Rad 1: TRESTNÉ KARTY | VYSVIETENIE HORNÍKOV ─────────────────
+        w_left = round((x1 - x0 - gap) * 0.55)
+        r_pen = pygame.Rect(x0, top, w_left, h1)
+        r_ill = pygame.Rect(r_pen.right + gap, top, x1 - r_pen.right - gap, h1)
+        self._section(r_pen, "TRESTNÉ KARTY",
+                      "Tieto karty prinášajú trestné body.")
+        self._draw_penalty_cards(r_pen)
+        self._section(r_ill, "VYSVIETENIE HORNÍKOV")
+        self._draw_illumination(r_ill)
 
-            self.canvas.overlay(pygame.Rect((x, cy), (col_w, box_h)), (*COLOR_PANEL_BG, _PANEL_BG_ALPHA))
-            self.canvas.rect(COLOR_GOLD, (x, cy, col_w, box_h),
-                             width=2, border_radius=_PANEL_BORDER_RADIUS)
+        # ── Rad 2: AKTUÁLNY CHUJ | BONUSY | ZVLÁŠTNE PRAVIDLÁ ───────────
+        y3 = r_pen.bottom + gap
+        w3 = (x1 - x0 - 2 * gap) // 3
+        r_chuj = pygame.Rect(x0, y3, w3, h3)
+        r_bon = pygame.Rect(r_chuj.right + gap, y3, w3, h3)
+        r_spec = pygame.Rect(r_bon.right + gap, y3, x1 - r_bon.right - gap, h3)
+        self._section(r_chuj, "AKTUÁLNY CHUJ")
+        self._draw_current_chuj(r_chuj)
+        self._section(r_bon, "BONUSY")
+        self._draw_badge_rows(r_bon, [
+            ("−10 b", (70, 140, 60), "Zobral si všetky trestné", "karty v kole."),
+            ("−10 b", (70, 140, 60), "Séria — 5 kôl za sebou", "bez trestného bodu."),
+        ])
+        self._section(r_spec, "ZVLÁŠTNE PRAVIDLÁ BODOVANIA")
+        self._draw_badge_rows(r_spec, [
+            ("100 b", None, "Presne 100 bodov", "→ skóre klesne na 90."),
+            ("90 b+", None, "Horníci sa nad 90 bodov", "nepočítajú (0 b)."),
+        ])
 
-            title_surf = self.font_medium.render(title, True, COLOR_GOLD)
-            self.canvas.blit(title_surf, (x + 14, cy + 10))
-            line_y = cy + 10 + title_surf.get_height() + 6
-            self.canvas.line(COLOR_DARK_GRAY,
-                             (x + 14, line_y), (x + col_w - 14, line_y), 1)
+    # --- sekcie Bodovania ---------------------------------------------
 
-            content_fn(x, line_y + 10, col_w, measure_only=False)
-            return cy + box_h + 14
+    def _section(self, rect: pygame.Rect, title: str, subtitle: str | None = None):
+        """Sekcia: o odtieň svetlejší podklad, zlatohnedý rám, zlatý nadpis
+        a pod ním jemná deliaca čiara (prípadne podnadpis)."""
+        c = self.canvas
+        c.overlay(rect, SECTION_FILL, border_radius=SECTION_RADIUS)
+        c.overlay((rect.x + 3, rect.y + 3, rect.width - 6, 40),
+                  (255, 214, 140, 8), border_radius=SECTION_RADIUS - 3)
+        c.rect(ui_style.GOLD_SOFT, rect, width=2, border_radius=SECTION_RADIUS)
+        t = self.font_section.render(title, True, ui_style.GOLD)
+        c.blit(t, (rect.x + 22, rect.y + 14))
+        line_y = rect.y + 14 + t.get_height() + 6
+        c.line((70, 54, 34), (rect.x + 20, line_y), (rect.right - 20, line_y), 1)
+        if subtitle:
+            # podnadpis vedľa nadpisu (šetrí výšku pre karty)
+            s = self.font_text.render(subtitle, True, ui_style.TEXT_DIM)
+            c.blit(s, s.get_rect(left=rect.x + 22 + t.get_width() + 20,
+                                 bottom=rect.y + 14 + t.get_height() - 3))
 
-        full_w = SCREEN_WIDTH - 120
-        col_x = 60
-        col_w2 = (full_w - 40) // 2
+    def _content_top(self, rect: pygame.Rect, subtitle: bool = False) -> int:
+        y = rect.y + 14 + self.font_section.get_height() + 6 + 14
+        if subtitle:
+            y += self.font_text.get_height() + 8
+        return round(y)
 
-        # ── SEKCIA 1: HODNOTY KARIET (plná šírka) ──────────────────────────
-        def content_karty(x, y, w, measure_only):
-            # Všetkých 8 srdcových kariet (eso → sedmička) ako mierne
-            # prekrytý vejár — rovnaký vizuál ako v tutoriáli
-            # (tutorial/tutorial_director.py::_draw_penalty_cards_row),
-            # nie len jedna karta ako zástupca.
-            card_w, card_h = 130, 210
-            heart_step = max(1, card_w // 3)   # ~2/3 prekryté = vidno tretinu
-            hearts_w = card_w + (len(RANKS) - 1) * heart_step
-            if not measure_only:
-                bx = x + 14
-                hx = bx
-                for rank in RANKS:
-                    img = self._load_card("heart", rank, (card_w, card_h))
-                    if img:
-                        self.canvas.blit(img, (hx, y))
-                        self.canvas.rect(COLOR_GOLD, (hx, y, card_w, card_h),
-                            width=2, border_radius=6
-                        )
-                    hx += heart_step
-                tx = bx + hearts_w + 20
-                ty = y + 40
-                s = self.font_medium.render("1 bod", True, COLOR_PENALTY)
-                self.canvas.blit(s, (tx, ty)); ty += self._medium_line_h
-                s = self.font_small.render(
-                    "každá srdcová karta, bez ohľadu na hodnotu", True, COLOR_WHITE)
-                self.canvas.blit(s, (tx, ty)); ty += self._small_line_h
-                s = self.font_small.render(
-                    "2 body, ak sú vysvietení obaja horníci", True, COLOR_ILLUMINATED)
-                self.canvas.blit(s, (tx, ty))
-            return card_h + 20
+    def _badge(self, text: str, center: tuple[int, int], color=None):
+        """Červený odznak s bodovou hodnotou (alebo v danej farbe)."""
+        c = self.canvas
+        surf = self.font_badge.render(text, True, BADGE_TEXT)
+        w = surf.get_width() + 28
+        h = surf.get_height() + 10
+        r = pygame.Rect(0, 0, w, h)
+        r.center = center
+        fill = color or BADGE_FILL
+        border = tuple(min(255, ch + 70) for ch in fill) if color else BADGE_BORDER
+        c.overlay(r.move(0, 3), (0, 0, 0, 110), border_radius=h // 2)
+        c.rect(fill, r, border_radius=h // 2)
+        c.rect(border, r, width=2, border_radius=h // 2)
+        c.blit(surf, surf.get_rect(center=r.center))
+        return r
 
-        y = draw_section(col_x, y, "HODNOTY KARIET", content_karty, full_w)
+    def _card(self, suit: str, rank: str, pos, size, shadow: bool = True,
+              border: tuple | None = None):
+        c = self.canvas
+        img = self._load_card(suit, rank, size)
+        if not img:
+            return
+        if shadow:
+            c.overlay((pos[0] + 4, pos[1] + 6, size[0], size[1]), (0, 0, 0, 110),
+                      border_radius=8)
+        c.blit(img, pos)
+        if border:
+            c.rect(border, (pos[0], pos[1], size[0], size[1]), width=2,
+                   border_radius=8)
 
-        # ── SEKCIA 2: HORNÍCI + BONUSY (2 stĺpce) ─────────────────────────
-        def content_hornici(x, y, w, measure_only):
-            specials = [
-                ("leaf", "over", "8b", "16b pri vysvietení", None),
-                ("acorn", "over", "4b", "8b pri vysvietení", None),
-            ]
-            card_w, card_h = 130, 210
-            if not measure_only:
-                block_w = w // 2
-                for i, (suit, rank, base, illum, note) in enumerate(specials):
-                    bx = x + i * block_w + 14
-                    img = self._load_card(suit, rank, (card_w, card_h))
-                    if img:
-                        self.canvas.blit(img, (bx, y))
-                    tx = bx + card_w + 20
-                    ty = y + 30
-                    s = self.font_medium.render(base, True, COLOR_PENALTY)
-                    self.canvas.blit(s, (tx, ty));
-                    ty += self._medium_line_h
-                    s = self.font_small.render(illum, True, COLOR_ILLUMINATED)
-                    self.canvas.blit(s, (tx, ty));
-                    ty += self._small_line_h
-                    if note:
-                        s = self.font_small.render(note, True, COLOR_ILLUMINATED)
-                        self.canvas.blit(s, (tx, ty))
-            return card_h + 20
+    def _centered_lines(self, lines: list[tuple[str, tuple]], cx: int, y: int):
+        for text, color in lines:
+            s = self.font_text.render(text, True, color)
+            self.canvas.blit(s, s.get_rect(centerx=cx, top=y))
+            y += self.font_text.get_height() + 2
 
-        def content_bonusy(x, y, w, measure_only):
-            # Záväzky zoskupené do dvojíc splnené/nesplnené (rovnako ako
-            # sekcia ZÁVÄZOK v záložke Pravidlá) — oddelené malou medzerou
-            # (None) od ostatných pravidiel aj od seba navzájom.
-            bonuses = [
-                (COLOR_BONUS, "−10b", "Zobral si všetky trestné karty v kole"),
-                (COLOR_BONUS, "−10b", "Séria — 5 kôl za sebou bez trestu"),
-                None,
-                (COLOR_BONUS, "−20b", "Beriem všetko: splnené"),
-                (COLOR_PENALTY, "+20b", "Beriem všetko: nesplnené"),
-                None,
-                (COLOR_BONUS, "−10b", "Nechytím nič: splnené"),
-                (COLOR_PENALTY, "+10b", "Nechytím nič: nesplnené"),
-                None,
-                (COLOR_GRAY, "100b", "Presne 100 bodov → skóre klesne na 90"),
-                (COLOR_GRAY, "90b+", "Horníci sa nepočítajú nad 90b"),
-            ]
-            row_h, gap_h = self._row_h, 14
-            cy = y
-            for item in bonuses:
-                if item is None:
-                    cy += gap_h
-                    continue
-                if not measure_only:
-                    color, badge, text = item
-                    self._draw_badge_line(x + 14, cy, badge, text, color)
-                cy += row_h
-            return cy - y
+    def _heart_fan(self, cx: int, cy: int, card_h: int, n: int = 6,
+                   spread: float = 30.0) -> pygame.Rect:
+        """Vejár n srdcových kariet (mierne natočených) so stredom (cx, cy).
+        Vráti logický obdĺžnik, ktorý vejár zaberá."""
+        card_w = round(card_h * CARD_RATIO)
+        ranks = ("seven", "eight", "nine", "ten", "king", "ace")[-n:]
+        step = card_w * FAN_STEP
+        area = None
+        for i, rank in enumerate(ranks):
+            t = i / (n - 1) - 0.5                       # -0.5 … 0.5
+            angle = -spread * t                         # vľavo nakloniť doľava
+            img = self._load_card_rot("heart", rank, (card_w, card_h), round(angle))
+            if not img:
+                continue
+            pos = (round(cx + t * (n - 1) * step), round(cy + abs(t) * card_h * 0.12))
+            r = img.get_rect(center=pos)
+            self.canvas.blit(img, r)
+            area = r if area is None else area.union(r)
+        return area or pygame.Rect(cx, cy, 0, 0)
 
-        # Horníci a bonusy vedľa seba
-        cy_h = y
-        cy_b = y
+    def _load_card_rot(self, suit: str, rank: str, size, angle: int):
+        try:
+            return self.canvas.card(f"{suit}-{rank}.png", angle=angle, lsize=size)
+        except (FileNotFoundError, pygame.error):
+            return None
 
-        # Kresli ľavý box — horníci
-        box_h = content_hornici(col_x, y, col_w2, measure_only=True) + self._header_h + 20
-        self.canvas.overlay(pygame.Rect((col_x, y), (col_w2, box_h)), (*COLOR_PANEL_BG, _PANEL_BG_ALPHA))
-        self.canvas.rect(COLOR_GOLD, (col_x, y, col_w2, box_h),
-                         width=2, border_radius=_PANEL_BORDER_RADIUS)
-        t = self.font_medium.render("HORNÍCI", True, COLOR_GOLD)
-        self.canvas.blit(t, (col_x + 14, y + 10))
-        line_y = y + 10 + t.get_height() + 6
-        self.canvas.line(COLOR_DARK_GRAY,
-                         (col_x + 14, line_y), (col_x + col_w2 - 14, line_y), 1)
-        content_hornici(col_x, line_y + 10, col_w2, measure_only=False)
+    def _medallion(self, center: tuple[int, int], r: int, number: str, unit: str):
+        """Okrúhly bordový medailón so zlatým lemom: veľké číslo + jednotka."""
+        c = self.canvas
+        cx, cy = center
+        c.circle((0, 0, 0), (cx + 2, cy + 5), r)
+        c.circle((176, 128, 44), (cx, cy), r)               # zlatý lem
+        c.circle((112, 20, 16), (cx, cy), r - 5)
+        c.circle((150, 34, 26), (cx, cy - r // 6), r - 12)  # svetlejší stred
+        c.circle((112, 20, 16), (cx, cy + r // 3), r - 18)
+        c.circle((236, 190, 96), (cx, cy), r - 5, width=1)
+        big = self.canvas.font(round(r * 0.9)).render(number, True, (255, 236, 200))
+        small = self.canvas.font(round(r * 0.42)).render(unit, True, (255, 228, 180))
+        c.blit(big, big.get_rect(centerx=cx, bottom=cy + r * 0.22))
+        c.blit(small, small.get_rect(centerx=cx, top=cy + r * 0.18))
 
-        # ── Box pod horníkmi — AKTUÁLNY CHUJ (ikonka v reálnej veľkosti
-        # zo stola, pozri phase_renderer.py::_chuj_icon) ──────────────
-        def content_chuj(x, cy, w, measure_only):
-            icon = self._chuj_icon
-            icon_side = icon.get_height() if icon else 100
-            lines = ["Hráč s touto ikonkou", "má momentálne najviac bodov."]
-            text_h = len(lines) * self._small_line_h
-            content_h = max(icon_side, text_h)
-            if not measure_only:
-                ix = x + 14
-                iy = cy + (content_h - icon_side) // 2
-                if icon:
-                    self.canvas.blit(icon, (ix, iy))
-                tx = ix + icon_side + 20
-                ty = cy + (content_h - text_h) // 2
-                for line in lines:
-                    s = self.font_small.render(line, True, COLOR_WHITE)
-                    self.canvas.blit(s, (tx, ty))
-                    ty += self._small_line_h
-            return content_h
+    def _value_box(self, rect: pygame.Rect, text: str):
+        """Hodnota horníka: tmavý rámček so zlatohnedým okrajom, červený text."""
+        c = self.canvas
+        c.rect((24, 15, 9), rect, border_radius=8)
+        c.rect(ui_style.GOLD_SOFT, rect, width=2, border_radius=8)
+        s = self.font_section.render(text, True, (232, 92, 70))
+        c.blit(s, s.get_rect(center=rect.center))
 
-        chuj_y = y + box_h + 14
-        box_h3 = content_chuj(col_x, chuj_y, col_w2, measure_only=True) + self._header_h + 20
-        self.canvas.overlay(pygame.Rect((col_x, chuj_y), (col_w2, box_h3)), (*COLOR_PANEL_BG, _PANEL_BG_ALPHA))
-        self.canvas.rect(COLOR_GOLD, (col_x, chuj_y, col_w2, box_h3),
-                         width=2, border_radius=_PANEL_BORDER_RADIUS)
-        t3 = self.font_medium.render("AKTUÁLNY CHUJ", True, COLOR_GOLD)
-        self.canvas.blit(t3, (col_x + 14, chuj_y + 10))
-        line_y3 = chuj_y + 10 + t3.get_height() + 6
-        self.canvas.line(COLOR_DARK_GRAY,
-                         (col_x + 14, line_y3), (col_x + col_w2 - 14, line_y3), 1)
-        content_chuj(col_x, line_y3 + 10, col_w2, measure_only=False)
+    @staticmethod
+    def _fan_height_for_width(width: float, n: int) -> int:
+        """Najväčšia výška karty, pri ktorej sa vejár n kariet zmestí do
+        šírky (krok 0,42 šírky karty + rezerva na natočenie)."""
+        return int(width / (CARD_RATIO * (1 + FAN_STEP * (n - 1)) + 0.45))
 
-        # Kresli pravý box — bonusy
-        bx2 = col_x + col_w2 + 40
-        box_h2 = content_bonusy(bx2, y, col_w2, measure_only=True) + self._header_h + 20
-        self.canvas.overlay(pygame.Rect((bx2, y), (col_w2, box_h2)), (*COLOR_PANEL_BG, _PANEL_BG_ALPHA))
-        self.canvas.rect(COLOR_GOLD, (bx2, y, col_w2, box_h2),
-                         width=2, border_radius=_PANEL_BORDER_RADIUS)
-        t2 = self.font_medium.render("BONUSY A PRAVIDLÁ", True, COLOR_GOLD)
-        self.canvas.blit(t2, (bx2 + 14, y + 10))
-        line_y2 = y + 10 + t2.get_height() + 6
-        self.canvas.line(COLOR_DARK_GRAY,
-                         (bx2 + 14, line_y2), (bx2 + col_w2 - 14, line_y2), 1)
-        content_bonusy(bx2, line_y2 + 10, col_w2, measure_only=False)
+    def _draw_penalty_cards(self, rect: pygame.Rect):
+        """Vľavo vejár srdcí s medailónom 1 bod, vpravo podsekcia HORNÍCI."""
+        c = self.canvas
+        top = self._content_top(rect)
+        bottom = rect.bottom - 18
+        split = rect.x + round(rect.width * 0.47)
+
+        # --- srdcia (blok vejár + text zvislo na strede) ---
+        text = ["Každá srdcová karta", "bez ohľadu na hodnotu."]
+        line_h = self.font_text.get_height() + 2
+        text_h = len(text) * line_h
+        card_h = min(230, bottom - top - text_h - 50,
+                     self._fan_height_for_width(split - rect.x - 50, 6))
+        block_h = card_h + 30 + text_h
+        by = top + (bottom - top - block_h) // 2
+        fan_cx = (rect.x + split) // 2
+        fan = self._heart_fan(fan_cx, by + card_h // 2, card_h)
+        r = max(30, round(card_h * 0.25))
+        self._medallion((fan.right - r, fan.bottom - r + 6), r, "1", "bod")
+        ty = by + card_h + 30
+        for line in text:
+            s = self.font_text.render(line, True, ui_style.TEXT)
+            c.blit(s, s.get_rect(centerx=fan_cx, top=ty))
+            ty += line_h
+
+        # --- HORNÍCI ---
+        sub = pygame.Rect(split, top, rect.right - 20 - split, bottom - top)
+        c.overlay(sub, SUBSECTION_FILL, border_radius=10)
+        c.rect((70, 54, 34), sub, width=1, border_radius=10)
+        t = self.font_section.render("HORNÍCI", True, ui_style.GOLD)
+        c.blit(t, t.get_rect(centerx=sub.centerx, top=sub.y + 12))
+        inner_top = sub.y + 12 + t.get_height() + 10
+        box_h = self.font_section.get_height() + 12
+        name_h = self.font_text.get_height() + 12
+        half = sub.width // 2
+        card_h = min(250, sub.bottom - 16 - box_h - name_h - inner_top,
+                     int((half - 30) / CARD_RATIO))
+        card_w = round(card_h * CARD_RATIO)
+        y = inner_top + (sub.bottom - 16 - inner_top - (card_h + name_h + box_h)) // 2
+        for i, (suit, name, pts) in enumerate((("leaf", "Zelený horník", "8 bodov"),
+                                                ("acorn", "Žaluďový horník", "4 body"))):
+            cx = sub.x + half // 2 + i * half
+            self._card(suit, "over", (cx - card_w // 2, y), (card_w, card_h))
+            s = self.font_text.render(name, True, ui_style.TEXT)
+            c.blit(s, s.get_rect(centerx=cx, top=y + card_h + 8))
+            box = pygame.Rect(0, 0, min(half - 24, 170), box_h)
+            box.midtop = (cx, y + card_h + name_h)
+            self._value_box(box, pts)
+
+    def _draw_illumination(self, rect: pygame.Rect):
+        """Najprv hodnota každého vysvieteného horníka, potom srdcia za
+        2 body pri oboch (poradie zámerne — aby nevznikol dojem, že horníci
+        sa zdvojnásobia len pri vysvietení oboch). Pod horníkmi ich hodnota
+        pri vysvietení, šípka k vejáru srdcí s medailónom 2 body."""
+        c = self.canvas
+        top = self._content_top(rect)
+        bottom = rect.bottom - 18
+        line_h = self.font_text.get_height() + 4
+        horn_line = "Každý vysvietený horník zdvojnásobí svoju bodovú hodnotu."
+        heart_lines = ["Ak sú vysvietení obaja horníci, majú všetky",
+                       "srdcové karty hodnotu 2 body (namiesto 1 bodu)."]
+        text_h = line_h + 10 + len(heart_lines) * line_h
+        box_h = self.font_section.get_height() + 10
+
+        # Šírka radu: 2 karty + "+" + šípka + vejár 5 kariet
+        plus = self.font_title.render("+", True, ui_style.GOLD)
+        aw = 40
+        fixed = 12 + plus.get_width() + 12 + 22 + aw + 24
+        avail_w = rect.width - 60 - fixed
+        k = 2 * CARD_RATIO + 0.92 * (CARD_RATIO * (1 + FAN_STEP * 4) + 0.45)
+        card_h = min(210, int(avail_w / k), bottom - top - text_h - 26 - box_h - 8)
+        card_w = round(card_h * CARD_RATIO)
+        block_h = text_h + 26 + card_h + 8 + box_h
+        y = top + (bottom - top - block_h) // 2
+
+        s = self.font_text.render(horn_line, True, ILLUM_COLOR)
+        c.blit(s, s.get_rect(centerx=rect.centerx, top=y))
+        y += line_h + 10
+        for line in heart_lines:
+            s = self.font_text.render(line, True, ui_style.TEXT)
+            c.blit(s, s.get_rect(centerx=rect.centerx, top=y))
+            y += line_h
+        y += 26
+
+        fan_h = round(card_h * 0.92)
+        fan_w = round(fan_h * (CARD_RATIO * (1 + FAN_STEP * 4) + 0.45))
+        row_w = 2 * card_w + fixed + fan_w
+        x = rect.centerx - row_w // 2
+        mid = y + card_h // 2
+        for suit, pts in (("leaf", "16 bodov"), ("acorn", "8 bodov")):
+            self._card(suit, "over", (x, y), (card_w, card_h), border=ILLUM_COLOR)
+            box = pygame.Rect(0, 0, card_w + 34, box_h)
+            box.midtop = (x + card_w // 2, y + card_h + 8)
+            self._value_box(box, pts)
+            x += card_w
+            if suit == "leaf":
+                x += 12
+                c.blit(plus, plus.get_rect(midleft=(x, mid)))
+                x += plus.get_width() + 12
+        x += 22
+        c.polygon(ui_style.GOLD, [(x, mid - 7), (x + aw - 16, mid - 7),
+                                  (x + aw - 16, mid - 16), (x + aw, mid),
+                                  (x + aw - 16, mid + 16), (x + aw - 16, mid + 7),
+                                  (x, mid + 7)])
+        x += aw + 24
+        fan = self._heart_fan(x + fan_w // 2, mid, fan_h, n=5, spread=26)
+        r = max(30, round(fan_h * 0.27))
+        self._medallion((fan.right - r, fan.bottom - r + 6), r, "2", "body")
+
+    def _draw_current_chuj(self, rect: pygame.Rect):
+        c = self.canvas
+        top = self._content_top(rect)
+        icon = self._chuj_icon
+        lines = ["Hráč s touto ikonkou má", "momentálne najviac bodov",
+                 "a prehrá, ak prekročí 100."]
+        line_h = self.font_text.get_height() + 4
+        text_h = len(lines) * line_h
+        area_h = rect.bottom - 14 - top
+        if icon:
+            c.blit(icon, icon.get_rect(midleft=(rect.x + 24, top + area_h // 2)))
+        tx = rect.x + 24 + (icon.get_width() + 20 if icon else 0)
+        ty = top + (area_h - text_h) // 2
+        for line in lines:
+            s = self.font_text.render(line, True, ui_style.TEXT)
+            c.blit(s, (tx, ty))
+            ty += line_h
+
+    def _draw_badge_rows(self, rect: pygame.Rect, rows: list):
+        """Riadky: odznak (farebný alebo zlatý rámik) + dvojriadkový text."""
+        c = self.canvas
+        top = self._content_top(rect)
+        area_h = rect.bottom - 14 - top
+        row_h = area_h // len(rows)
+        line_h = self.font_text.get_height() + 2
+        for i, (badge, color, l1, l2) in enumerate(rows):
+            cy = top + i * row_h + row_h // 2
+            surf = self.font_badge.render(badge, True,
+                                          BADGE_TEXT if color else ui_style.GOLD)
+            bw, bh = 96, surf.get_height() + 14
+            br = pygame.Rect(rect.x + 22, cy - bh // 2, bw, bh)
+            if color:
+                c.rect(color, br, border_radius=10)
+                c.rect(tuple(min(255, ch + 70) for ch in color), br, width=2,
+                       border_radius=10)
+            else:
+                c.rect((40, 27, 14), br, border_radius=10)
+                c.rect(ui_style.GOLD_SOFT, br, width=2, border_radius=10)
+            c.blit(surf, surf.get_rect(center=br.center))
+            tx = br.right + 18
+            for j, text in enumerate((l1, l2)):
+                s = self.font_text.render(text, True, ui_style.TEXT)
+                c.blit(s, (tx, cy - line_h + j * line_h))
 
     # ------------------------------------------------------------------
     # Záložka: PRAVIDLÁ
     # ------------------------------------------------------------------
 
     def _draw_rules(self):
-        y = self.content_y + 10
-        col_w = (SCREEN_WIDTH - 160) // 2
-        col1_x = 60
-        col2_x = col1_x + col_w + 40
+        """Záložka Pravidlá (finálny koncept 2026-10-28): Cieľ hry (nízky
+        pás), Priebeh kola v 5 krokoch, dole animovaná ukážka pravidiel
+        štichov (gui/rules_demo.py) a vpravo Vysvietenie a Záväzky."""
+        f = self.frame
+        x0, x1 = f.left + 30, f.right - 30
+        top = self.tab_bodovanie.bottom + 26
+        bottom = f.bottom - 26
+        gap = 16
+        h_goal, h_flow = 80, 232
 
-        def draw_section(x, cy, title, lines):
-            """Nakreslí sekciu s accent linkou a obsahom, vráti nové cy.
+        r_goal = pygame.Rect(x0, top, x1 - x0, h_goal)
+        self._draw_rules_goal(r_goal)
 
-            Položka v "lines" je buď "" (medzera), text (bežný riadok),
-            trojica (color, badge, text) — riadok s farebným odznakom
-            pre bodovú hodnotu, rovnaký vizuál ako v záložke Bodovanie
-            (pozri _draw_badge_line) — alebo trojica ("icon", icon_key,
-            text) — text ako bežný riadok, navyše ikonka záväzku
-            (all/none) pri pravom okraji boxu. Ikonka je vysoká 3 riadky
-            a vycentrovaná na blok (tento riadok + nasledujúce 2 —
-            v praxi vždy popis + splnené + nesplnené), nie len na seba."""
-            row_h, gap_h = self._row_h, 10
+        r_flow = pygame.Rect(x0, r_goal.bottom + gap, x1 - x0, h_flow)
+        self._section(r_flow, "PRIEBEH KOLA")
+        self._draw_rules_flow(r_flow)
 
-            # Obsah — zisti výšku najprv
-            content_h = 10
-            for item in lines:
-                content_h += gap_h if item == "" else row_h
-            box_h = self._header_h + content_h + 14  # nadpis + obsah + padding
+        y = r_flow.bottom + gap
+        h = bottom - y
+        w_demo = round((x1 - x0 - gap) * 0.638)
+        r_demo = pygame.Rect(x0, y, w_demo, h)
+        self._panel_bg(r_demo)
+        self.rules_demo.layout(r_demo)
+        self.rules_demo.draw(display.mouse_pos())
 
-            # Karta — polopriesvitné pozadie
-            self.canvas.overlay(pygame.Rect((x, cy), (col_w, box_h)), (*COLOR_PANEL_BG, _PANEL_BG_ALPHA))
+        rx = r_demo.right + gap
+        hr = (h - gap) // 2
+        r_ill = pygame.Rect(rx, y, x1 - rx, hr)
+        r_decl = pygame.Rect(rx, y + hr + gap, x1 - rx, h - hr - gap)
+        self._section(r_ill, "VYSVIETENIE HORNÍKOV")
+        self._draw_rules_illumination(r_ill)
+        self._section(r_decl, "ZÁVÄZKY")
+        self._draw_rules_declarations(r_decl)
 
-            # Celý zaoblený zlatý rámik (rovnako ako ostatné panely v hre)
-            self.canvas.rect(COLOR_GOLD, (x, cy, col_w, box_h),
-                             width=2, border_radius=_PANEL_BORDER_RADIUS)
+    def _panel_bg(self, rect: pygame.Rect):
+        c = self.canvas
+        c.overlay(rect, SECTION_FILL, border_radius=SECTION_RADIUS)
+        c.overlay((rect.x + 3, rect.y + 3, rect.width - 6, 40),
+                  (255, 214, 140, 8), border_radius=SECTION_RADIUS - 3)
+        c.rect(ui_style.GOLD_SOFT, rect, width=2, border_radius=SECTION_RADIUS)
 
-            # Nadpis sekcie
-            title_surf = self.font_medium.render(title, True, COLOR_GOLD)
-            self.canvas.blit(title_surf, (x + 14, cy + 10))
+    # --- pomocné kreslenie Pravidiel ------------------------------------
 
-            # Oddeľovač pod nadpisom
-            line_y = cy + 10 + title_surf.get_height() + 6
-            self.canvas.line(COLOR_DARK_GRAY,
-                             (x + 14, line_y), (x + col_w - 14, line_y), 1)
+    def _wrap_plain(self, text: str, font, width: float) -> list[str]:
+        words, lines, line = text.split(), [], ""
+        for word in words:
+            test = f"{line} {word}".strip()
+            if line and font.size(test)[0] > width:
+                lines.append(line)
+                line = word
+            else:
+                line = test
+        if line:
+            lines.append(line)
+        return lines
 
-            # Obsah
-            text_y = line_y + 10
-            for item in lines:
-                if item == "":
-                    text_y += gap_h
+    def _rules_icon(self, key: str, size: int):
+        """Ikonka z RULES_ICON_FILES (dodaná grafika), inak záložná."""
+        for name in RULES_ICON_FILES[key]:
+            path = os.path.join("assets", "graphics", name)
+            if os.path.exists(path):
+                try:
+                    raw = pygame.image.load(path)
+                    w = round(size * raw.get_width() / raw.get_height())
+                    return self.canvas.image(path, (w, size))
+                except pygame.error:
                     continue
-                if isinstance(item, tuple) and item[0] == "icon":
-                    _, icon_key, text = item
-                    surf = self._render_with_icons(text, self.font_small, COLOR_WHITE)
-                    self.canvas.blit(surf, (x + 14, text_y))
-                    icon = self._declaration_icons.get(icon_key)
-                    if icon:
-                        ir = icon.get_rect()
-                        # vycentrovať na celý 3-riadkový blok (popis +
-                        # splnené + nesplnené), nie len na tento riadok
-                        ir.midright = (x + col_w - 14, int(text_y + 1.5 * row_h))
-                        self.canvas.blit(icon, ir)
-                elif isinstance(item, tuple):
-                    color, badge, text = item
-                    self._draw_badge_line(x + 14, text_y, badge, text, color)
-                else:
-                    surf = self._render_with_icons(item, self.font_small, COLOR_WHITE)
-                    self.canvas.blit(surf, (x + 14, text_y))
-                text_y += row_h
+        return None
 
-            return cy + box_h + 14  # medzera medzi sekciami
+    def _small_card(self, name: str, pos, h: int, border=None):
+        """Karta podľa mena súboru ("bell-nine") vo výške h."""
+        suit, rank = name.split("-")
+        self._card(suit, rank, pos, (round(h * CARD_RATIO), h), shadow=False,
+                   border=border)
 
-        # ══ STĹPEC 1 ══
-        cy1 = y
-        cy1 = draw_section(col1_x, cy1, "CIEĽ HRY", [
-            "Hráč ktorý ako prvý prekročí 100 bodov",
-            "prehráva a stáva sa Chujom.",
-            "Cieľom je nazbierať čo najmenej bodov.",
-        ])
+    def _arrow(self, x: int, y: int, length: int = 22, color=None):
+        """Malá zlatá šípka doprava, ľavý koniec v (x, y)."""
+        color = color or ui_style.GOLD
+        t = max(4, length // 5)
+        hd = max(8, length // 2)
+        self.canvas.polygon(color, [(x, y - t // 2), (x + length - hd, y - t // 2),
+                                    (x + length - hd, y - hd // 2 - 2), (x + length, y),
+                                    (x + length - hd, y + hd // 2 + 2),
+                                    (x + length - hd, y + t // 2), (x, y + t // 2)])
 
-        cy1 = draw_section(col1_x, cy1, "PRIEBEH KOLA", [
-            "1.  Rozdanie — každý dostane 8 kariet",
-            "2.  Vysvietenie — možnosť priznať horníka",
-            "3.  Záväzok — Beriem všetko / Nechytím nič",
-            "4.  8 štichov — hráči zahrajú všetky karty",
-            "5.  Bodovanie — spočítajú sa trestné body",
-        ])
+    def _number_circle(self, center, r: int, number: str):
+        c = self.canvas
+        c.circle((0, 0, 0), (center[0] + 1, center[1] + 3), r)
+        c.circle(ui_style.GOLD, center, r)
+        c.circle((150, 104, 30), center, r, width=2)
+        s = self.canvas.font(round(r * 1.25)).render(number, True, (40, 24, 8))
+        c.blit(s, s.get_rect(center=center))
 
-        cy1 = draw_section(col1_x, cy1, "ŠTICHY", [
-            "Leader zahrá kartu a určí farbu štichu.",
-            "Ostatní MUSIA zahrať kartu rovnakej farby.",
-            "Ak nemáš danú farbu — zahraj čokoľvek.",
-            "Najvyššia karta v hranej farbe vyhráva.",
-            "Víťaz štichu začína nasledujúci štich.",
-            "V prvom štichu sa nesmie hrať červeň.",
-        ])
+    # --- sekcie Pravidiel -------------------------------------------------
 
-        # ══ STĹPEC 2 ══
-        cy2 = y
-        cy2 = draw_section(col2_x, cy2, "VYSVIETENIE", [
-            "Pred prvým štichom môžeš priznať",
-            "♠ HORNÍKA, ♣ HORNÍKA alebo oboch.",
-            "Vysvieteného horníka vidia všetci súperi.",
-            "Vysvietený ♠ HORNÍK = 16b  (bežne 8b)",
-            "Vysvietený ♣ HORNÍK = 8b   (bežne 4b)",
-            "Obaja vysvietení → červené = 2b (bežne 1b)",
-        ])  
+    def _draw_rules_goal(self, rect: pygame.Rect):
+        """Nízky pás: trofej, nadpis CIEĽ HRY a jedna veta."""
+        c = self.canvas
+        self._panel_bg(rect)
+        icon = self._rules_icon("goal", rect.height - 18)
+        x = rect.x + 24
+        if icon:
+            c.blit(icon, icon.get_rect(midleft=(x, rect.centery)))
+            x += icon.get_width() + 22
+        t = self.font_section.render("CIEĽ HRY", True, ui_style.GOLD)
+        c.blit(t, t.get_rect(midleft=(x, rect.centery)))
+        x += t.get_width() + 28
+        s = self.font_text.render(
+            "Zbieraj čo najmenej trestných bodov. Kto ako prvý prekročí "
+            "100 bodov, prehráva a stáva sa Chujom.", True, ui_style.TEXT)
+        c.blit(s, s.get_rect(midleft=(x, rect.centery)))
 
-        cy2 = draw_section(col2_x, cy2, "ZÁVÄZOK", [
-            ("icon", "all", "Beriem všetko — musíš vyhrať 8 štichov."),
-            (COLOR_BONUS, "−20b", "Splnený — pre teba, ostatní 0b"),
-            (COLOR_PENALTY, "+20b", "Nesplnený — pre teba, ostatní 0b"),
-            "",
-            ("icon", "none", "Nechytím nič — nesmieš chytiť štich."),
-            (COLOR_BONUS, "−10b", "Splnený — pre teba, ostatní 0b"),
-            (COLOR_PENALTY, "+10b", "Nesplnený — pre teba, ostatní 0b"),
-        ])
+    def _draw_rules_flow(self, rect: pygame.Rect):
+        """Päť krokov kola: číslo + názov, ilustrácia, krátky popis."""
+        c = self.canvas
+        top = self._content_top(rect) - 6
+        bottom = rect.bottom - 12
+        steps = (
+            ("Rozdanie", "Každý dostane 8 kariet."),
+            ("Vysvietenie", "Môžeš priznať horníka."),
+            ("Záväzok", "Môžeš sa zaviazať."),
+            ("8 štichov", "Hráči zahrajú všetky karty."),
+            ("Bodovanie", "Spočítajú sa trestné body."),
+        )
+        n = len(steps)
+        x_start, x_end = rect.x + 16, rect.right - 16
+        col_w = (x_end - x_start) / n
+        head_h = 36
+        desc_font = self.canvas.font(21)
+        desc_h = desc_font.get_height()
+        ill_top = top + head_h + 4
+        ill_h = bottom - desc_h - 8 - ill_top
+        for i, (title, desc) in enumerate(steps):
+            cx0 = round(x_start + i * col_w)
+            cw = round(col_w)
+            mid = cx0 + cw // 2
+            if i > 0:
+                c.line((70, 54, 34), (cx0, top + 4), (cx0, bottom - 4), 1)
+            t = self.font_section.render(title, True, ui_style.GOLD)
+            r = 17
+            total = 2 * r + 12 + t.get_width()
+            hx = mid - total // 2
+            self._number_circle((hx + r, top + head_h // 2), r, str(i + 1))
+            c.blit(t, t.get_rect(midleft=(hx + 2 * r + 12, top + head_h // 2)))
+            area = pygame.Rect(cx0 + 22, ill_top, cw - 44, ill_h)
+            self._flow_illustration(i, area)
+            if i < n - 1:
+                self._arrow(cx0 + cw - 12, area.centery, 24)
+            s = desc_font.render(desc, True, ui_style.TEXT)
+            c.blit(s, s.get_rect(centerx=mid, bottom=bottom))
 
-        cy2 = draw_section(col2_x, cy2, "ŠPECIÁLNE PRAVIDLÁ", [
-            (COLOR_BONUS, "−10b", "Zobral si všetky trestné karty v kole"),
-            (COLOR_BONUS, "−10b", "Séria — 5 kôl bez trestného bodu"),
-            (COLOR_GRAY, "100b", "Presne → skóre klesne na 90b"),
-            (COLOR_GRAY, "90b+", "Horníci sa nepočítajú (0b)"),
-        ])
+    def _flow_illustration(self, step: int, area: pygame.Rect):
+        c = self.canvas
+        cx, cy = area.center
+        h = min(area.height - 4, 116)
+        w = round(h * CARD_RATIO)
+        if step == 0:          # rozdanie — vejár rubov
+            n, stp = 5, w * 0.34
+            for i in range(n):
+                t = i / (n - 1) - 0.5
+                img = self._load_card_rot_name("card-back.png", (w, h), round(-22 * t))
+                if img:
+                    c.blit(img, img.get_rect(center=(round(cx + t * (n - 1) * stp),
+                                                     round(cy + abs(t) * h * 0.08))))
+        elif step == 1:        # vysvietenie — oba horníci
+            g = 12
+            self._small_card("leaf-over", (cx - w - g // 2, cy - h // 2), h)
+            self._small_card("acorn-over", (cx + g // 2, cy - h // 2), h)
+        elif step == 2:        # záväzok — oba záväzky (bez štítkov)
+            box_w = (area.width - 20) // 2
+            for j, key in enumerate(("all", "none")):
+                bx = cx + (j - 0.5) * (box_w + 20)
+                self._decl_visual(key, (round(bx), cy), (box_w, area.height - 2))
+        elif step == 3:        # 8 štichov — tri zahrané karty
+            h2 = min(h, 100)
+            w2 = round(h2 * CARD_RATIO)
+            for k, (name, dx, ang) in enumerate((("heart-nine", -w2 * 0.8, 10),
+                                                  ("heart-under", 0, 0),
+                                                  ("leaf-over", w2 * 0.8, -10))):
+                img = self._load_card_rot_name(f"{name}.png", (w2, h2), ang)
+                if img:
+                    c.blit(img, img.get_rect(center=(round(cx + dx), cy + (6 if k != 1 else -4))))
+        else:                  # bodovanie — zápisník
+            icon = self._rules_icon("scoring", min(h, 112))
+            if icon:
+                c.blit(icon, icon.get_rect(center=(cx, cy)))
+
+    def _decl_visual(self, key: str, center, size) -> int:
+        """Obrázok záväzku: obdĺžnikový výrez ikonky z hry (DECL_CROP, bez
+        lúčov) v zaoblenom rámiku — zlatom pre Beriem všetko, zelenom pre
+        Nechytím nič. Zmestí sa do obdĺžnika `size` so stredom `center`;
+        vráti použitú šírku."""
+        c = self.canvas
+        w, h = size
+        x0, x1, y0, y1 = DECL_CROP
+        aspect = (x1 - x0) / (y1 - y0)
+        cw = min(w, round(h * aspect))
+        ch = round(cw / aspect)
+        img = self._decl_crop(os.path.join("assets", "graphics", f"{key}.png"), (cw, ch))
+        if img:
+            r = img.get_rect(center=center)
+            c.blit(img, r)
+            col = ui_style.GOLD if key == "all" else (96, 190, 80)
+            c.rect(col, r, width=2, border_radius=12)
+        return cw
+
+    def _decl_crop(self, path: str, size: tuple[int, int]):
+        """Obdĺžnikový výrez ikonky (DECL_CROP) so zaoblenými rohmi — vo
+        fyzickom rozlíšení, cachované."""
+        key = (path, size)
+        cache = self.__dict__.setdefault("_decl_crop_cache", {})
+        if key in cache:
+            return cache[key]
+        from gui.canvas import LSurf
+        try:
+            raw = pygame.image.load(path).convert_alpha()
+        except (FileNotFoundError, pygame.error):
+            cache[key] = None
+            return None
+        n_w, n_h = raw.get_size()
+        x0, x1, y0, y1 = DECL_CROP
+        crop = raw.subsurface((round(x0 * n_w), round(y0 * n_h),
+                               round((x1 - x0) * n_w), round((y1 - y0) * n_h)))
+        pw = max(1, round(size[0] * self.canvas.s))
+        ph = max(1, round(size[1] * self.canvas.s))
+        img = pygame.transform.smoothscale(crop, (pw, ph))
+        tile = pygame.Surface((pw, ph), pygame.SRCALPHA)
+        tile.fill((24, 15, 9, 255))
+        tile.blit(img, (0, 0))
+        mask = pygame.Surface((pw, ph), pygame.SRCALPHA)
+        pygame.draw.rect(mask, (255, 255, 255, 255), mask.get_rect(),
+                         border_radius=round(12 * self.canvas.s))
+        tile.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
+        cache[key] = LSurf(tile, *size)
+        return cache[key]
+
+    def _load_card_rot_name(self, name: str, size, angle: int):
+        try:
+            return self.canvas.card(name, angle=angle, lsize=size)
+        except (FileNotFoundError, pygame.error):
+            return None
+
+    def _draw_rules_illumination(self, rect: pygame.Rect):
+        """Oba horníci vľavo, princíp vysvietenia vpravo (bez bodov)."""
+        c = self.canvas
+        top = self._content_top(rect)
+        bottom = rect.bottom - 16
+        card_h = min(160, bottom - top)
+        card_w = round(card_h * CARD_RATIO)
+        y = top + (bottom - top - card_h) // 2
+        x = rect.x + 24
+        self._card("leaf", "over", (x, y), (card_w, card_h))
+        self._card("acorn", "over", (x + card_w + 12, y), (card_w, card_h))
+        tx = x + 2 * card_w + 12 + 24
+        font = self.canvas.font(21)
+        line_h = font.get_height() + 3
+        paras = ["Pred prvým štichom môžeš priznať zeleného horníka, "
+                 "žaluďového horníka alebo oboch.",
+                 "Vysvieteného horníka vidia všetci súperi."]
+        lines = []
+        for p in paras:
+            lines += self._wrap_plain(p, font, rect.right - 20 - tx) + [""]
+        lines = lines[:-1]
+        text_h = sum(line_h if ln else 10 for ln in lines)
+        ty = y + card_h // 2 - text_h // 2
+        for ln in lines:
+            if ln:
+                c.blit(font.render(ln, True, ui_style.TEXT), (tx, ty))
+                ty += line_h
+            else:
+                ty += 10
+
+    def _draw_rules_declarations(self, rect: pygame.Rect):
+        """Dva riadky: ikonka záväzku z hry, štítok a jedna veta (bez bodov)."""
+        c = self.canvas
+        top = self._content_top(rect)
+        bottom = rect.bottom - 12
+        row_h = (bottom - top) // 2
+        font = self.canvas.font(21)
+        line_h = font.get_height() + 3
+        green = (96, 190, 80)
+        rows = (("all", "Beriem všetko", ui_style.GOLD,
+                 "Zaväzuješ sa vyhrať všetkých 8 štichov."),
+                ("none", "Nechytím nič", green,
+                 "Zaväzuješ sa nezobrať ani jeden štich."))
+        pill_w = max(self.font_text.size(r[1])[0] for r in rows) + 30
+        for i, (key, label, col, text) in enumerate(rows):
+            cy = top + i * row_h + row_h // 2
+            if i > 0:
+                c.line((52, 40, 26), (rect.x + 20, top + i * row_h),
+                       (rect.right - 20, top + i * row_h), 1)
+            vis_w = 150
+            x = rect.x + 22
+            used = self._decl_visual(key, (x + vis_w // 2, cy), (vis_w, row_h - 6))
+            x += max(used, vis_w) + 16
+            pr = pygame.Rect(x, cy - 20, pill_w, 40)
+            c.rect((24, 15, 9), pr, border_radius=10)
+            c.rect(col, pr, width=2, border_radius=10)
+            s = self.font_text.render(label, True, col)
+            c.blit(s, s.get_rect(center=pr.center))
+            tx = pr.right + 16
+            lines = self._wrap_plain(text, font, rect.right - 18 - tx)
+            ty = cy - len(lines) * line_h // 2
+            for ln in lines:
+                c.blit(font.render(ln, True, ui_style.TEXT), (tx, ty))
+                ty += line_h
 
     # ------------------------------------------------------------------
     # Pomocné

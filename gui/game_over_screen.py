@@ -7,14 +7,14 @@ import os
 import pygame
 import sys
 from gui import display
-from gui.canvas import StaticLayer, draw_backdrop
+from gui.canvas import StaticLayer
+from gui import ui_style
+from gui import chujogram_panel as cg
 from config import (
     SCREEN_WIDTH,
     COLOR_WHITE, COLOR_GOLD, COLOR_GRAY,
-    COLOR_RED, COLOR_PANEL_BG,
-    COLOR_BUTTON_PRIMARY, COLOR_BUTTON_SECONDARY,
+    COLOR_RED,
     FONT_SIZE_LARGE, FONT_SIZE_MEDIUM,
-    BUTTON_RADIUS, BULLET_RADIUS, BULLET_COLOR,
 )
 
 
@@ -209,7 +209,8 @@ class GameOverScreen:
             self._layer = StaticLayer(c.target.get_size())
         if self._layer.needs_redraw("static"):
             with self._layer.drawing(c, key="static"):
-                draw_backdrop(c, (0, 0, 0, 170))
+                # Vzhľad: gui/ui_style.py (grafický rework 2026-10-27).
+                ui_style.draw_backdrop(c)
         self._layer.blit_to(c.target)
 
         self._draw_panel()
@@ -221,13 +222,9 @@ class GameOverScreen:
             self._draw_chujogram_overlay()
 
     def _draw_panel(self):
-        """Centrálny panel — rovnaký vizuálny jazyk ako SettingsScreen."""
-        self.canvas.overlay((self.panel_x, self.panel_y, self.panel_w, self.panel_h),
-                            (*COLOR_PANEL_BG, 225))
-        self.canvas.rect(COLOR_GOLD,
-            (self.panel_x, self.panel_y, self.panel_w, self.panel_h),
-            width=2, border_radius=14
-        )
+        """Centrálny panel — spoločný štýl obrazoviek mimo hry."""
+        ui_style.draw_panel(
+            self.canvas, (self.panel_x, self.panel_y, self.panel_w, self.panel_h))
 
     def _draw_title(self):
         """Nakreslí nadpis — pri prehre hráča "SI CHUJ" + meme vedľa seba."""
@@ -256,7 +253,7 @@ class GameOverScreen:
             self._loser_surf.get_rect(centerx=cx, top=self._loser_y)
         )
 
-        self.canvas.line(COLOR_GOLD,
+        self.canvas.line(ui_style.GOLD_SOFT,
             (self.panel_x + 60, self._divider_y),
             (self.panel_x + self.panel_w - 60, self._divider_y),
             width=2
@@ -274,9 +271,10 @@ class GameOverScreen:
             is_loser = player == self.loser
 
             self.canvas.overlay(
-                rect, (200, 60, 40, 80) if is_loser else (20, 12, 5, 160))
+                rect, (200, 60, 40, 80) if is_loser else (30, 20, 12, 200),
+                border_radius=8)
 
-            border_color = COLOR_RED if is_loser else COLOR_GRAY
+            border_color = COLOR_RED if is_loser else (98, 76, 46)
             self.canvas.rect(border_color, rect, width=2, border_radius=8)
 
             rank_color = COLOR_GOLD if i == 0 else COLOR_GRAY
@@ -309,32 +307,15 @@ class GameOverScreen:
         )
 
     def _draw_buttons(self):
-        self._draw_btn(
-            self.btn_chujogram, "Chujogram",
-            COLOR_BUTTON_SECONDARY, self.hover["chujogram"]
-        )
-        self._draw_btn(
-            self.btn_new_game, "Nová hra",
-            COLOR_BUTTON_PRIMARY, self.hover["new_game"]
-        )
-        self._draw_btn(
-            self.btn_menu, "Menu",
-            COLOR_BUTTON_SECONDARY, self.hover["menu"]
-        )
+        self._draw_btn(self.btn_chujogram, "Chujogram", 2,
+                       self.hover["chujogram"])
+        self._draw_btn(self.btn_new_game, "Nová hra", 1,
+                       self.hover["new_game"])
+        self._draw_btn(self.btn_menu, "Menu", 3, self.hover["menu"])
 
-    def _draw_btn(self, rect: pygame.Rect, text: str,
-                  color: tuple, hover: bool):
-        alpha = 240 if hover else 200
-        self.canvas.overlay(rect, (*color, alpha))
-
-        border_color = COLOR_WHITE if hover else COLOR_GOLD
-        self.canvas.rect(border_color,
-            rect, width=2, border_radius=BUTTON_RADIUS
-        )
-
-        surf = self.font_large.render(text, True, COLOR_WHITE)
-        text_rect = surf.get_rect(center=rect.center)
-        self.canvas.blit(surf, text_rect)
+    def _draw_btn(self, rect: pygame.Rect, text: str, tier: int, hover: bool):
+        ui_style.draw_button(self.canvas, rect, text, self.font_large,
+                             tier, hover)
 
     # ------------------------------------------------------------------
     # Chujogram overlay — širší layout naprieč celou obrazovkou
@@ -351,7 +332,9 @@ class GameOverScreen:
         Pozadie je zámerne plne nepriehľadné (predtým malo alfa 240/255 a
         cez neho bolo slabo vidno text spod — skóre, tlačidlá).
         """
-        self.canvas.fill_window((8, 5, 2))
+        # Pozadie stola (ako ostatné obrazovky) — obsah Konca hry pod
+        # Chujogramom sa nekreslí, takže nemá čo presvitať.
+        ui_style.draw_backdrop(self.canvas, extra_dim=60)
 
         num_players = len(self.players)
         panel_w = min(1500, SCREEN_WIDTH - 240)
@@ -360,16 +343,16 @@ class GameOverScreen:
         panel_h = display.logical_height() - 120
         cx = panel_x + panel_w // 2
 
-        self.canvas.overlay((panel_x, panel_y, panel_w, panel_h),
-                            (*COLOR_PANEL_BG, 235))
-        self.canvas.rect(COLOR_GOLD, (panel_x, panel_y, panel_w, panel_h),
-            width=2, border_radius=14
-        )
+        self.canvas.overlay((panel_x, panel_y, panel_w, panel_h), (17, 11, 7, 255),
+                            border_radius=ui_style.PANEL_RADIUS)
+        ui_style.draw_panel(self.canvas, (panel_x, panel_y, panel_w, panel_h))
 
         y = panel_y + 28
-        title = self.font_chj_title.render("CHUJOGRAM", True, COLOR_GOLD)
-        self.canvas.blit(title, title.get_rect(centerx=cx, top=y))
-        y += title.get_height() + 26
+        title_h = self.font_chj_title.get_height()
+        ui_style.draw_screen_title(self.canvas, "CHUJOGRAM", self.font_chj_title,
+                                   (cx, y + title_h // 2),
+                                   line_half_w=240, line_gap=title_h // 2 + 10)
+        y += title_h + 34
 
         round_col_w = 90
         content_x = panel_x + 30
@@ -387,12 +370,12 @@ class GameOverScreen:
                 self.canvas.overlay((cols_x0 + i * col_w + 4, header_top,
                                      col_w - 8, header_h), (200, 60, 40, 55))
 
-            name_color = COLOR_RED if is_loser else COLOR_WHITE
+            name_color = cg.SCORE_DANGER if is_loser else ui_style.TEXT
             name_surf = self.font_chj_header_name.render(player.name, True, name_color)
             self.canvas.blit(
                 name_surf, name_surf.get_rect(centerx=cx_col, top=header_top + 8)
             )
-            score_color = (230, 140, 120) if is_loser else COLOR_GOLD
+            score_color = (230, 140, 120) if is_loser else ui_style.GOLD
             score_surf = self.font_chj_header_score.render(
                 f"{player.total_score} b", True, score_color
             )
@@ -401,14 +384,14 @@ class GameOverScreen:
             )
 
             if i > 0:
-                self.canvas.line(COLOR_GRAY,
+                self.canvas.line(cg.COLUMN_LINE,
                     (cols_x0 + i * col_w, header_top),
                     (cols_x0 + i * col_w, bottom_limit),
                     width=1
                 )
 
         y = header_top + header_h + 6
-        self.canvas.line(COLOR_GOLD,
+        self.canvas.line(ui_style.GOLD_SOFT,
             (content_x, y), (panel_x + panel_w - 30, y), width=2
         )
         content_top = y + 20
@@ -432,15 +415,18 @@ class GameOverScreen:
                 bullet_positions.append([None] * num_players)
                 continue
 
+            if round_idx % 2 == 1:
+                self.canvas.overlay((content_x - 10, ry - 8,
+                                     panel_w - 40, row_h), cg.ROW_STRIPE)
             if round_idx > 0 and round_idx % 4 == 0:
                 line_y = ry - 8
-                self.canvas.line(COLOR_GOLD,
+                self.canvas.line(cg.QUARTER_LINE,
                     (content_x, line_y), (panel_x + panel_w - 30, line_y),
                     width=1
                 )
 
             round_no_surf = self.font_chj_round_no.render(
-                f"{round_idx + 1}.", True, COLOR_GRAY
+                f"{round_idx + 1}.", True, ui_style.TEXT_DIM
             )
             self.canvas.blit(
                 round_no_surf,
@@ -452,7 +438,8 @@ class GameOverScreen:
                 cxp = cols_x0 + player_idx * col_w + col_w // 2
 
                 score = round_scores_history[round_idx][player_idx]
-                score_surf = self.font_chj_cell.render(str(score), True, COLOR_WHITE)
+                score_surf = self.font_chj_cell.render(str(score), True,
+                                                       cg.score_color(score))
                 self.canvas.blit(score_surf, score_surf.get_rect(centerx=cxp, top=ry))
 
                 has_bullet = (
@@ -463,9 +450,7 @@ class GameOverScreen:
                 )
                 if has_bullet:
                     by = ry + 34
-                    self.canvas.circle(BULLET_COLOR, (cxp, by), BULLET_RADIUS)
-                    self.canvas.circle(COLOR_WHITE, (cxp, by), BULLET_RADIUS, width=1
-                    )
+                    cg.draw_bullet(self.canvas, (cxp, by))
                     round_positions.append((cxp, by))
                 else:
                     round_positions.append(None)
@@ -475,27 +460,14 @@ class GameOverScreen:
         self._draw_bullet_connections(bullet_positions)
         self.canvas.set_clip(None)
 
-        hint = self.font_medium.render("Klikni pre zavretie", True, COLOR_GRAY)
+        hint = self.font_medium.render("Klikni pre zavretie", True, ui_style.TEXT_DIM)
         self.canvas.blit(
             hint, hint.get_rect(centerx=cx, bottom=panel_y + panel_h - 18)
         )
 
     def _draw_bullet_connections(self, bullet_positions: list):
         """Spojnice medzi guličkami — rovnaká logika ako ChujogramPanel."""
-        for round_idx, round_pos in enumerate(bullet_positions):
-            active = [(i, pos) for i, pos in enumerate(round_pos) if pos]
-            if len(active) > 1:
-                for i in range(len(active) - 1):
-                    self.canvas.line(BULLET_COLOR,
-                        active[i][1], active[i + 1][1], width=2
-                    )
-            if round_idx > 0:
-                prev_active = [pos for pos in bullet_positions[round_idx - 1] if pos]
-                curr_active = [pos for pos in round_pos if pos]
-                if prev_active and curr_active:
-                    self.canvas.line(BULLET_COLOR,
-                        prev_active[-1], curr_active[0], width=2
-                    )
+        cg.draw_connections(self.canvas, bullet_positions)
 
     def __repr__(self) -> str:
         return "GameOverScreen()"

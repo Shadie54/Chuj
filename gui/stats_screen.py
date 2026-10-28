@@ -17,14 +17,13 @@ from game.profile import (
     DEFAULT_NAME, Stats, load_profiles, save_profiles,
 )
 from gui import display
-from gui.canvas import StaticLayer, draw_backdrop
+from gui.canvas import StaticLayer
+from gui import ui_style
 from config import (
     SCREEN_WIDTH,
     COLOR_WHITE, COLOR_GOLD, COLOR_GRAY, COLOR_DARK_GRAY,
     COLOR_GREEN, COLOR_RED,
-    COLOR_BUTTON_PRIMARY, COLOR_BUTTON_SECONDARY, COLOR_PANEL_BG,
     FONT_SIZE_LARGE, FONT_SIZE_MEDIUM, FONT_SIZE_SMALL,
-    BUTTON_RADIUS,
 )
 
 # Menovka hráča sa na dvoch miestach skracuje na 10 znakov (panel KOLO v
@@ -279,12 +278,11 @@ class StatsScreen:
             self._layer = StaticLayer(c.target.get_size())
         if self._layer.needs_redraw("static"):
             with self._layer.drawing(c, key="static"):
-                draw_backdrop(c, (0, 0, 0, 165))
-                title = self.font_title.render("PROFIL", True, COLOR_GOLD)
-                c.blit(title, title.get_rect(center=(SCREEN_WIDTH // 2, 88)))
-                c.line(COLOR_GOLD,
-                       (SCREEN_WIDTH // 2 - 220, 128),
-                       (SCREEN_WIDTH // 2 + 220, 128), width=2)
+                # Vzhľad: gui/ui_style.py (grafický rework 2026-10-27).
+                ui_style.draw_backdrop(c)
+                ui_style.draw_screen_title(c, "PROFIL", self.font_title,
+                                           (SCREEN_WIDTH // 2, 86),
+                                           line_half_w=220, line_gap=42)
         self._layer.blit_to(c.target)
 
         self._draw_name_panel()
@@ -293,16 +291,16 @@ class StatsScreen:
 
     def _draw_name_panel(self):
         self._panel_bg(self.panel_name)
-        label = self.font_medium.render("MENO HRÁČA", True, COLOR_GOLD)
+        label = self.font_medium.render("MENO HRÁČA", True, ui_style.GOLD)
         self.canvas.blit(
             label, label.get_rect(midleft=(self.panel_name.left + 28,
                                            self.name_field.centery))
         )
 
         active = self.editing_name
-        self.canvas.rect((12, 8, 4), self.name_field, border_radius=8
+        self.canvas.rect((10, 7, 4), self.name_field, border_radius=8
         )
-        self.canvas.rect(COLOR_GOLD if active else COLOR_DARK_GRAY,
+        self.canvas.rect(ui_style.GOLD if active else ui_style.GOLD_SOFT,
             self.name_field, width=2, border_radius=8
         )
 
@@ -324,7 +322,7 @@ class StatsScreen:
         self._draw_button(
             self.rename_button,
             "Hotovo" if active else "Premenovať",
-            COLOR_BUTTON_PRIMARY if active else COLOR_BUTTON_SECONDARY
+            1 if active else 2
         )
 
     def _layout_sections(self, sections, row_h, head_h, pad_bottom, gap):
@@ -373,11 +371,11 @@ class StatsScreen:
                 continue  # mimo viditeľnej oblasti — netreba kresliť
             self._panel_bg(rect)
 
-            label = self.font_medium.render(title, True, COLOR_GOLD)
+            label = self.font_medium.render(title, True, ui_style.GOLD)
             self.canvas.blit(
                 label, label.get_rect(midleft=(rect.left + 24, rect.top + 28))
             )
-            self.canvas.line(COLOR_DARK_GRAY,
+            self.canvas.line((70, 54, 34),
                 (rect.left + 20, rect.top + 48),
                 (rect.right - 20, rect.top + 48), width=1
             )
@@ -410,20 +408,14 @@ class StatsScreen:
             (track.height - thumb_h) * (self.scroll_offset / max_scroll)
         )
         thumb = pygame.Rect(track.x, thumb_y, track.width, thumb_h)
-        self.canvas.rect(COLOR_GOLD, thumb, border_radius=3)
+        self.canvas.rect(ui_style.GOLD_SOFT, thumb, border_radius=3)
 
     def _panel_bg(self, rect: pygame.Rect):
-        self.canvas.overlay(rect, (*COLOR_PANEL_BG, 210))
-        self.canvas.rect(COLOR_GOLD, rect, width=2, border_radius=14)
+        ui_style.draw_panel(self.canvas, rect)
 
-    def _draw_button(self, btn: dict, text: str, color: tuple):
-        rect = btn["rect"]
-        shade = tuple(min(255, c + 30) for c in color) if btn.get("hover") else color
-        self.canvas.rect(shade, rect, border_radius=BUTTON_RADIUS)
-        self.canvas.rect(COLOR_GOLD, rect, width=2, border_radius=BUTTON_RADIUS
-        )
-        surf = self.font_small.render(text, True, COLOR_WHITE)
-        self.canvas.blit(surf, surf.get_rect(center=rect.center))
+    def _draw_button(self, btn: dict, text: str, tier: int):
+        ui_style.draw_button(self.canvas, btn["rect"], text, self.font_medium,
+                             tier, btn.get("hover", False))
 
     def _draw_back_button(self):
-        self._draw_button(self.back_button, "Späť do menu", COLOR_BUTTON_SECONDARY)
+        self._draw_button(self.back_button, "Späť do menu", 3)

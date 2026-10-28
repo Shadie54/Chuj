@@ -8,21 +8,20 @@
 #
 # Od reworku rozlíšení (krok 4) kreslí rovnako ako gui/menu.py cez
 # gui/canvas.py — natívne rozlíšenie, statická vrstva, tlačidlá navrch.
+# Vzhľad (grafický rework 2026-10-27): gui/ui_style.py — kapitoly sú
+# tlačidlá úrovne 2, Späť úrovne 3.
 
-import os
 import pygame
 import sys
 from gui import display
 from gui.canvas import StaticLayer
+from gui import ui_style
 from config import (
     SCREEN_WIDTH,
-    COLOR_WHITE, COLOR_GOLD, COLOR_GRAY,
-    COLOR_BUTTON_PRIMARY, COLOR_BUTTON_SECONDARY,
     FONT_SIZE_LARGE,
-    BUTTON_RADIUS,
 )
 
-BG_PATH = os.path.join("assets", "graphics", "table.jpg")
+BTN_W, BTN_H, BTN_GAP = 380, 60, 16
 
 CHAPTER_LABELS = {
     "zaklady": "Základy",
@@ -47,37 +46,38 @@ class TutorialMenu:
         self.font_button = self.canvas.font(FONT_SIZE_LARGE)
         self.font_title = self.canvas.font(60)
 
-        self.has_bg = os.path.exists(BG_PATH)
         self._layer: StaticLayer | None = None
 
-        btn_w = 340
-        btn_h = 65
+        btn_w, btn_h = BTN_W, BTN_H
+        step = BTN_H + BTN_GAP
         center_x = SCREEN_WIDTH // 2
 
         buttons_data = [
-            (CHAPTER_LABELS.get(cid, cid), cid, COLOR_BUTTON_PRIMARY)
+            (CHAPTER_LABELS.get(cid, cid), cid, 2)
             for cid in chapter_ids
         ]
-        buttons_data.append(("Späť", "back", COLOR_BUTTON_SECONDARY))
+        buttons_data.append(("Späť", "back", 3))
 
-        start_y = 420
+        # Nadpis + tlačidlá zvislo na strede (aj pri 16:10).
+        block_h = 140 + len(buttons_data) * step - BTN_GAP
+        start_y = (display.logical_height() - block_h) // 2 + 140
         # Rovnaký ochranný posun ako v gui/menu.py — na nižšom rozlíšení by
         # posledné tlačidlo vypadlo pod okraj.
-        last_bottom = start_y + (len(buttons_data) - 1) * 85 + btn_h
+        last_bottom = start_y + (len(buttons_data) - 1) * step + btn_h
         if last_bottom > display.logical_height() - 40:
             start_y -= last_bottom - (display.logical_height() - 40)
 
         self.buttons = []
-        for i, (label, action, color) in enumerate(buttons_data):
+        for i, (label, action, tier) in enumerate(buttons_data):
             self.buttons.append({
                 "label": label,
                 "action": action,
                 "rect": pygame.Rect(
                     center_x - btn_w // 2,
-                    start_y + i * 85,
+                    start_y + i * step,
                     btn_w, btn_h
                 ),
-                "color": color,
+                "tier": tier,
                 "hover": False
             })
 
@@ -117,48 +117,21 @@ class TutorialMenu:
             self._layer = StaticLayer(c.target.get_size())
         if self._layer.needs_redraw("static"):
             with self._layer.drawing(c, key="static"):
-                if self.has_bg:
-                    c.target.blit(c.background(BG_PATH, c.target.get_size()),
-                                  (0, 0))
-                else:
-                    c.fill_window((45, 28, 15))
-                c.overlay_window((0, 0, 0, 150))
+                ui_style.draw_backdrop(c)
                 self._draw_title()
         self._layer.blit_to(c.target)
         for btn in self.buttons:
             self._draw_button(btn)
 
     def _draw_title(self):
-        title_bottom_padding = 60
         first_btn_y = self.buttons[0]["rect"].top
-
-        shadow = self.font_title.render("TUTORIÁL", True, (0, 0, 0))
-        title = self.font_title.render("TUTORIÁL", True, COLOR_GOLD)
-        rect = title.get_rect(
-            centerx=SCREEN_WIDTH // 2,
-            bottom=first_btn_y - title_bottom_padding
-        )
-        self.canvas.blit(shadow, (rect.x + 3, rect.y + 3))
-        self.canvas.blit(title, rect)
+        ui_style.draw_screen_title(
+            self.canvas, "TUTORIÁL", self.font_title,
+            (SCREEN_WIDTH // 2, first_btn_y - 100), line_half_w=220)
 
     def _draw_button(self, btn: dict):
-        c = self.canvas
-        rect = btn["rect"]
-        color = btn["color"]
-        alpha = 240 if btn["hover"] else 200
-
-        c.overlay(rect, (*color, alpha))
-
-        if btn["hover"]:
-            c.overlay(rect, (255, 255, 255, 25))
-
-        border_color = COLOR_GOLD if btn["hover"] else COLOR_GRAY
-        c.rect(border_color, rect, width=2, border_radius=BUTTON_RADIUS)
-
-        text_color = COLOR_GOLD if btn["hover"] else COLOR_WHITE
-        text_surf = self.font_button.render(btn["label"], True, text_color)
-        text_rect = text_surf.get_rect(center=rect.center)
-        c.blit(text_surf, text_rect)
+        ui_style.draw_button(self.canvas, btn["rect"], btn["label"],
+                             self.font_button, btn["tier"], btn["hover"])
 
     def __repr__(self) -> str:
         return "TutorialMenu()"

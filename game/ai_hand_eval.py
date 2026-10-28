@@ -111,11 +111,21 @@ class DecisionContext:
         )
 
         # Protected suits
+        # Pôvodne len vysvietený horník (memory.illuminated_by[suit] ==
+        # player.index) — nezmyselné zúženie, iluminácia nemá nič spoločné
+        # s tým, či ma daný horník ohrozuje. Opravené 2026-10-27: chránená
+        # je KAŽDÁ farba, kde držím horníka (vysvietený či nie), pokiaľ
+        # ešte nepadol a mám málo rezerv (claude/14_HORNIK_TIEBREAK_
+        # HAND_EVAL_LOG.md, Hra 12/v2 — žaluďový Q♣ nevysvietený nikým,
+        # a jeho rezerva 10♣ nemala žiadny núdzový fallback).
         protected_suits = set()
         for suit in ("leaf", "acorn"):
-            if memory.illuminated_by[suit] != player.index:
-                continue
             if memory.is_special_gone(suit):
+                continue
+            holds_special = any(
+                c.is_special and c.suit == suit for c in player.hand.cards
+            )
+            if not holds_special:
                 continue
             reserves = [
                 c for c in player.hand.cards

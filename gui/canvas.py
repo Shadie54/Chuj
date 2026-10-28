@@ -93,6 +93,18 @@ class ScaledFont:
         return self.font.get_linesize() / self.scale
 
 
+def _hires_variant(path: str, tw: int, th: int) -> str:
+    """Pozadie vo vyššom rozlíšení, ak ho okno potrebuje a existuje:
+    k "table.jpg" patrí "table_4k.jpg" (rovnaký obrázok, napr. 3840×2160).
+    Použije sa len pri okne väčšom než Full HD — inak sa šetrí pamäť aj
+    čas načítania. Pridanie variantu nevyžaduje zmenu kódu."""
+    if tw <= 1920 * 1.05 and th <= 1200 * 1.05:
+        return path
+    base, ext = os.path.splitext(path)
+    hires = f"{base}_4k{ext}"
+    return hires if os.path.exists(hires) else path
+
+
 class Canvas:
     """Kreslí v logických súradniciach na fyzický povrch `target` v mierke
     `scale` s posunom (ox, oy) — posun = pásma pri 21:9 a pod.
@@ -187,9 +199,9 @@ class Canvas:
         cached = self._images.get(key)
         if cached is not None:
             return cached
-        img = pygame.image.load(path).convert()
-        iw, ih = img.get_size()
         tw, th = phys_size
+        img = pygame.image.load(_hires_variant(path, tw, th)).convert()
+        iw, ih = img.get_size()
         k = max(tw / iw, th / ih)
         sw, sh = math.ceil(iw * k), math.ceil(ih * k)
         img = pygame.transform.smoothscale(img, (sw, sh))

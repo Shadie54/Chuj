@@ -333,6 +333,20 @@ class Gallery:
         screen.info_overlay.active_tab = "pravidla"
         self.frame(screen)
         self.shot("game_08_pravidla_pravidla")
+        demo = getattr(screen.info_overlay, "rules_demo", None)
+        if demo is not None:
+            # Animovaná ukážka štichov — každá scéna vo výsledku a scéna 2
+            # aj uprostred pohybu karty (deterministicky, falošné hodiny).
+            import pygame
+            for i in range(6):
+                demo.select(i)
+                demo._t0 = pygame.time.get_ticks() - 4500
+                self.frame(screen)
+                self.shot(f"game_08{chr(ord('a') + i)}_pravidla_scena{i + 1}")
+            demo.select(1)
+            demo._t0 = pygame.time.get_ticks() - 2000
+            self.frame(screen)
+            self.shot("game_08g_pravidla_scena2_pohyb")
         screen.info_overlay.visible = False
 
         # Koniec kola (správa + bubliny), potom druhé kolo s Chujogramom.

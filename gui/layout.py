@@ -60,14 +60,30 @@ class GameLayout:
 
     def column_rect(self, slot: int) -> pygame.Rect:
         """Stĺpec tlačidiel vpravo dole, slot 0 = najvyššie (Tipy) …
-        4 = najnižšie (Menu). Ukotvený k spodnému okraju."""
-        return pygame.Rect(self.width - 600, self.l_h - 330 + slot * 60, 200, 50)
+        4 = najnižšie (Menu). Ukotvený k spodnému okraju.
+
+        Grafický rework 2026-10-28: stĺpec je široký 240 (ikonka vľavo),
+        medzi tlačidlami je väčšia medzera (medailóny ikoniek nie sú
+        natlačené) a Tipy sú od zvyšku oddelené o niečo viac. Celý stĺpec
+        má PRESNE výšku panela KOLO a je s ním zarovnaný hore aj dole."""
+        y = self.l_h - BOTTOM_MARGIN - COLUMN_TOTAL_H + slot * (COLUMN_BTN_H + COLUMN_GAP)
+        if slot > 0:
+            y += COLUMN_TIPS_EXTRA_GAP
+        return pygame.Rect(self.width - 620, y, 240, COLUMN_BTN_H)
 
     def tip_panel_rect(self) -> pygame.Rect:
-        return pygame.Rect(20, self.l_h - 270 - 20, 360, 270)
+        """Panel TIP vľavo dole — maximálny rozmer; panel rastie nahor podľa
+        obsahu (gui/tip_panel.py). Najvyšší môže byť ako panel KOLO
+        (2026-10-28: vďaka vyššie posunutej ruke PC3 je na to miesto) —
+        vtedy je zarovnaný s ním aj so stĺpcom tlačidiel."""
+        return pygame.Rect(20, self.l_h - BOTTOM_MARGIN - COLUMN_TOTAL_H,
+                           360, COLUMN_TOTAL_H)
 
     def round_status_rect(self) -> pygame.Rect:
-        return pygame.Rect(self.width - 370, self.l_h - 260 - 20, 350, 260)
+        """Panel KOLO — rovnako vysoký ako stĺpec tlačidiel vedľa neho."""
+        return pygame.Rect(self.width - 370,
+                           self.l_h - BOTTOM_MARGIN - COLUMN_TOTAL_H,
+                           350, COLUMN_TOTAL_H)
 
 
 # Poradie v stĺpci tlačidiel (zdola nahor: Menu, Pravidlá, Chujogram,
@@ -75,6 +91,17 @@ class GameLayout:
 # stĺpec sa vtedy posunul o miesto NIŽŠIE, aby Menu ostalo pri spodnom
 # okraji a voľné miesto zostalo navrchu (slot 0 je preto Tipy).
 COLUMN_SLOTS = {"tips": 0, "last_trick": 1, "chujogram": 2, "info": 3, "menu": 4}
+
+# Rozmery stĺpca tlačidiel (a tým aj výška panela KOLO)
+BOTTOM_MARGIN = 20
+COLUMN_BTN_H = 46
+COLUMN_GAP = 16
+COLUMN_TIPS_EXTRA_GAP = 12          # Tipy sú prepínač — mierne oddelené
+COLUMN_TOTAL_H = (len(COLUMN_SLOTS) * COLUMN_BTN_H
+                  + (len(COLUMN_SLOTS) - 1) * COLUMN_GAP + COLUMN_TIPS_EXTRA_GAP)
+# Ruky Počítača 1 a 3 sú o 40 px vyššie ako pred reworkom (390 → 430 nad
+# stredom stola) — panel KOLO je vyšší a ruka PC1 by doň inak zasahovala.
+SIDE_HAND_RAISE = 430
 
 
 def build_game_layout(l_h: int) -> GameLayout:
@@ -84,9 +111,9 @@ def build_game_layout(l_h: int) -> GameLayout:
 
     hand_configs = {
         0: {"direction": "horizontal", "x": 400, "y": hand_bottom_y, "offset": 100},  # hráč — dole
-        1: {"direction": "vertical", "x": 1600, "y": tcy - 390, "offset": 65},       # PC1 — vpravo
+        1: {"direction": "vertical", "x": 1600, "y": tcy - SIDE_HAND_RAISE, "offset": 65},  # PC1 — vpravo
         2: {"direction": "horizontal", "x": 400, "y": -50, "offset": 100},           # PC2 — hore
-        3: {"direction": "vertical", "x": 30, "y": tcy - 390, "offset": 65},         # PC3 — vľavo
+        3: {"direction": "vertical", "x": 30, "y": tcy - SIDE_HAND_RAISE, "offset": 65},    # PC3 — vľavo
     }
     trick_positions = {
         0: (tcx, tcy + 120),
@@ -97,21 +124,21 @@ def build_game_layout(l_h: int) -> GameLayout:
     # Kam letí zbieraný štich k víťazovi (gui/trick_animation.py).
     trick_collect_targets = {
         0: (W // 2, l_h - 150),          # 930 pri 1080
-        1: (1620, tcy - 130),            # 410
+        1: (1620, tcy - 170),            # 370 — ruka PC1 je o 40 px vyššie
         2: (W // 2, 20),
-        3: (50, tcy - 130),
+        3: (50, tcy - 170),
     }
     label_positions = {
         0: (tcx, l_h - 60),
-        1: (W - 170, tcy),
+        1: (W - 170, tcy - 40),          # s rukou o 40 px vyššie
         2: (tcx, 60),
-        3: (170, tcy),
+        3: (170, tcy - 40),
     }
     bubble_positions = {
         0: (tcx, l_h - 135),             # 945 — medzi kartou štichu a menovkou
-        1: (W - 520, tcy - 160),         # 380
+        1: (W - 520, tcy - 200),         # 340
         2: (tcx, 245),
-        3: (520, tcy - 160),
+        3: (520, tcy - 200),
     }
     h0, h2 = hand_configs[0], hand_configs[2]
     round_result_positions = {

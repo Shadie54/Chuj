@@ -14,9 +14,8 @@
 
 import pygame
 
-from gui import layout
+from gui import layout, ui_style
 from config import (
-    COLOR_GOLD, COLOR_WHITE,
     CARD_SIZE_SMALL,
 )
 
@@ -90,9 +89,9 @@ class TipPanel:
 
         self._draw_bg(x, y, h)
 
-        title = self.font_title.render("TIP", True, COLOR_GOLD)
+        title = self.font_title.render("TIP", True, ui_style.GOLD)
         self.canvas.blit(title, (x + 14, y + 10))
-        self.canvas.line(COLOR_GOLD,
+        self.canvas.line((70, 54, 34),
             (x + 10, y + 40), (x + self.w - 10, y + 40), width=1
         )
 
@@ -108,7 +107,7 @@ class TipPanel:
             if ty + 28 > max_y:
                 break
             self.canvas.blit(
-                self.font_head.render(line, True, COLOR_GOLD), (text_x, ty)
+                self.font_head.render(line, True, ui_style.GOLD), (text_x, ty)
             )
             ty += 28
         if head_lines and body_lines:
@@ -117,17 +116,15 @@ class TipPanel:
             if ty + 22 > max_y:
                 break
             self.canvas.blit(
-                self.font_body.render(line, True, COLOR_WHITE), (text_x, ty)
+                self.font_body.render(line, True, ui_style.TEXT), (text_x, ty)
             )
             ty += 22
 
     # ------------------------------------------------------------------
 
     def _draw_bg(self, x: int, y: int, h: int):
-        self.canvas.overlay(pygame.Rect((x, y), (self.w, h)), (20, 12, 5, 210))
-        self.canvas.rect(COLOR_GOLD, (x, y, self.w, h),
-            width=2, border_radius=10
-        )
+        # Spoločný štýl panelov (gui/ui_style.py, rework 2026-10-28)
+        ui_style.draw_panel(self.canvas, (x, y, self.w, h))
 
     def _card_image(self, card, size: tuple[int, int] | None = None):
         """Karta v logickej veľkosti — Canvas vyberie najmenší dostatočne

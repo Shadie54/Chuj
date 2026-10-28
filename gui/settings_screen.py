@@ -6,13 +6,12 @@ import re
 import pygame
 import sys
 from gui import display
-from gui.canvas import StaticLayer, draw_backdrop
+from gui.canvas import StaticLayer
+from gui import ui_style
 from config import (
     SCREEN_WIDTH,
     COLOR_WHITE, COLOR_GOLD, COLOR_GRAY, COLOR_DARK_GRAY, COLOR_BLACK,
     COLOR_GREEN, COLOR_YELLOW, COLOR_RED,
-    COLOR_BUTTON_PRIMARY, COLOR_BUTTON_SECONDARY,
-    COLOR_PANEL_BG,
     FONT_SIZE_LARGE, FONT_SIZE_MEDIUM, FONT_SIZE_SMALL,
     BUTTON_RADIUS,
     ANIMATION_SPEED_MIN, ANIMATION_SPEED_MAX, ANIMATION_SPEED_DEFAULT
@@ -586,7 +585,8 @@ class SettingsScreen:
             self._layer = StaticLayer(c.target.get_size())
         if self._layer.needs_redraw("static"):
             with self._layer.drawing(c, key="static"):
-                draw_backdrop(c, (0, 0, 0, 150))
+                # Vzhľad: gui/ui_style.py (grafický rework 2026-10-27).
+                ui_style.draw_backdrop(c)
                 self._draw_title()
         self._layer.blit_to(c.target)
 
@@ -603,17 +603,10 @@ class SettingsScreen:
 
     def _draw_tabs(self):
         for key, label in TABS:
-            rect = self.tab_rects[key]
             active = key == self.active_tab
             hover = key == self.tab_hover and not active
-            fill = (45, 30, 12, 235) if active else (
-                (35, 22, 10, 220) if hover else (20, 12, 5, 200))
-            self.canvas.overlay(rect, fill)
-            self.canvas.rect(COLOR_GOLD if active or hover else COLOR_DARK_GRAY,
-                             rect, width=2, border_radius=BUTTON_RADIUS)
-            surf = self.font_medium.render(
-                label, True, COLOR_GOLD if active else COLOR_WHITE)
-            self.canvas.blit(surf, surf.get_rect(center=rect.center))
+            ui_style.draw_button(self.canvas, self.tab_rects[key], label,
+                                 self.font_medium, 1 if active else 3, hover)
 
     def _draw_display_tab(self):
         mode = display.current_mode()
@@ -656,16 +649,8 @@ class SettingsScreen:
         # Použiť
         rect = self._apply_rect()
         enabled = self._display_changed() and self.confirm is None
-        if enabled:
-            color = COLOR_BUTTON_PRIMARY if self.apply_hover else COLOR_BUTTON_SECONDARY
-            c.overlay(rect, (*color, 220))
-            c.rect(COLOR_GOLD, rect, width=2, border_radius=BUTTON_RADIUS)
-            text = self.font_large.render("Použiť", True, COLOR_WHITE)
-        else:
-            c.overlay(rect, (25, 15, 5, 150))
-            c.rect(COLOR_DARK_GRAY, rect, width=1, border_radius=BUTTON_RADIUS)
-            text = self.font_large.render("Použiť", True, COLOR_DARK_GRAY)
-        c.blit(text, text.get_rect(center=rect.center))
+        ui_style.draw_button(c, rect, "Použiť", self.font_large, 1,
+                             self.apply_hover, enabled=enabled)
 
         if mode.source in ("cli", "safe"):
             note = self.font_small.render(
@@ -675,44 +660,28 @@ class SettingsScreen:
 
     def _draw_choice(self, rect: pygame.Rect, label: str, selected: bool,
                      hover: bool, enabled: bool):
-        """Prepínacie tlačidlo (režim, veľkosť okna) — štýl ako obtiažnosť."""
-        c = self.canvas
-        if not enabled:
-            fill, border, bw, color = (25, 15, 5, 150), COLOR_DARK_GRAY, 1, COLOR_DARK_GRAY
-        elif selected:
-            fill, border, bw, color = (*COLOR_GOLD, 230), COLOR_GOLD, 3, (0, 0, 0)
-        elif hover:
-            fill, border, bw, color = (*COLOR_GOLD, 120), COLOR_GOLD, 1, COLOR_WHITE
-        else:
-            fill, border, bw, color = (40, 25, 10, 180), COLOR_GRAY, 1, COLOR_WHITE
-        c.overlay(rect, fill)
-        c.rect(border, rect, width=bw, border_radius=BUTTON_RADIUS)
-        text = self.font_medium.render(label, True, color)
-        c.blit(text, text.get_rect(center=rect.center))
+        """Prepínacie tlačidlo (režim, veľkosť okna): zvolené = úroveň 1."""
+        ui_style.draw_button(self.canvas, rect, label, self.font_medium,
+                             1 if selected else 3, hover and not selected,
+                             enabled=enabled, shadow=False)
 
     def _draw_confirm(self):
         """Dialóg "Ponechať toto zobrazenie?" s odpočtom návratu."""
         c = self.canvas
         c.overlay_window((0, 0, 0, 170))
         panel = self.confirm_panel
-        c.overlay(panel, (*COLOR_PANEL_BG, 240), border_radius=14)
-        c.rect(COLOR_GOLD, panel, width=2, border_radius=14)
-        title = self.font_large.render("Ponechať toto zobrazenie?", True, COLOR_GOLD)
+        ui_style.draw_panel(c, panel)
+        title = self.font_large.render("Ponechať toto zobrazenie?", True, ui_style.GOLD)
         c.blit(title, title.get_rect(centerx=panel.centerx, top=panel.top + 40))
         secs = self._confirm_seconds_left()
         text = self.font_medium.render(
-            f"Návrat k predchádzajúcemu zobrazeniu o {secs} s", True, COLOR_WHITE)
+            f"Návrat k predchádzajúcemu zobrazeniu o {secs} s", True, ui_style.TEXT)
         c.blit(text, text.get_rect(centerx=panel.centerx, top=panel.top + 110))
-        for key, rect, label in (("keep", self.confirm_keep, "Ponechať"),
-                                 ("revert", self.confirm_revert, "Vrátiť")):
-            hover = self.confirm_hover == key
-            color = COLOR_BUTTON_PRIMARY if hover or key == "keep" \
-                else COLOR_BUTTON_SECONDARY
-            c.overlay(rect, (*color, 230))
-            c.rect(COLOR_GOLD, rect, width=3 if hover else 2,
-                   border_radius=BUTTON_RADIUS)
-            surf = self.font_large.render(label, True, COLOR_WHITE)
-            c.blit(surf, surf.get_rect(center=rect.center))
+        for key, rect, label, tier in (
+                ("keep", self.confirm_keep, "Ponechať", 1),
+                ("revert", self.confirm_revert, "Vrátiť", 3)):
+            ui_style.draw_button(c, rect, label, self.font_large, tier,
+                                 self.confirm_hover == key)
 
     def _draw_game_tab(self):
         self._draw_panel(self.panel_ai, "OBTIAŽNOSŤ POČÍTAČOV")
@@ -726,30 +695,12 @@ class SettingsScreen:
         self._draw_bg_arrows()
 
     def _draw_title(self):
-        title = self.font_title.render("NASTAVENIA", True, COLOR_GOLD)
-        title_rect = title.get_rect(center=(SCREEN_WIDTH // 2, 95))
-        self.canvas.blit(title, title_rect)
-
-        self.canvas.line(COLOR_GOLD,
-            (SCREEN_WIDTH // 2 - 260, 135),
-            (SCREEN_WIDTH // 2 + 260, 135),
-            width=2
-        )
+        ui_style.draw_screen_title(self.canvas, "NASTAVENIA", self.font_title,
+                                   (SCREEN_WIDTH // 2, 88), line_gap=42)
 
     def _draw_panel(self, rect: pygame.Rect, title: str):
-        """Nakreslí zaoblený panel s tmavým pozadím, zlatým okrajom a nadpisom."""
-        self.canvas.overlay(rect, (*COLOR_PANEL_BG, 210))
-        self.canvas.rect(COLOR_GOLD, rect, width=2, border_radius=14)
-
-        label = self.font_medium.render(title, True, COLOR_GOLD)
-        label_rect = label.get_rect(midleft=(rect.left + 28, rect.top + 30))
-        self.canvas.blit(label, label_rect)
-
-        self.canvas.line(COLOR_DARK_GRAY,
-            (rect.left + 24, rect.top + 52),
-            (rect.right - 24, rect.top + 52),
-            width=1
-        )
+        """Panel so zlatohnedým rámom a nadpisom (gui/ui_style.py)."""
+        ui_style.draw_panel(self.canvas, rect, title, self.font_medium)
 
     def _draw_ai_sections(self):
         ai_names = ["Počítač 1", "Počítač 2", "Počítač 3"]
@@ -777,23 +728,31 @@ class SettingsScreen:
                 is_selected = (diff == current)
                 base_color  = self.difficulty_colors[diff]
 
+                # Farba obtiažnosti ostáva (zelená/žltá/červená nesú
+                # význam), ale stlmená do tmavého štýlu menu (ui_style):
+                # zvolená = farebná výplň so silným rámom, ostatné tmavé.
+                r = BUTTON_RADIUS
                 if is_selected:
-                    fill = (*base_color, 230)
+                    self.canvas.overlay(btn["rect"], (*base_color, 165),
+                                        border_radius=r)
+                    self.canvas.overlay(btn["rect"], (0, 0, 0, 60),
+                                        border_radius=r)
                 elif btn["hover"]:
-                    fill = (*base_color, 120)
+                    self.canvas.overlay(btn["rect"], (*base_color, 70),
+                                        border_radius=r)
                 else:
-                    fill = (40, 25, 10, 180)
-                self.canvas.overlay(btn["rect"], fill)
+                    self.canvas.overlay(btn["rect"], (27, 19, 12, 230),
+                                        border_radius=r)
 
                 border_color = base_color if is_selected or btn["hover"] \
-                    else COLOR_GRAY
-                border_width = 3 if is_selected else 1
+                    else (98, 76, 46)
+                border_width = 2
                 self.canvas.rect(border_color,
                     btn["rect"], width=border_width,
-                    border_radius=BUTTON_RADIUS
+                    border_radius=r
                 )
 
-                text_color = (0, 0, 0) if is_selected else COLOR_WHITE
+                text_color = (255, 246, 228) if is_selected else ui_style.TEXT
                 text = self.font_medium.render(
                     self.difficulty_labels[diff], True, text_color
                 )
@@ -902,19 +861,8 @@ class SettingsScreen:
         self.canvas.polygon(color, points)
 
     def _draw_back_button(self):
-        rect  = self.back_button["rect"]
-        color = COLOR_BUTTON_PRIMARY if self.back_button["hover"] \
-            else COLOR_BUTTON_SECONDARY
-
-        self.canvas.overlay(rect, (*color, 220))
-
-        self.canvas.rect(COLOR_GOLD,
-            rect, width=2, border_radius=BUTTON_RADIUS
-        )
-
-        text      = self.font_large.render("← Späť", True, COLOR_WHITE)
-        text_rect = text.get_rect(center=rect.center)
-        self.canvas.blit(text, text_rect)
+        ui_style.draw_button(self.canvas, self.back_button["rect"], "← Späť",
+                             self.font_large, 3, self.back_button["hover"])
 
     def __repr__(self) -> str:
         return "SettingsScreen()"

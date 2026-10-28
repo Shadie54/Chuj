@@ -56,12 +56,23 @@ class LeadSafe(Strategy):
         if not results:
             suit_picks = self._protected_last_resort(ctx)
             if suit_picks:
-                best_suit = max(suit_picks, key=lambda s: self._last_resort_reserves[s])
+                # PRIMARY = živá farba (skutočné riziko, treba riešiť teraz)
+                # pred mŕtvou (bezpečná kedykoľvek — koncept 14/15); pri
+                # rovnakom stave živosti rozhoduje počet rezerv ako doteraz.
+                best_suit = min(
+                    suit_picks,
+                    key=lambda s: (
+                        0 if self._suit_alive(s, ctx) else 1,
+                        -self._last_resort_reserves[s],
+                    )
+                )
                 for suit, cards in suit_picks.items():
                     variant = "PROTECTED_ESCAPE_PRIMARY" if suit == best_suit else "PROTECTED_ESCAPE_SECONDARY"
+                    alive_tag = "živá" if self._suit_alive(suit, ctx) else "mŕtva"
                     for card in cards:
                         results.append(
-                            (card, variant, f"núdzovo {suit} (rezervy={self._last_resort_reserves[suit]}): {card}"))
+                            (card, variant,
+                             f"núdzovo {suit} ({alive_tag}, rezervy={self._last_resort_reserves[suit]}): {card}"))
 
         return results
 
@@ -105,7 +116,8 @@ class LeadSafe(Strategy):
         """
         Núdzová voľba, ak sú všetky escape/exhaust/bell kandidáti vetované
         cez protected_suits. Vráti kandidátov za KAŽDÚ protected farbu
-        (nie len jednu) — výber medzi farbami sa rieši cez váhy v propose().
+        (nie len jednu) — výber medzi farbami (PRIMARY/SECONDARY) sa rieši
+        cez _suit_alive() + rezervy v propose().
         """
         suit_picks = {}
         self._last_resort_reserves = {}
@@ -130,6 +142,22 @@ class LeadSafe(Strategy):
                 self._last_resort_reserves[suit] = my_count
 
         return suit_picks
+
+    def _suit_alive(self, suit: str, ctx: AIContext) -> bool:
+        """
+        True ak ešte existuje ČOKOĘVEK z danej farby mimo mojej ruky
+        (u súperov alebo v rozohranom štichu) — nielen vyššie karty, celé
+        pokrytie. Analogické k StrategySelector._is_unbeatable_by_opponent
+        (selector.py), len obrátené (alive = NIE unbeatable) a bez
+        obmedzenia na "vyššie" — pre núdzovú voľbu rozhoduje, či je farba
+        VÔBEC ešte živá (koncept 14/15, claude/14_HORNIK_TIEBREAK_
+        HAND_EVAL_LOG.md), nie len, či je TÁTO konkrétna karta trap.
+        """
+        if self.memory.remaining[suit]:
+            return True
+        if any(c.suit == suit for c in ctx.trick_cards):
+            return True
+        return False
 
     def _surplus_low_hearts(self, ctx: AIContext) -> list[Card]:
         hand = self.player.hand.cards

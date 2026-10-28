@@ -16,16 +16,16 @@ from gui.chapter_banner import ChapterBanner
 from gui.phase_renderer import PhaseRenderer
 from gui.preparation_handler import PreparationHandler
 from gui.tip_panel import TipPanel
+from gui.last_trick_overlay import LastTrickOverlay
 from game.advisor import Advisor
 from game.stats_collector import StatsCollector
 from game import profile as profile_store
 from game import savegame
-from gui import display, layout
+from gui import display
 from config import (
     SCREEN_WIDTH, FPS, DEBUG_MODE,
     COLOR_BG,
     FONT_SIZE_MEDIUM, FONT_SIZE_LARGE, FONT_SIZE_SMALL,
-    CARD_SIZE_MEDIUM, COLOR_GOLD, COLOR_GRAY, COLOR_WHITE,
 )
 
 
@@ -77,6 +77,7 @@ class Screen:
         self.ai_players = ai_players
 
         self.card_renderer = CardRenderer(self.canvas, debug)
+        self.last_trick_overlay = LastTrickOverlay(self.canvas, self.card_renderer)
         self.speech_bubble = SpeechBubble(self.canvas)
         self.info_overlay = InfoOverlay(self.canvas)
 
@@ -915,60 +916,14 @@ class Screen:
             )
 
     def _draw_last_trick_overlay(self):
-        """Nakreslí overlay s posledným štichom."""
-        c = self.canvas
-
+        """Okno s posledným štichom (gui/last_trick_overlay.py). Zatvára sa
+        klikom kamkoľvek (aj na krížik) alebo Esc — pozri _handle_click."""
         tricks = self.game_state.current_round.tricks
         if not tricks:
             self.show_last_trick = False
             return
-
-        # Tmavé pozadie
-        c.overlay_window((0, 0, 0, 200))
-
-        last_trick = tricks[-1]
-        winner_index = last_trick.get_winner_index()
-        played = last_trick.played_cards  # [(player_idx, card), ...]
-
-        card_w, card_h = CARD_SIZE_MEDIUM
-        gap = 30
-        total_w = len(played) * (card_w + gap) - gap
-        x0 = SCREEN_WIDTH // 2 - total_w // 2
-        y0 = layout.game().l_h // 2 - card_h // 2 - 40
-
-        # Nadpis
-        title = self.font_large.render("POSLEDNÝ ŠTICH", True, COLOR_GOLD)
-        c.blit(title, title.get_rect(centerx=SCREEN_WIDTH // 2, top=y0 - 60))
-
-        for player_idx, card in played:
-            i = [p for p, _ in played].index(player_idx)
-            cx = x0 + i * (card_w + gap)
-            is_winner = (player_idx == winner_index)
-
-            # Karta (z cache CardRenderer/Canvas — predtým sa načítavala
-            # z disku každú snímku)
-            c.blit(self.card_renderer._get_card_image(card), (cx, y0))
-
-            # Border
-            border_color = COLOR_GOLD if is_winner else COLOR_GRAY
-            border_width = 3 if is_winner else 1
-            c.rect(border_color, (cx, y0, card_w, card_h),
-                   width=border_width, border_radius=6)
-
-            # Meno hráča
-            name = self.game_state.players[player_idx].name
-            name_surf = self.font_medium.render(
-                name, True, COLOR_GOLD if is_winner else COLOR_WHITE
-            )
-            c.blit(name_surf, name_surf.get_rect(
-                centerx=cx + card_w // 2, top=y0 + card_h + 8
-            ))
-
-        # Hint
-        hint = self.font_small.render("Klikni pre zavretie", True, COLOR_GRAY)
-        c.blit(hint, hint.get_rect(
-            centerx=SCREEN_WIDTH // 2, top=y0 + card_h + 50
-        ))
+        self.last_trick_overlay.update_hover(display.mouse_pos())
+        self.last_trick_overlay.draw(tricks[-1], self.game_state.players)
 
     # ------------------------------------------------------------------
     # Pomocné metódy

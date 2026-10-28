@@ -2,12 +2,17 @@
 
 import pygame
 import os
-from gui import layout
+from gui import layout, ui_style
 from config import (
-    COLOR_WHITE, COLOR_GRAY, COLOR_GOLD,
-    COLOR_GREEN, COLOR_RED, COLOR_YELLOW,
+    COLOR_GREEN,
     NO_PENALTY_STREAK, SUIT_ICONS_PATH
 )
+
+
+# Farby v štýle gui/ui_style.py (grafický rework 2026-10-28)
+DIVIDER = (70, 54, 34)
+PENALTY_COLOR = (232, 112, 84)
+EMPTY_BULLET = (98, 76, 46)
 
 
 class RoundStatus:
@@ -58,12 +63,8 @@ class RoundStatus:
         self._draw_players(players, current_round)
 
     def _draw_bg(self):
-        """Nakreslí pozadie panelu."""
-        self.canvas.overlay(pygame.Rect((self.x, self.y), (self.w, self.h)), (20, 12, 5, 210))
-        self.canvas.rect(COLOR_GOLD,
-            (self.x, self.y, self.w, self.h),
-            width=2, border_radius=10
-        )
+        """Pozadie panelu — spoločný štýl (gui/ui_style.py, rework 2026-10-28)."""
+        ui_style.draw_panel(self.canvas, (self.x, self.y, self.w, self.h))
 
     def _draw_title(self, round_number, deal_seed):
         if round_number is not None:
@@ -71,7 +72,7 @@ class RoundStatus:
         else:
             round_text = "KOLO"
 
-        title = self.font_medium.render(round_text, True, COLOR_GOLD)
+        title = self.font_medium.render(round_text, True, ui_style.GOLD)
         title_rect = title.get_rect(
             left=self.x + 30,  # bolo centerx
             top=self.y + 8
@@ -82,24 +83,28 @@ class RoundStatus:
             # Len pre zobrazenie — oddeľovač tisícok medzerou (napr. 27 856 498),
             # samotná hodnota deal_seed (v tester_main.py --seed X a pod.) sa nemení.
             seed_text = f"{deal_seed:,}".replace(",", " ")
-            seed = self.font_small.render(f" ({seed_text})", True, COLOR_GRAY)  # pridaj medzeru
+            seed = self.font_small.render(f" ({seed_text})", True, ui_style.TEXT_DIM)  # pridaj medzeru
             seed_rect = seed.get_rect(
                 right=self.x + self.w - 8,
                 centery=title_rect.centery  # rovnaká výška ako KOLO
             )
             self.canvas.blit(seed, seed_rect)
 
-        self.canvas.line(COLOR_GOLD,
+        self.canvas.line(DIVIDER,
                          (self.x + 10, self.y + 43),
                          (self.x + self.w - 10, self.y + 43), width=1)
 
     def _draw_players(self, players: list, current_round=None):
         """Nakreslí riadok pre každého hráča."""
-        y_start = self.y + 48
-        row_h = (self.h - 68) // len(players)
+        # Riadky rovnomerne rozložené od čiary pod nadpisom po spodok panela
+        # (riadok = meno + guličky, ~43 px; 14 px okraj hore aj dole).
+        row_content_h = 43
+        y_start = self.y + 43 + 14
+        last_top = self.y + self.h - 14 - row_content_h
+        row_h = (last_top - y_start) / max(1, len(players) - 1)
 
         for i, player in enumerate(players):
-            y = y_start + i * row_h
+            y = round(y_start + i * row_h)
 
             # Zvýraznenie ak je na ťahu
             is_current = (
@@ -107,7 +112,7 @@ class RoundStatus:
                 current_round.phase == "tricks" and
                 current_round.get_current_player_index() == i
             )
-            name_color = COLOR_YELLOW if is_current else COLOR_WHITE
+            name_color = ui_style.BTN_TEXT_HOVER if is_current else ui_style.TEXT
 
             # Meno
             name_surf = self.font_small.render(
@@ -136,10 +141,10 @@ class RoundStatus:
             # Body aktuálneho kola
             pts = player.round_points
             if pts > 0:
-                pts_color = COLOR_RED
+                pts_color = PENALTY_COLOR
                 pts_text = f"+{pts}b"
             else:
-                pts_color = COLOR_GRAY
+                pts_color = ui_style.TEXT_DIM
                 pts_text = "0b"
 
             pts_surf = self.font_small.render(pts_text, True, pts_color)
@@ -161,10 +166,10 @@ class RoundStatus:
             if i < streak:
                 # Plná zelená
                 self.canvas.circle(COLOR_GREEN, (cx, y), self.bullet_r)
-                self.canvas.circle(COLOR_WHITE, (cx, y), self.bullet_r, width=1)
+                self.canvas.circle(ui_style.TEXT, (cx, y), self.bullet_r, width=1)
             else:
-                # Prázdna sivá
-                self.canvas.circle(COLOR_GRAY, (cx, y), self.bullet_r, width=1)
+                # Prázdna — tlmená zlatohnedá
+                self.canvas.circle(EMPTY_BULLET, (cx, y), self.bullet_r, width=1)
 
         # Bonus text ak dosiahol max
         if streak >= max_show:

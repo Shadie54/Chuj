@@ -11,6 +11,7 @@ from game.ai_sweep.pipeline import SweepDecision
 from game.ai_declaration import DeclarationAdvisor
 from game.ai_play_none import NonePlayer
 from game.ai_play_all import AllPlayer
+from game.ai_play_all_defender import AllDefender
 from game.ai_v2.engine import AIEngine
 
 
@@ -37,6 +38,7 @@ class AI:
 
         self.none_player = NonePlayer(player, self.memory, logger)
         self.all_player = AllPlayer(player, self.memory, logger)
+        self.all_defender = AllDefender(player, self.memory, logger)
 
         self.engine_v2 = AIEngine(player, self.memory, logger)
 
@@ -120,6 +122,13 @@ class AI:
         if my_declaration == "all":
             self.last_strategy = "DECLARATION_ALL"
             return self.all_player.decide(playable, hand_eval)
+
+        if self.declaration_type == "all":
+            self.last_strategy = "DECLARATION_ALL_DEFEND"
+            return self.all_defender.decide(
+                playable, current_trick,
+                declaration_player=self.declaration_player
+            )
 
         sweep_result = self.sweep_engine_v2.evaluate(
             hand_eval, trick_number, current_trick, playable
