@@ -305,6 +305,14 @@ class TesterScreen:
                 self.override_mode = False
             return
 
+        # Klik do log panela (Posledný ťah/TIP/Reasoning) — skopíruje celý
+        # export (rovnaký text ako tlačidlo "Export") do schránky, nech sa
+        # dá nálezisko priamo vložiť do chatu bez obchádzky cez súbor.
+        log_rect = pygame.Rect(LOG_X, LOG_Y, LOG_WIDTH, LOG_HEIGHT)
+        if log_rect.collidepoint(pos) and self.last_step is not None:
+            self._on_copy_log_clicked()
+            return
+
     # ------------------------------------------------------------------
     # Sidebar — kliky
     # ------------------------------------------------------------------
@@ -569,6 +577,15 @@ class TesterScreen:
         new_scenario = build_scenario(finding)
         save_last_seed(finding["deal_seed"])
         self._reload_engine(new_scenario)
+
+    def _on_copy_log_clicked(self):
+        try:
+            text = self._format_export()
+            _clipboard_copy(text)
+            self._set_status("Skopírované ✓", "Log skopírovaný do schránky", T_BUTTON_SUCCESS)
+        except Exception as e:
+            print(f"[Copy] CHYBA: {type(e).__name__}: {e}")
+            self._set_status("Chyba!", f"Kopírovanie zlyhalo: {e}", T_BUTTON_DANGER)
 
     def _on_export_clicked(self):
         try:
@@ -932,6 +949,12 @@ class TesterScreen:
         if self.last_step is not None:
             header = self.font_large.render("Posledný ťah", True, T_HIGHLIGHT)
             self.screen.blit(header, (x, y))
+            hint = self.font_small.render(
+                "(klikni kamkoľvek do panela — skopíruje celý log)",
+                True, T_TEXT_DIM
+            )
+            self.screen.blit(hint, (x + header.get_width() + 10,
+                                     y + header.get_height() - hint.get_height()))
             y += header.get_height() + 4
 
             step_surf = self.font_medium.render(
@@ -956,6 +979,22 @@ class TesterScreen:
                 )
                 self.screen.blit(e_surf, (x, y))
                 y += e_surf.get_height() + 8
+
+            if self.last_step.tip_headline:
+                y += 4
+                tip_header = self.font_large.render("TIP (ako v hre)", True, T_HIGHLIGHT)
+                self.screen.blit(tip_header, (x, y))
+                y += tip_header.get_height() + 4
+                head_surf = self.font_medium.render(
+                    self.last_step.tip_headline, True, T_TEXT
+                )
+                self.screen.blit(head_surf, (x, y))
+                y += head_surf.get_height() + 2
+                for line in self._wrap_text(self.last_step.tip_detail, self.font_small, max_w):
+                    surf = self.font_small.render(line, True, T_TEXT_DIM)
+                    self.screen.blit(surf, (x, y))
+                    y += surf.get_height() + 2
+                y += 6
 
             y += 4
             r_header = self.font_large.render("Reasoning", True, T_HIGHLIGHT)
@@ -1174,6 +1213,12 @@ class TesterScreen:
                     f"(+{self.last_step.trick_points}b)"
                 )
             lines.append("")
+            if self.last_step.tip_headline:
+                lines.append("--- TIP (ako v hre) ---")
+                lines.append(f"  {self.last_step.tip_headline}")
+                if self.last_step.tip_detail:
+                    lines.append(f"  {self.last_step.tip_detail}")
+                lines.append("")
             lines.append("--- REASONING ---")
             prev = None
             for entry in self.last_step.log_entries:

@@ -36,7 +36,7 @@ CARD_RATIO = 181 / 293                # šírka / výška karty
 FAN_STEP = 0.36                       # krok vejára (podiel šírky karty)
 
 # Obdĺžnikový výrez ikonky (zlomky šírky/výšky: x0, x1, y0, y1) — vejár
-# kariet je široký, takže na šírku sa reže menej a na výšku viac (pomer 3:2).
+# kariet je široký,      takže na šírku sa reže menej a na výšku viac (pomer 3:2).
 DECL_CROP = (0.08, 0.92, 0.22, 0.78)
 
 # Ikonky záložky Pravidlá (assets/graphics) — prvý existujúci súbor sa

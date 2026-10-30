@@ -195,8 +195,10 @@ class AvoidTrick(Strategy):
     def _risk_pick_cards(self, ctx: AIContext) -> tuple[list[Card], str]:
         """
         Vráti (karty, variant_label). Variant podľa my_count — RISK_PICK_HIGH
-        (<=2, hraje sa najvyššia) alebo RISK_PICK_MID (==3, hraje sa skutočný
-        stred) — pozri tip_texts.py, kde majú samostatné, presnejšie texty.
+        (<=2, hraje sa najvyššia), RISK_PICK_HIGH_EVEN (<=2, ale karty sú
+        susedné — žiadny reálny benefit z podliezania, pozri nižšie) alebo
+        RISK_PICK_MID (==3, hraje sa skutočný stred) — pozri tip_texts.py,
+        kde majú samostatné, presnejšie texty.
         """
         if not self._can_risk_pick(ctx):
             return [], ""
@@ -217,10 +219,14 @@ class AvoidTrick(Strategy):
         if not suit_cards:
             return [], ""
 
-        my_count = len([
-            c for c in self.player.hand.cards
-            if c.suit == suit and not c.is_special
-        ])
+        # my_count MUSÍ rátať presne tie karty, ktoré idú do matice
+        # (suit_cards) — nie celú ruku. Keď je horník živý, eso/kráľ sú
+        # vyššie vyfiltrované (riadok 214-215); ak by my_count počítalo z
+        # celej ruky (vrátane eso/kráľ), variant/text by tvrdil "stredná"
+        # (3 karty) zatiaľ čo matica vyberá len z 2 reálne dostupných —
+        # nesúlad nahlásený 2026-10-29 (seed 1169646153, kolo 13: ruka
+        # {A, 10, 8} listu, horník živý → vybraná najnižšia (8), text MID).
+        my_count = len(suit_cards)
         if my_count <= 1:
             return [], ""
 
@@ -230,8 +236,19 @@ class AvoidTrick(Strategy):
             if c.suit == suit and not c.is_special
         ]
 
-        variant = "RISK_PICK_HIGH" if my_count <= 2 else "RISK_PICK_MID"
         cards = self._risk_pick_matrix(suit_cards, my_count, remaining, all_in_hand, ctx)
+
+        if my_count <= 2:
+            # Pri dvoch kartách je reálny prínos "vyššiu zahraj, nižšiu
+            # nechaj na podliezanie" presne rovný počtu hodnôt rank_order
+            # striktne medzi oboma kartami (pozri claude/archive/
+            # 10_RISK_PICK_TIP_LABELING.md). Pri susedných kartách (gap=1,
+            # napr. 9+10) je ten prínos nulový — text to teda nemá tvrdiť
+            # (nahlásené 2026-10-29, tester_export seed 1070350921).
+            adjacent = abs(suit_cards[0].rank_order - suit_cards[1].rank_order) == 1
+            variant = "RISK_PICK_HIGH_EVEN" if adjacent else "RISK_PICK_HIGH"
+        else:
+            variant = "RISK_PICK_MID"
         return cards, variant
 
     def _risk_pick_matrix(self, suit_cards: list[Card],

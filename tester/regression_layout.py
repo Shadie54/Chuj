@@ -238,11 +238,14 @@ def check_screens(window, check, problems: list[str]):
                          "Vrátiť": settings.confirm_revert})
 
     stats = StatsScreen(window)
-    check("profil", {"meno": stats.name_field,
-                     "Premenovať": stats.rename_button["rect"],
-                     "Späť": stats.back_button["rect"]})
+    profil = {"meno": stats.name_field,
+              "Premenovať": stats.rename_button["rect"],
+              "podrobnosti": stats.detail_rect,
+              "Späť": stats.back_button["rect"]}
+    profil.update({f"dlaždica {k}": r for k, r in stats.tile_rects.items()})
+    check("profil", profil)
 
-    go = GameOverScreen(window, game_state.players, game_state.players[0],
+    go = GameOverScreen(window, game_state.players, [game_state.players[0]],
                         1, game_state)
     check("koniec hry", {"Nová hra": go.btn_new_game, "Menu": go.btn_menu,
                          "Chujogram": go.btn_chujogram})

@@ -37,6 +37,9 @@ _COLLECTOR_FIELDS = (
     "hearts_caught", "illuminated", "illuminated_caught_own",
     "declared_none", "declared_none_ok", "declared_all", "declared_all_ok",
     "sweeps", "streak_bonus", "reset_100",
+    "hearts_points", "leaf_points", "acorn_points",
+    "illuminated_leaf", "illuminated_leaf_caught",
+    "illuminated_acorn", "illuminated_acorn_caught",
 )
 
 

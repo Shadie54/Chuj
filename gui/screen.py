@@ -669,9 +669,12 @@ class Screen:
                 self.game_state.logger.save_round()
 
                 if self.game_state.phase == "game_over":
-                    self._show_message(
-                        f"{self.game_state.loser.name} prehral!", 5000
-                    )
+                    # Pri remíze na vrchole je losers viac ako jeden —
+                    # meno i sloveso treba spojiť (pozri GameState.losers).
+                    losers = self.game_state.losers
+                    loser_names = " a ".join(p.name for p in losers)
+                    loser_verb = "prehral" if len(losers) == 1 else "prehrali"
+                    self._show_message(f"{loser_names} {loser_verb}!", 5000)
                     self.game_over_timer = pygame.time.get_ticks() + 3000
                 else:
                     self.next_round_timer = pygame.time.get_ticks() + 2500
@@ -756,7 +759,9 @@ class Screen:
                             current_round.acorn_illuminated)
             for _, card in trick.played_cards
         )
-        if trick_points > 0:
+        # V kole so záväzkom sa karty nebodujú (bodovanie je len úspech /
+        # neúspech záväzku) — bublina s bodmi by klamala.
+        if trick_points > 0 and current_round.declaration_type is None:
             self.speech_bubble.show_round_result(
                 winner_index, trick_points, is_bidder=False
             )
@@ -801,9 +806,10 @@ class Screen:
             self.game_state.logger.save_round()
 
             if self.game_state.phase == "game_over":
-                self._show_message(
-                    f"{self.game_state.loser.name} prehral!", 5000
-                )
+                losers = self.game_state.losers
+                loser_names = " a ".join(p.name for p in losers)
+                loser_verb = "prehral" if len(losers) == 1 else "prehrali"
+                self._show_message(f"{loser_names} {loser_verb}!", 5000)
                 self.game_over_timer = pygame.time.get_ticks() + 3000
             else:
                 self.next_round_timer = pygame.time.get_ticks() + 2500
@@ -814,6 +820,17 @@ class Screen:
     # ------------------------------------------------------------------
     # Kreslenie
     # ------------------------------------------------------------------
+
+    def _scores_before_round(self) -> list[int] | None:
+        """Skóre hráčov PRED práve uzavretým kolom (pre panel KOLO, pravidlo
+        90+). Počas kola None — panel berie total_score priamo z hráčov."""
+        rnd = self.game_state.current_round
+        if rnd is None or rnd.phase != "done":
+            return None
+        hist = self.game_state.round_scores_history
+        if len(hist) >= 2:
+            return list(hist[-2])
+        return [0] * len(self.game_state.players)
 
     def _draw(self):
         """Nakreslí celú obrazovku."""
@@ -836,7 +853,9 @@ class Screen:
             self.chapter_banner.draw()
         self.chujogram.draw(self.game_state.bullet_history,self.game_state.round_scores_history)
         if self._shows("round_status"):
-            self.round_status.draw(self.game_state.players,self.game_state.current_round)
+            self.round_status.draw(self.game_state.players,
+                                   self.game_state.current_round,
+                                   self._scores_before_round())
         self.phase_renderer.draw_buttons()
         # Tip vľavo dole. Chujogram je vysúvací pás cez celú výšku vľavo —
         # ak je (čo i len čiastočne) vysunutý, posunieme panel doprava za

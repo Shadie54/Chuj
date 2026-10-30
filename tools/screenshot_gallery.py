@@ -40,7 +40,7 @@ FRAME_MS = 16          # falošné hodiny: o toľko sa posunie čas na snímku
 GAME_SEED = 20261023   # seed hry pre herné scény
 MENU_SEED = 1          # seed náhodných kariet v pozadí menu
 
-GROUPS = ("menu", "game", "gameover", "tutorial")
+GROUPS = ("menu", "game", "kolo", "gameover", "tutorial")
 
 
 # ----------------------------------------------------------------------
@@ -114,6 +114,57 @@ def _force_resolution(width: int, height: int):
 
     pygame.display.Info = lambda: _FakeInfo()
 
+
+
+def stats_tabs():
+    from gui.stats_screen import TABS
+    return TABS
+
+
+def _fake_profile():
+    """Deterministický profil so 40 hrami pre náhľad obrazovky Profil."""
+    import random
+    from game.profile import GameRecord, Profile
+    rng = random.Random(4242)
+    games = []
+    for _ in range(40):
+        rounds = rng.randint(9, 22)
+        scores = [rng.randint(20, 100) for _ in range(4)]
+        top = max(scores)
+        losers = [i for i, sc in enumerate(scores) if sc == top]
+        clean = rng.randint(2, rounds // 2)
+        ill_l, ill_a = rng.randint(0, 2), rng.randint(0, 2)
+        c_l = rng.randint(0, ill_l) if rng.random() < 0.4 else 0
+        c_a = rng.randint(0, ill_a) if rng.random() < 0.3 else 0
+        dn, da = rng.randint(0, 2), rng.randint(0, 1)
+        games.append(GameRecord(
+            difficulties=["hard"] * 3, rounds=rounds, final_scores=scores,
+            my_index=0, loser_index=losers[0], loser_indices=losers,
+            clean_rounds=clean, worst_round=rng.randint(10, 26),
+            longest_clean_streak=rng.randint(1, 7),
+            leaf_over_caught=rng.randint(0, 4), acorn_over_caught=rng.randint(0, 4),
+            hearts_caught=rng.randint(rounds, rounds * 3),
+            illuminated=ill_l + ill_a, illuminated_caught_own=c_l + c_a,
+            declared_none=dn, declared_none_ok=rng.randint(0, dn),
+            declared_all=da, declared_all_ok=rng.randint(0, da),
+            sweeps=rng.randint(0, 1), streak_bonus=rng.randint(0, 1),
+            reset_100=rng.randint(0, 1), bullets=rng.randint(0, 2),
+            hearts_points=rng.randint(rounds, rounds * 3),
+            leaf_points=rng.randint(0, 3) * 8, acorn_points=rng.randint(0, 3) * 4,
+            illuminated_leaf=ill_l, illuminated_leaf_caught=c_l,
+            illuminated_acorn=ill_a, illuminated_acorn_caught=c_a,
+        ))
+        # Moje konečné skóre = súčet zdrojov (nech Bilancia bodov sedí)
+        g = games[-1]
+        mine = (g.hearts_points + g.leaf_points + g.acorn_points
+                - 10 * g.declared_none_ok + 10 * (g.declared_none - g.declared_none_ok)
+                - 20 * g.declared_all_ok + 20 * (g.declared_all - g.declared_all_ok)
+                - 10 * (g.sweeps + g.streak_bonus + g.reset_100))
+        scores[0] = mine
+        top = max(scores)
+        g.loser_indices = [i for i, sc in enumerate(scores) if sc == top]
+        g.loser_index = g.loser_indices[0]
+    return Profile(name="Ľubo", games=games, abandoned=3)
 
 class FakeClock:
     """Deterministický čas — pygame.time.get_ticks() vracia toto."""
@@ -274,6 +325,21 @@ class Gallery:
         stats = StatsScreen(self.window)
         stats._draw()
         self.shot("menu_05_profil")
+        # Profil s falošnými dátami — všetky záložky (rework 2026-10-29)
+        stats.set_profile(_fake_profile())
+        for i, (key, _title) in enumerate(stats_tabs()):
+            stats.active_tab = key
+            stats._draw()
+            self.shot(f"menu_05{chr(ord('b') + i)}_profil_{key}")
+        stats.active_tab = "points"
+        stats.per_game = True
+        stats._draw()
+        self.shot("menu_05h_profil_points_za_hru")
+        from game.profile import Profile
+        stats.set_profile(Profile(name="Nový"))
+        stats.active_tab = "balance"
+        stats._draw()
+        self.shot("menu_05i_profil_prazdny")
 
     # --- skupina: game ----------------------------------------------------
 
@@ -362,6 +428,63 @@ class Gallery:
         self.shot("game_10_chujogram")
         return gs
 
+    def scenes_kolo(self):
+        """Panel KOLO v štyroch situáciách (dvojité body, 90+, záväzok)."""
+        from game.card import Card
+        screen, gs = self._new_game_screen()
+        screen._start_round()
+        self.run_until(screen, lambda: gs.current_round.phase == "done")
+        rnd = gs.current_round
+        pl = gs.players
+        pl[2].name = "Počítač 2"
+
+        def setup(totals, cards, streaks, ill=(None, None), decl=None,
+                  phase="tricks", tricks=(0, 0, 0, 0), sweep=None):
+            rnd.illuminated_by = {"leaf": ill[0], "acorn": ill[1]}
+            rnd.declaration_player, rnd.declaration_type = decl or (None, None)
+            rnd.phase = phase
+            for i, p in enumerate(pl):
+                p.total_score = totals[i]
+                p.penalty_cards = list(cards[i])
+                lf, ac = ill[0] is not None, ill[1] is not None
+                p.round_points = sum(c.get_points(lf, ac) for c in p.penalty_cards)
+                p.no_penalty_streak = streaks[i]
+                p.tricks_won = tricks[i]
+                p.round_flags = {"sweep": True} if sweep == i else {}
+            gs.round_scores_history = [list(totals)]
+
+        hearts = lambda n: [Card("heart", r) for r in
+                            ("ace", "king", "ten", "nine", "eight", "seven")[:n]]
+        QS, QC = Card("leaf", "over"), Card("acorn", "over")
+
+        # A) bežné kolo, obaja horníci vysvietení hráčom 2 (ikonky)
+        setup([20, 35, 40, 50], [hearts(3), [], hearts(4) + [QS], hearts(1)],
+              [1, 2, 0, 4], ill=(2, 2))
+        screen._draw(); self.shot("kolo_01_bezne")
+        # B) hráč na 95 b: horník sa nepočíta (reálne 0 pri zobratých 8)
+        setup([95, 35, 40, 50], [[QS], [], hearts(2), hearts(1)], [0, 1, 2, 3])
+        screen._draw(); self.shot("kolo_02_90plus")
+        # C) záväzok prebieha, dlhé meno + ikonky — nič sa nezobrazuje
+        pl[2].name = "Počítač 2XXX"
+        setup([20, 35, 40, 50], [[], [], [], []], [1, 2, 0, 4], ill=(2, 2),
+              decl=(2, "all"))
+        screen._draw(); self.shot("kolo_03_zavazok_prebieha")
+        # D) záväzok skončil neúspechom, + nesplnené "Nechytím nič"
+        setup([20, 35, 40, 50], [[], [], [], []], [1, 2, 0, 4],
+              decl=(2, "none"), phase="done", tricks=(1, 0, 2, 0))
+        gs.round_scores_history = [[20, 35, 40, 50], [20, 35, 50, 50]]
+        screen._draw(); self.shot("kolo_04_zavazok_neuspech")
+        # E) splnený záväzok "Beriem všetko" (−20) a "tichý" (−10)
+        setup([20, 35, 40, 50], [[], [], [], []], [1, 2, 0, 4],
+              decl=(2, "all"), phase="done", tricks=(0, 0, 8, 0))
+        screen._draw(); self.shot("kolo_05_zavazok_uspech")
+        setup([20, 35, 40, 50], [hearts(6), [], [], []], [1, 2, 0, 4],
+              phase="done", sweep=0)
+        for p in pl[:1]:
+            p.penalty_cards = hearts(6) + [QS, QC]
+            p.round_points = 20
+        screen._draw(); self.shot("kolo_06_tichy")
+
     # --- skupina: gameover ------------------------------------------------
 
     def scenes_gameover(self, gs=None):
@@ -372,16 +495,22 @@ class Gallery:
             self.run_until(screen, lambda: gs.current_round.phase == "done")
         for p, score in zip(gs.players, (104, 62, 48, 77)):
             p.total_score = score
-        go = GameOverScreen(self.window, gs.players, gs.players[0],
+        go = GameOverScreen(self.window, gs.players, [gs.players[0]],
                             gs.round_number, gs)
         go._draw()
         self.shot("gameover_01_prehra_hraca")
+        # Prahy farieb skóre v Chujograme: 89 biela, 90–100 zelená, > 100 červená
+        gs.round_scores_history = [
+            [88, 20, 30, 40], [89, 25, 35, 45], [90, 30, 40, 50],
+            [95, 35, 45, 55], [100, 40, 50, 60], [101, 45, 55, 65],
+            [104, 62, 48, 77]]
+        gs.bullet_history = [[0, 0, 0, 0] for _ in gs.round_scores_history]
         go.show_chujogram = True
         go._draw()
         self.shot("gameover_02_chujogram")
 
         gs.players[0].total_score, gs.players[1].total_score = 62, 104
-        go = GameOverScreen(self.window, gs.players, gs.players[1],
+        go = GameOverScreen(self.window, gs.players, [gs.players[1]],
                             gs.round_number, gs)
         go._draw()
         self.shot("gameover_03_vyhra")
@@ -611,6 +740,8 @@ def main():
         gallery.scenes_menu()
     if "game" in groups:
         gs = gallery.scenes_game()
+    if "kolo" in groups:
+        gallery.scenes_kolo()
     if "gameover" in groups:
         gallery.scenes_gameover(gs)
     if "tutorial" in groups:

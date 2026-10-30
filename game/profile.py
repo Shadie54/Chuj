@@ -44,7 +44,10 @@ class GameRecord:
     rounds: int = 0
     final_scores: list[int] = field(default_factory=list)
     my_index: int = 0
-    loser_index: int = -1          # kto sa stal Chujom
+    loser_index: int = -1          # kto sa stal Chujom (spätná kompatibilita,
+                                    # pri remíze prvý z loser_indices)
+    loser_indices: list[int] = field(default_factory=list)  # VŠETCI Chuj
+                                    # (pri remíze na vrchole viacerí)
 
     # --- priebeh (len ľudský hráč) ---
     clean_rounds: int = 0          # kolá s 0 trestnými bodmi
@@ -63,6 +66,16 @@ class GameRecord:
     streak_bonus: int = 0          # koľkokrát padol bonus za 5 čistých kôl
     reset_100: int = 0             # koľkokrát skóre resetlo zo 100 na 90
     bullets: int = 0               # guličky v chujograme na konci hry
+    # Trestné body za karty podľa zdroja (len naozaj pripísané — bez kôl
+    # so záväzkom a bez "tichého", s ×2 za vysvietenie a pravidlom 90+).
+    hearts_points: int = 0
+    leaf_points: int = 0
+    acorn_points: int = 0
+    # Vysvietenie zvlášť pre zeleného a žaluďového horníka
+    illuminated_leaf: int = 0
+    illuminated_leaf_caught: int = 0
+    illuminated_acorn: int = 0
+    illuminated_acorn_caught: int = 0
 
     @property
     def my_score(self) -> int:
@@ -72,7 +85,12 @@ class GameRecord:
 
     @property
     def is_loss(self) -> bool:
-        """Prehra = hráč sa stal Chujom."""
+        """Prehra = hráč sa stal Chujom (pri remíze na vrchole aj delená
+        prehra — vtedy je is_loss True pre každého z remízovaných)."""
+        if self.loser_indices:
+            return self.my_index in self.loser_indices
+        # Staré záznamy v profile.json (pred zavedením loser_indices)
+        # loser_indices nemajú — spadnú na pôvodné jednohráčové pole.
         return self.loser_index == self.my_index
 
     @property
@@ -138,6 +156,39 @@ class Stats:
     streak_bonus: int = 0
     reset_100: int = 0
     bullets: int = 0
+
+    # --- Profil 2026-10-29 (záložky) ---
+    # Bilancia
+    placements: list[int] = field(default_factory=lambda: [0, 0, 0, 0])
+                                        # 1. / 2. / 3. miesto / prehra (Chuj)
+    shared_losses: int = 0              # prehra delená s iným hráčom
+    avg_game_rounds: float = 0.0
+    shortest_game: int = 0
+    longest_game: int = 0
+    # Trestné body podľa zdroja
+    hearts_points: int = 0
+    leaf_points: int = 0
+    acorn_points: int = 0
+    card_points: int = 0                # srdcia + horníci
+    avg_points_per_game: float = 0.0
+    # Vysvietenia
+    illuminated_leaf: int = 0
+    illuminated_leaf_caught: int = 0
+    illuminated_acorn: int = 0
+    illuminated_acorn_caught: int = 0
+    avg_illuminations_per_game: float = 0.0
+    max_illuminations_game: int = 0
+    games_without_illumination: int = 0
+    # Špeciality
+    sweep_rate: float = 0.0             # % kôl s "tichým"
+    declared: int = 0
+    declared_ok: int = 0
+    declared_rate: float = 0.0
+    special_ok: int = 0                 # úspešné akcie (záväzky + tichý)
+    # Rekordy (najviac v jednej hre)
+    max_clean_rounds_game: int = 0
+    max_declared_ok_game: int = 0
+    max_sweeps_game: int = 0
 
 
 @dataclass
@@ -229,6 +280,44 @@ def compute_stats(games: list[GameRecord], abandoned: int = 0) -> Stats:
     s.streak_bonus = sum(g.streak_bonus for g in games)
     s.reset_100 = sum(g.reset_100 for g in games)
     s.bullets = sum(g.bullets for g in games)
+
+    # --- Profil 2026-10-29 ---
+    for g in games:
+        if g.is_loss:
+            s.placements[3] += 1
+            if len(g.loser_indices) > 1:
+                s.shared_losses += 1
+        else:
+            s.placements[min(max(g.placement, 1), 3) - 1] += 1
+    s.avg_game_rounds = s.rounds / s.games
+    s.shortest_game = min(g.rounds for g in games)
+    s.longest_game = max(g.rounds for g in games)
+
+    s.hearts_points = sum(g.hearts_points for g in games)
+    s.leaf_points = sum(g.leaf_points for g in games)
+    s.acorn_points = sum(g.acorn_points for g in games)
+    s.card_points = s.hearts_points + s.leaf_points + s.acorn_points
+    s.avg_points_per_game = s.card_points / s.games
+
+    s.illuminated_leaf = sum(g.illuminated_leaf for g in games)
+    s.illuminated_leaf_caught = sum(g.illuminated_leaf_caught for g in games)
+    s.illuminated_acorn = sum(g.illuminated_acorn for g in games)
+    s.illuminated_acorn_caught = sum(g.illuminated_acorn_caught for g in games)
+    s.avg_illuminations_per_game = s.illuminated / s.games
+    s.max_illuminations_game = max(g.illuminated for g in games)
+    s.games_without_illumination = sum(1 for g in games if not g.illuminated)
+
+    s.sweep_rate = (s.sweeps / s.rounds * 100) if s.rounds else 0.0
+    s.declared = s.declared_none + s.declared_all
+    s.declared_ok = s.declared_none_ok + s.declared_all_ok
+    if s.declared:
+        s.declared_rate = s.declared_ok / s.declared * 100
+    s.special_ok = s.declared_ok + s.sweeps
+
+    s.max_clean_rounds_game = max(g.clean_rounds for g in games)
+    s.max_declared_ok_game = max(g.declared_none_ok + g.declared_all_ok
+                                 for g in games)
+    s.max_sweeps_game = max(g.sweeps for g in games)
 
     # Priemer trestných bodov na kolo — z konečných skóre sa to spočítať
     # nedá (bonusy a záväzky ho skresľujú), preto berieme súčet skóre

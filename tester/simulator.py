@@ -256,9 +256,10 @@ def _run_single_game(game_index: int, config: SimConfig,
             break
 
     stats["games_total"] = stats.get("games_total", 0) + 1
+    loser_indices = {p.index for p in game_state.losers}
     for i, p in enumerate(game_state.players):
         stats.setdefault("final_scores", []).append(p.total_score)
-        if game_state.loser is not None and game_state.loser.index == i:
+        if i in loser_indices:
             key = f"loser_AI_{i}"
             stats[key] = stats.get(key, 0) + 1
 

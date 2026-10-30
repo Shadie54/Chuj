@@ -20,10 +20,11 @@ from config import (
 
 class GameOverScreen:
     def __init__(self, screen: pygame.Surface, players: list,
-                 loser, round_number: int, game_state=None):
+                 losers: list, round_number: int, game_state=None):
         """
         players: zoznam všetkých hráčov
-        loser: porazený hráč (najviac bodov nad 100)
+        losers: porazení hráči (najviac bodov nad 100; pri remíze na
+            vrchole viacerí — pozri GameState.losers)
         round_number: počet odohraných kôl
         """
         # `screen` (logický povrch) sa nepoužíva — kreslí sa cez Canvas.
@@ -31,7 +32,7 @@ class GameOverScreen:
         self.canvas = display.canvas()
         self._layer: StaticLayer | None = None
         self.players = players
-        self.loser = loser
+        self.losers = losers
         self.round_number = round_number
         self.game_state = game_state
         self.show_chujogram = False
@@ -126,7 +127,7 @@ class GameOverScreen:
         cx = self.panel_x + self.panel_w // 2
 
         y = self.panel_y + 40
-        self._is_human_loser = self.loser.is_human
+        self._is_human_loser = any(p.is_human for p in self.losers)
 
         if self._is_human_loser:
             self._title_surf = self.font_title.render("SI CHUJ", True, COLOR_RED)
@@ -141,7 +142,13 @@ class GameOverScreen:
         self._title_block_h = block_h
         y += block_h + 24
 
-        loser_text = f"{self.loser.name} prehral s {self.loser.total_score} bodmi!"
+        # Pri remíze na vrchole (viacerí losers s rovnakým skóre) sa mená
+        # spoja a sloveso prejde do množného čísla.
+        loser_names = " a ".join(p.name for p in self.losers)
+        loser_verb = "prehral" if len(self.losers) == 1 else "prehrali"
+        loser_text = (
+            f"{loser_names} {loser_verb} s {self.losers[0].total_score} bodmi!"
+        )
         self._loser_surf = self.font_large.render(loser_text, True, COLOR_WHITE)
         self._loser_y = y
         y += self._loser_surf.get_height() + 22
@@ -268,7 +275,7 @@ class GameOverScreen:
         )
 
         for i, player, rect in self._score_rows:
-            is_loser = player == self.loser
+            is_loser = player in self.losers
 
             self.canvas.overlay(
                 rect, (200, 60, 40, 80) if is_loser else (30, 20, 12, 200),
@@ -277,8 +284,16 @@ class GameOverScreen:
             border_color = COLOR_RED if is_loser else (98, 76, 46)
             self.canvas.rect(border_color, rect, width=2, border_radius=8)
 
-            rank_color = COLOR_GOLD if i == 0 else COLOR_GRAY
-            rank_surf = self.font_large.render(f"#{i + 1}", True, rank_color)
+            # Miesto podľa reálneho skóre, nie podľa pozície v zoradenom
+            # zozname — pri remíze (rovnaké skóre) tak dvaja hráči dostanú
+            # rovnaké číslo miesta, rovnaký princíp ako GameRecord.placement
+            # (game/profile.py). Bez tohto by `enumerate` pri remíze
+            # prideľoval #3 a #4 ľubovoľne podľa poradia hráčov.
+            rank = 1 + sum(
+                1 for p in self.players if p.total_score < player.total_score
+            )
+            rank_color = COLOR_GOLD if rank == 1 else COLOR_GRAY
+            rank_surf = self.font_large.render(f"#{rank}", True, rank_color)
             self.canvas.blit(
                 rank_surf,
                 rank_surf.get_rect(right=rect.left + 60, centery=rect.centery)
@@ -365,7 +380,7 @@ class GameOverScreen:
         header_h = 84
         for i, player in enumerate(self.players):
             cx_col = cols_x0 + i * col_w + col_w // 2
-            is_loser = player == self.loser
+            is_loser = player in self.losers
             if is_loser:
                 self.canvas.overlay((cols_x0 + i * col_w + 4, header_top,
                                      col_w - 8, header_h), (200, 60, 40, 55))

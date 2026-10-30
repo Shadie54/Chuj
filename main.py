@@ -125,11 +125,11 @@ def main():
                 new_game=False, settings=settings
             )
 
-            if result == "game_over" and active_game_state.loser is not None:
+            if result == "game_over" and active_game_state.losers:
                 game_over = GameOverScreen(
                     window,
                     active_game_state.players,
-                    active_game_state.loser,
+                    active_game_state.losers,
                     active_game_state.round_number,
                     active_game_state
                 )
@@ -152,12 +152,12 @@ def main():
                 settings=settings
             )
 
-            if result == "game_over" and active_game_state.loser is not None:
+            if result == "game_over" and active_game_state.losers:
                 while True:
                     game_over = GameOverScreen(
                         window,
                         active_game_state.players,
-                        active_game_state.loser,
+                        active_game_state.losers,
                         active_game_state.round_number,
                         active_game_state
                     )
@@ -172,7 +172,7 @@ def main():
                             window, active_game_state, active_ai_players,
                             settings=settings
                         )
-                        if result != "game_over" or active_game_state.loser is None:
+                        if result != "game_over" or not active_game_state.losers:
                             break
                     else:
                         # menu — skoč von zo slučky

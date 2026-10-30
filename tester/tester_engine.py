@@ -5,9 +5,32 @@ from game.card import Card
 from game.player import Player
 from game.ai import AI
 from game.round import Round
+from game.tip_texts import tip_text_for
 from tester.scenario import Scenario, validate_scenario, TrickHistory
 from tester.tester_logger import TesterLogger, LogEntry
 from config import NUM_PLAYERS
+
+
+def _compute_tip(ai: AI, card: Card, current_trick) -> tuple[str, str]:
+    """
+    Preloží poslednú AI stratégiu/variant (presne to isté, čo používa
+    Advisor.tip_card() pre živého hráča) do (headline, detail) — nech
+    tester vie ukázať presný text TIP panela bez toho, aby sme na to
+    museli čakať v ostrej hre.
+    """
+    trace = ai.engine_v2.last_trace
+    strategy = trace.strategy if trace else ""
+    variant = ai.last_strategy or (trace.variant if trace else "")
+    detail = trace.detail if trace else ""
+
+    if variant == "SWEEP_COMMIT":
+        return "", ""
+
+    points_in_trick = current_trick.total_base_points > 0
+    headline, explanation = tip_text_for(
+        strategy, variant, card, points_in_trick=points_in_trick
+    )
+    return headline, explanation or detail
 
 
 # ------------------------------------------------------------------
@@ -33,6 +56,10 @@ class StepResult:
     trick_winner: int | None = None
     trick_points: int = 0
     round_completed: bool = False
+    # Presný text, ktorý by hráč videl v TIP paneli (game/tip_texts.py)
+    # pre toto rozhodnutie — pozri _compute_tip() nižšie.
+    tip_headline: str = ""
+    tip_detail: str = ""
 
 
 # ------------------------------------------------------------------
@@ -377,6 +404,7 @@ class TesterEngine:
             all_scores,
         )
         captured = self.logger.get_capture()
+        tip_headline, tip_detail = _compute_tip(ai, card, self.round.current_trick)
 
         # Zahraj kartu
         success = self.round.play_card(player_idx, card)
@@ -392,6 +420,8 @@ class TesterEngine:
             player_name=player.name,
             card_played=card,
             log_entries=captured,
+            tip_headline=tip_headline,
+            tip_detail=tip_detail,
         )
 
         # Dokončenie štichu?
@@ -458,6 +488,9 @@ class TesterEngine:
             all_scores,
         )
         captured = self.logger.get_capture()
+        # Tip patrí k tomu, čo by AI reálne zahrala (ai_card) — override
+        # mení len zahranú kartu, nie dôvod/odporúčanie AI.
+        tip_headline, tip_detail = _compute_tip(ai, ai_card, self.round.current_trick)
 
         # Pridaj override info do log entries
         self.logger.log_strategy(
@@ -482,6 +515,8 @@ class TesterEngine:
             player_name=player.name,
             card_played=override_card,
             log_entries=captured,
+            tip_headline=tip_headline,
+            tip_detail=tip_detail,
         )
 
         # Dokončenie štichu?

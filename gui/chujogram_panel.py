@@ -14,15 +14,21 @@ COLUMN_LINE = (70, 54, 34)          # zvislé deliace čiary stĺpcov
 QUARTER_LINE = ui_style.GOLD_SOFT   # čiara po každých 4 kolách
 ROW_STRIPE = (255, 214, 140, 7)     # jemné pruhovanie riadkov (čitateľnosť)
 SCORE_COLOR = ui_style.TEXT
-SCORE_DANGER = (232, 112, 84)       # skóre nad 90 b — blízko prehry
-DANGER_FROM = 91
+SCORE_DANGER = (232, 112, 84)       # prehra — skóre nad 100 b (Chuj)
+SCORE_SAFE = (130, 184, 98)         # 90–100 b: horníci sa nepočítajú (výhoda)
+SAFE_FROM = 90                      # HIGH_SCORE_THRESHOLD (vrátane)
+LOSS_FROM = 101                     # WINNING_SCORE + 1
 BULLET_FILL = ui_style.GOLD
 BULLET_RING = (90, 62, 20)
 BULLET_LINE = ui_style.GOLD_SOFT
 
 
 def score_color(score: int) -> tuple:
-    return SCORE_DANGER if score >= DANGER_FROM else SCORE_COLOR
+    if score >= LOSS_FROM:
+        return SCORE_DANGER
+    if score >= SAFE_FROM:
+        return SCORE_SAFE
+    return SCORE_COLOR
 
 
 def draw_bullet(canvas, pos, radius: float = BULLET_RADIUS):

@@ -28,6 +28,11 @@ _TEXTS: dict[str, tuple[str, str]] = {
         "Nižšiu si radšej nechaj na neskoršie podliezanie. Teraz môžeš "
         "zariskovať a zbaviť sa vyššej karty.",
     ),
+    "AvoidTrick.RISK_PICK_HIGH_EVEN": (
+        "Pokojne zahraj vyššiu.",
+        "Medzi tvojimi kartami nie je veľký rozdiel. Ponechaním nižšej "
+        "si tentoraz pri podliezaní nepomôžeš.",
+    ),
     "AvoidTrick.RISK_PICK_MID": (
         "Zahraj strednú kartu.",
         "Najvyššiu zatiaľ neriskuj a najnižšiu si nechaj na podliezanie. "

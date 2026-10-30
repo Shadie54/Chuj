@@ -174,18 +174,32 @@ class GameState:
     # ------------------------------------------------------------------
 
     @property
-    def loser(self) -> Player | None:
+    def losers(self) -> list[Player]:
         """
-        Vráti porazených hráčov (tí čo prekročili 100 bodov).
-        Ak viacero — ten s najvyšším skóre.
+        Vráti VŠETKÝCH porazených hráčov (tí čo prekročili 100 bodov a
+        majú zároveň najvyššie skóre medzi nimi). Pri remíze na vrchole
+        (dvaja a viacerí s rovnakým najvyšším skóre nad 100) sú Chuj
+        všetci — rovnaký princíp ako delené miesto v _update_chujogram()
+        vyššie a v GameRecord.placement (game/profile.py).
         """
-        losers = [
+        candidates = [
             p for p in self.players
             if p.total_score > WINNING_SCORE
         ]
-        if not losers:
-            return None
-        return max(losers, key=lambda p: p.total_score)
+        if not candidates:
+            return []
+        top_score = max(p.total_score for p in candidates)
+        return [p for p in candidates if p.total_score == top_score]
+
+    @property
+    def loser(self) -> Player | None:
+        """
+        Spätná kompatibilita pre miesta, ktoré potrebujú jedno meno a
+        remízu neriešia (napr. staršie logy). Pri remíze vráti ľubovoľného
+        jedného z losers — pre skutočné rozhodnutia používaj losers.
+        """
+        losers = self.losers
+        return losers[0] if losers else None
 
     @property
     def current_player(self) -> Player | None:

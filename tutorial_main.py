@@ -255,11 +255,11 @@ def run_chapter_trening() -> str:
         result = screen.run()
 
         if result == "game_over":
-            if game_state.loser is not None:
+            if game_state.losers:
                 game_over = GameOverScreen(
                     screen.screen,
                     game_state.players,
-                    game_state.loser,
+                    game_state.losers,
                     game_state.round_number,
                     game_state,
                 )
