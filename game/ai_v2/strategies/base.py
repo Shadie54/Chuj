@@ -9,9 +9,16 @@ from config import HIGH_SCORE_THRESHOLD
 
 
 class Strategy(ABC):
-    def __init__(self, player: Player, memory: AIMemory):
+    def __init__(self, player: Player, memory: AIMemory,
+                 difficulty: str = "hard"):
         self.player = player
         self.memory = memory
+        # Rovnaký string ako v ai_declaration.py (DeclarationAdvisor) —
+        # žiadny odvodený boolean. Stratégia, ktorá potrebuje rozlišovať
+        # podľa obtiažnosti, si na ňom jednoducho napíše vlastnú podmienku
+        # (napr. `if self.difficulty == "easy": ...`), bez nutnosti meniť
+        # base.py/engine.py.
+        self.difficulty = difficulty
 
     @abstractmethod
     def is_active(self, ctx: AIContext) -> bool:

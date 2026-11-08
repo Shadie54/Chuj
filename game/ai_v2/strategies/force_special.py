@@ -73,6 +73,13 @@ class ForceSpecial(Strategy):
 
     def _aggressive_cards(self, suit_cards: list[Card],
                           suit: str, ctx: AIContext) -> list[Card]:
+        # Easy nepočíta "optimálnu" nútiacu kartu (max/mid/min matica podľa
+        # remaining/my_count) — vždy zahrá najnižšiu legálnu, nech už
+        # vytiahne horníka alebo nie.
+        if self.difficulty == "easy":
+            min_rank = min(c.rank_order for c in suit_cards)
+            return [c for c in suit_cards if c.rank_order == min_rank]
+
         my_count = len([
             c for c in self.player.hand.cards
             if c.suit == suit and not c.is_special

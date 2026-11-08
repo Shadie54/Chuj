@@ -11,11 +11,16 @@ from game.ai_v2.strategies.base import Strategy
 class RiskSpecial(Strategy):
     name = "RiskSpecial"
 
-    def __init__(self, player: Player, memory: AIMemory):
-        super().__init__(player, memory)
+    def __init__(self, player: Player, memory: AIMemory,
+                 difficulty: str = "hard"):
+        super().__init__(player, memory, difficulty)
         self._risk_roll = False
 
     def is_active(self, ctx: AIContext) -> bool:
+        # Easy nehazarduje — ani vlastným horníkom (RISK), ani cudzím
+        # (RISK_TRAP). Pokrýva oba vetvy jedným miestom.
+        if self.difficulty == "easy":
+            return False
         if ctx.is_leader:
             return bool(self._risk_candidates(ctx))
         return self._should_risk_trap(ctx)
@@ -127,6 +132,23 @@ class RiskSpecial(Strategy):
         if special_in_trick:
             return False
         if self.memory.illuminated_by[lead_suit] is not None:
+            return False
+
+        # special_possible_holders sa zužuje až v record_trick() — teda až
+        # po dokončení celého štichu. Hráč, ktorý v TOMTO (ešte
+        # nedokončenom) štichu práve odhalil void (zahral mimo vedenej
+        # farby), by tu ešte chvíľu nesprávne figuroval ako možný držiteľ
+        # horníka. Keď po zohľadnení aj tohto štichu zostane jediný
+        # kandidát a je to presne ten posledný hráč (players_after[0]), je
+        # zisk horníka istý, nie gamble — RISK_TRAP sa teda nemá spustiť
+        # (nahlásené 2026-11-04, seed 1856776213; samotný tento seed tým
+        # ešte nie je vyriešený — kandidátov tam zostáva viac, pozri
+        # diskusiu — ale ide o všeobecné zníženie falošnej neistoty).
+        live_holders = set(ctx.decision.special_holders.get(lead_suit, set()))
+        for idx, c in ctx.decision.trick.played_cards:
+            if c.suit != lead_suit:
+                live_holders.discard(idx)
+        if live_holders == {ctx.decision.players_after[0]}:
             return False
 
         lead_cards = ctx.lead_cards

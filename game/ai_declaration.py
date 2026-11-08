@@ -29,8 +29,16 @@ class DeclarationAdvisor:
     # ------------------------------------------------------------------
 
     def decide_declaration(self) -> str | None:
+        # Easy nikdy nevyhlasuje "Nechytím nič" — úplne vypnuté (predtým
+        # mala rovnaký threshold ako medium, total_risk<=0; teraz
+        # nehazarduje vôbec, ani pri objektívne bezpečnej ruke).
         if self.difficulty == "easy":
+            if self.logger and hasattr(self.logger, 'log_declaration_decision'):
+                self.logger.log_declaration_decision(
+                    self.player.name, None, "easy_never_declares"
+                )
             return None
+
         hand = self.player.hand.cards
         can_none, reason = self._can_take_none(hand)
         if self.logger and hasattr(self.logger, 'log_declaration_decision'):
@@ -118,12 +126,33 @@ class DeclarationAdvisor:
 
     def decide_illumination(self, first_player_index: int,
                             all_scores: list[int] | None = None) -> tuple[bool, bool]:
-        if self.difficulty == "easy":
-            return False, False
-
         hand = self.player.hand.cards
         illuminate_leaf = False
         illuminate_acorn = False
+
+        if self.difficulty == "easy":
+            # Hrubé pravidlo, bez ohľadu na kvalitu rezervy/risk_level/
+            # compensation/veto (90+, leader-borderline) — vysvieť každého
+            # horníka, pre ktorého mám aspoň 1 rezervnú kartu tej farby.
+            # Zámerne nevyvážené: niekedy vyjde, niekedy easy zostane
+            # s horníkom samo a dvojnásobok ho poriadne poškodí.
+            illuminate_leaf = self._easy_should_illuminate(hand, "leaf")
+            illuminate_acorn = self._easy_should_illuminate(hand, "acorn")
+            self.last_illumination_debug = {
+                "leaf": ("n/a", "n/a", "easy_rule", 0, {}, "easy_rule"),
+                "acorn": ("n/a", "n/a", "easy_rule", 0, {}, "easy_rule"),
+                "decision": (illuminate_leaf, illuminate_acorn),
+            }
+            if self.logger:
+                self.logger.log_illumination_decision(
+                    self.player.name, "leaf", "n/a", "n/a", 0, {},
+                    "easy_rule", illuminate_leaf
+                )
+                self.logger.log_illumination_decision(
+                    self.player.name, "acorn", "n/a", "n/a", 0, {},
+                    "easy_rule", illuminate_acorn
+                )
+            return illuminate_leaf, illuminate_acorn
 
         is_leader = False
         if all_scores is not None:
@@ -184,6 +213,14 @@ class DeclarationAdvisor:
         result = self._illumination_decision(reserve_quality, risk_level, compensation)
         reason = "decision_yes" if result else "decision_no"
         return result, (reserve_quality, risk_level, reason, compensation, comp_breakdown, reason)
+
+    @staticmethod
+    def _easy_should_illuminate(hand: list[Card], suit: str) -> bool:
+        special = next((c for c in hand if c.is_special and c.suit == suit), None)
+        if special is None:
+            return False
+        reserves = [c for c in hand if c.suit == suit and not c.is_special]
+        return len(reserves) >= 1
 
     @staticmethod
     def _reserve_quality(reserves: list[Card]) -> str:

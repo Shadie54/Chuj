@@ -66,6 +66,17 @@ class SimConfig:
     num_games: int = 100
     seed: int | None = None
 
+    # Obtiažnosť pre 4 fyzické sedadlá (index = Player.index). None =
+    # pôvodné správanie, všetci "hard" (presne ako doteraz). Keď je
+    # zadané, _run_single_game() ho navyše ROTUJE o 1 sedadlo každú hru
+    # (effective[seat] = difficulties[(seat - game_index) % NUM_PLAYERS]),
+    # aby sa po N hrách (N deliteľné NUM_PLAYERS) vylúčil vplyv pozície pri
+    # stole — každé fyzické sedadlo odohrá rovnaký podiel hier s každou
+    # obtiažnosťou z patternu. Štatistiky sa potom agregujú podľa
+    # OBTIAŽNOSTI (stats["final_scores_by_difficulty"], "loser_<difficulty>"),
+    # nie podľa pevného sedadla — pozri _write_output().
+    difficulties: list[str] | None = None
+
     watch_illuminated_and_caught: bool = True
     illuminated_exclude_high_score: bool = True  # vylúč 90+ prípady (zámerne OK)
     watch_none_declaration_failed: bool = True
@@ -211,8 +222,17 @@ def _run_single_game(game_index: int, config: SimConfig,
 
     sim_logger = SimLogger(config, findings)
 
+    if config.difficulties is None:
+        seat_difficulty = ["hard"] * NUM_PLAYERS
+    else:
+        # Rotácia o 1 sedadlo každú hru — pozri komentár pri SimConfig.
+        seat_difficulty = [
+            config.difficulties[(seat - game_index) % NUM_PLAYERS]
+            for seat in range(NUM_PLAYERS)
+        ]
+
     ai_players = [
-        AI(p, difficulty="hard", logger=sim_logger)
+        AI(p, difficulty=seat_difficulty[p.index], logger=sim_logger)
         for p in game_state.players
     ]
 
@@ -262,6 +282,19 @@ def _run_single_game(game_index: int, config: SimConfig,
         if i in loser_indices:
             key = f"loser_AI_{i}"
             stats[key] = stats.get(key, 0) + 1
+
+        # Agregácia podľa OBTIAŽNOSTI (nie podľa pevného sedadla) — má
+        # zmysel len keď sa sedadlá naozaj rotujú (config.difficulties),
+        # inak by bola totožná s per-seat agregáciou vyššie.
+        if config.difficulties is not None:
+            difficulty = seat_difficulty[i]
+            stats.setdefault("final_scores_by_difficulty", {}) \
+                 .setdefault(difficulty, []).append(p.total_score)
+            if i in loser_indices:
+                dkey = f"loser_{difficulty}"
+                stats[dkey] = stats.get(dkey, 0) + 1
+            gkey = f"games_by_difficulty_{difficulty}"
+            stats[gkey] = stats.get(gkey, 0) + 1
 
 
 def _run_preparation(game_state: GameState, ai_players: list):
@@ -591,6 +624,21 @@ def _write_output(config: SimConfig, findings: Findings,
         for i in range(NUM_PLAYERS):
             f.write(f"Prehry AI_{i}: {stats.get(f'loser_AI_{i}', 0)}\n")
 
+        if config.difficulties is not None:
+            f.write("\nPODĽA OBTIAŽNOSTI (sedadlo rotované každú hru)\n"
+                    + "-" * 50 + "\n")
+            scores_by_diff = stats.get("final_scores_by_difficulty", {})
+            for difficulty in sorted(scores_by_diff):
+                scores = scores_by_diff[difficulty]
+                games = stats.get(f"games_by_difficulty_{difficulty}", len(scores))
+                losers = stats.get(f"loser_{difficulty}", 0)
+                avg = sum(scores) / len(scores) if scores else 0.0
+                loss_rate = losers / games * 100 if games else 0.0
+                f.write(
+                    f"{difficulty}: hier={games} | priemerné skóre={avg:.1f} "
+                    f"| prehier={losers} ({loss_rate:.1f}%)\n"
+                )
+
         # Okrem surového počtu výskytov aj počet KÔL, kde sa daný nález
         # objavil aspoň raz — jedno kolo môže vyprodukovať viac výskytov
         # toho istého typu (napr. viac fallbackov za kolo), čo vie
@@ -631,11 +679,37 @@ def main():
     parser.add_argument("--no-gate2-audit-watch", action="store_true")
     parser.add_argument("--no-high-score-round-watch", action="store_true")
     parser.add_argument("--no-dump-special-void-tie-watch", action="store_true")
+    parser.add_argument(
+        "--difficulties", type=str, default=None,
+        help=(
+            "4 obtiažnosti oddelené čiarkou pre sedadlá 0-3, napr. "
+            "'easy,hard,hard,hard'. Sedadlo sa rotuje o 1 každú hru, aby "
+            "sa po N hrách (N deliteľné 4) vylúčil vplyv pozície pri "
+            "stole. Bez tejto voľby sú všetci 'hard' (pôvodné správanie)."
+        ),
+    )
     args = parser.parse_args()
+
+    difficulties = None
+    if args.difficulties:
+        difficulties = [d.strip() for d in args.difficulties.split(",")]
+        if len(difficulties) != NUM_PLAYERS:
+            parser.error(
+                f"--difficulties potrebuje presne {NUM_PLAYERS} hodnoty "
+                f"oddelené čiarkou, dostal {len(difficulties)}"
+            )
+        valid = {"easy", "medium", "hard"}
+        invalid = [d for d in difficulties if d not in valid]
+        if invalid:
+            parser.error(
+                f"--difficulties obsahuje neplatné hodnoty {invalid}, "
+                f"platné sú: {sorted(valid)}"
+            )
 
     config = SimConfig(
         num_games=args.games,
         seed=args.seed,
+        difficulties=difficulties,
         watch_illuminated_and_caught=not args.no_illuminated_watch,
         illuminated_exclude_high_score=not args.include_high_score_illuminated,
         watch_none_declaration_failed=not args.no_none_watch,

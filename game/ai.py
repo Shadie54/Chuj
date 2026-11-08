@@ -1,6 +1,5 @@
 # game/ai.py
 
-import random
 from game.player import Player
 from game.card import Card
 from game.trick import Trick
@@ -40,7 +39,7 @@ class AI:
         self.all_player = AllPlayer(player, self.memory, logger)
         self.all_defender = AllDefender(player, self.memory, logger)
 
-        self.engine_v2 = AIEngine(player, self.memory, logger)
+        self.engine_v2 = AIEngine(player, self.memory, logger, difficulty)
 
         self.last_strategy: str = ""
         # Posledný výsledok sweep pipeline (má reasoning_chain,
@@ -85,9 +84,6 @@ class AI:
                     current_trick: Trick,
                     trick_number: int,
                     all_scores: list[int] | None = None) -> Card:
-        if self.difficulty == "easy":
-            return random.choice(playable)
-
         my_declaration = (
             self.declaration_type
             if self.declaration_player == self.player.index
@@ -130,24 +126,29 @@ class AI:
                 declaration_player=self.declaration_player
             )
 
-        sweep_result = self.sweep_engine_v2.evaluate(
-            hand_eval, trick_number, current_trick, playable
-        )
-        self.last_sweep_result = sweep_result
-        if self.logger:
-            self.logger.log_sweep_pipeline(
-                self.player_name, sweep_result, trick_number + 1
+        # Easy nepočíta sweep pipeline vôbec — je to viacvrstvová (L1-L7)
+        # predikcia s pravdepodobnosťami/EV (claude/03_SWEEP_V2_HANDOFF.md),
+        # presný opak "prehnane opatrnej" hry. Easy teda nikdy nezacieli
+        # vedomý sweep, ani keď by bol v skutočnosti bezpečný.
+        if self.difficulty != "easy":
+            sweep_result = self.sweep_engine_v2.evaluate(
+                hand_eval, trick_number, current_trick, playable
             )
-        self._log_sweep_90_eval(sweep_result, trick_number)
-        if sweep_result.decision == SweepDecision.YES:
-            if sweep_result.recommended_card in playable:
-                self.last_strategy = "SWEEP_COMMIT"
-                if self.logger:
-                    self.logger.log_strategy(
-                        self.player_name, "SWEEP_COMMIT",
-                        str(sweep_result.recommended_card)
-                    )
-                return sweep_result.recommended_card
+            self.last_sweep_result = sweep_result
+            if self.logger:
+                self.logger.log_sweep_pipeline(
+                    self.player_name, sweep_result, trick_number + 1
+                )
+            self._log_sweep_90_eval(sweep_result, trick_number)
+            if sweep_result.decision == SweepDecision.YES:
+                if sweep_result.recommended_card in playable:
+                    self.last_strategy = "SWEEP_COMMIT"
+                    if self.logger:
+                        self.logger.log_strategy(
+                            self.player_name, "SWEEP_COMMIT",
+                            str(sweep_result.recommended_card)
+                        )
+                    return sweep_result.recommended_card
 
         card = self.engine_v2.decide(
             playable, current_trick, trick_number,

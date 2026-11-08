@@ -46,11 +46,13 @@ class StrategySelector:
     ]
 
     def __init__(self, player: Player, memory: AIMemory,
-                 strategies: list[Strategy], logger=None):
+                 strategies: list[Strategy], logger=None,
+                 difficulty: str = "hard"):
         self.player = player
         self.memory = memory
         self.strategies = strategies
         self.logger = logger
+        self.difficulty = difficulty
         self.last_variant: str = ""
         # Posledný DecisionTrace — pozri triedu vyššie. Prepisuje sa pri
         # každom select(), takže platí vždy pre naposledy vybranú kartu.
@@ -87,7 +89,15 @@ class StrategySelector:
 
     def _select_dump(self, active: list[Strategy],
                      ctx: AIContext) -> Card | None:
-        priority = self.DUMP_PRIORITY_HIGH_SCORE if ctx.is_high_score else self.DUMP_PRIORITY
+        # Easy pri 90+ nerozpozná, že horník je voči nej v tomto kole 0b
+        # (_special_value_for_me) — necháva si rovnakú prioritu ako
+        # mimo 90+ (DUMP_PRIORITY, horník pred červeňou), aj keď by sa
+        # jej už nemusela báť. Naivná, ale vysvetliteľná chyba — nie
+        # náhodná.
+        if ctx.is_high_score and self.difficulty == "easy":
+            priority = self.DUMP_PRIORITY
+        else:
+            priority = self.DUMP_PRIORITY_HIGH_SCORE if ctx.is_high_score else self.DUMP_PRIORITY
         proposals_cache: dict[str, list[tuple[Card, str, str]]] = {}
 
         for strategy_name, variant_filter in priority:
@@ -104,6 +114,30 @@ class StrategySelector:
 
             if not proposals:
                 continue
+
+            # 90+: DumpHeart má prioritu pred DumpSpecial, pretože horník
+            # mi v tomto kole nepočíta body (_special_value_for_me), takže
+            # jediná reálna hrozba pre MOJE skóre sú srdcia. To ale platí
+            # len keď má DumpHeart niečo GENUINE urgentné — keď je jeho
+            # kandidát bezpečná karta (_is_safe — všetci vonku sú vyšší),
+            # túto príležitosť nič nestratí čakaním (zahodiť ju môžem
+            # kedykoľvek inokedy rovnako bezpečne). Príležitosť zbaviť sa
+            # horníka (void/podliezka) sa naopak nemusí opakovať, takže v
+            # tomto prípade nech tento tier prevezme DumpSpecial — ďalší v
+            # DUMP_PRIORITY_HIGH_SCORE (nahlásené 2026-11-04).
+            if (ctx.is_high_score and strategy_name == "DumpHeart"
+                    and all(Strategy._is_safe(c, ctx) for c, _, _ in proposals)):
+                special = next((s for s in active if s.name == "DumpSpecial"), None)
+                if special is not None:
+                    if "DumpSpecial" not in proposals_cache:
+                        proposals_cache["DumpSpecial"] = special.propose(ctx)
+                    if proposals_cache["DumpSpecial"]:
+                        if self.logger:
+                            self.logger.log_strategy(
+                                self.player.name, "DUMP_DEFER",
+                                "bezpečná červeň ustupuje horníkovi (90+)"
+                            )
+                        continue
 
             if self.logger:
                 for card, variant, detail in proposals:

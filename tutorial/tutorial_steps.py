@@ -328,33 +328,38 @@ STEPS = [
         # vždy (naskriptovaná odchýlka, pozri 07_TUTORIAL_REFACTOR_
         # CATALOG.md §6), takže jeho 16b sú isté v oboch vetvách.
         "text_fn": lambda screen: (
-            (
-                "Vpravo dole sa ti teraz zobrazuje tabuľka KOLO. "
-                "Ukazuje, koľko trestných bodov už jednotliví hráči v "
-                "tomto kole získali.\n\n"
+            "Vpravo dole sa ti zobrazuje tabuľka KOLO. V nej môžeš "
+            "sledovať, koľko trestných bodov už jednotliví hráči "
+            "počas kola nazbierali.\n\n"
+            + (
                 "Počítač 2 práve zobral oboch vysvietených horníkov, "
                 "preto mu pribudlo 24 bodov (16 + 8).\n\n"
-                "Ikony pri menách ti počas celého kola pripomínajú, "
-                "kto ktorého horníka vysvietil.\n\n"
-                "Guličky pod menom sledujú tvoju sériu kôl bez "
-                "trestných bodov. Za každé čisté kolo sa vyfarbí "
-                "jedna gulička na zeleno. Ak ich nazbieraš 5 po sebe, "
-                "odpočíta sa ti 10 bodov!"
-            ) if Card("acorn", "over") in screen.illuminated_cards else (
-                "Vpravo dole sa ti teraz zobrazuje tabuľka KOLO. "
-                "Ukazuje, koľko trestných bodov už jednotliví hráči v "
-                "tomto kole získali.\n\n"
+                if Card("acorn", "over") in screen.illuminated_cards else
                 "Počítač 2 práve zobral oboch horníkov — tvojho "
                 "žaluďového aj vysvieteného zeleného od Počítača 1 — "
                 "preto mu pribudlo 20 bodov (16 + 4). Tvoj horník "
                 "nebol vysvietený, takže má nižšiu hodnotu.\n\n"
-                "Ikony pri menách ti počas celého kola pripomínajú, "
-                "kto ktorého horníka vysvietil.\n\n"
-                "Guličky pod menom sledujú tvoju sériu kôl bez "
-                "trestných bodov. Za každé čisté kolo sa vyfarbí "
-                "jedna gulička na zeleno. Ak ich nazbieraš 5 po sebe, "
-                "odpočíta sa ti 10 bodov!"
             )
+            + "Ak má hráč 90 alebo viac bodov, body za horníkov sa mu "
+            "už nezapočítavajú. Pri jeho skóre sa preto zobrazia dve "
+            "čísla. Červené ukazuje body, ktoré sa mu započítajú do "
+            "skóre, biele všetky trestné body, ktoré v kole zobral.\n\n"
+            "Vďaka tomu máš stále prehľad aj o bodoch, ktoré hráč v "
+            "štichoch skutočne chytil."
+        ),
+    },
+    {
+        # Druhá polovica výkladu tabuľky KOLO (text sa v jednom kroku
+        # príliš natiahol, písmo panela sa zmenšilo) — ikony a guličky.
+        "kind": "text",
+        "key": "trick2_collect_icons",
+        "text": (
+            "Ikony pri menách ti počas celého kola pripomínajú, kto "
+            "ktorého horníka vysvietil.\n\n"
+            "Guličky pod menom sledujú tvoju sériu kôl bez trestných "
+            "bodov. Za každé čisté kolo sa vyfarbí jedna gulička na "
+            "zeleno. Ak ich nazbieraš 5 po sebe, odpočíta sa ti 10 "
+            "bodov!"
         ),
     },
     {

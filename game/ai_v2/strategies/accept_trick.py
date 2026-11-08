@@ -262,6 +262,11 @@ class AcceptTrick(Strategy):
 
     def _can_early_take(self, ctx: AIContext) -> bool:
         """Bell, čistý štich, 2./3. pozícia, nízke void riziko — dobrovoľné zbavenie sa bell karty."""
+        # Easy nehazarduje — nikdy dobrovoľne nezoberie štich skôr len na
+        # základe risk_pick odhadu (pokrýva aj is_active() aj
+        # _early_take_cards(), obe volajú cez túto metódu).
+        if self.difficulty == "easy":
+            return False
         if ctx.is_last:
             return False
         if ctx.lead_suit != "bell":
@@ -337,14 +342,19 @@ class AcceptTrick(Strategy):
         if special_in_trick:
             return False
 
-        other_suit = "acorn" if ctx.lead_suit == "leaf" else "leaf"
-        if not self.memory.is_special_gone(other_suit):
-            other_holders = ctx.decision.special_holders.get(other_suit, set())
-            for player_idx in ctx.decision.players_after:
-                is_void_lead = ctx.lead_suit in self.memory.void_suits[player_idx]
-                could_have_other = player_idx in other_holders
-                if is_void_lead and could_have_other:
-                    return False
+        # Easy nepočíta void-blocking dedukciu (rovnaký typ zjednodušenia
+        # ako AvoidTrick._dump_ak_free() Case A) — ignoruje možnosť, že
+        # hráč po nej je void a mohol by dumpnúť druhého horníka do
+        # tohto štichu.
+        if self.difficulty != "easy":
+            other_suit = "acorn" if ctx.lead_suit == "leaf" else "leaf"
+            if not self.memory.is_special_gone(other_suit):
+                other_holders = ctx.decision.special_holders.get(other_suit, set())
+                for player_idx in ctx.decision.players_after:
+                    is_void_lead = ctx.lead_suit in self.memory.void_suits[player_idx]
+                    could_have_other = player_idx in other_holders
+                    if is_void_lead and could_have_other:
+                        return False
 
         high = [
             c for c in ctx.lead_cards

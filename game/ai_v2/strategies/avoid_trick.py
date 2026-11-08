@@ -112,8 +112,12 @@ class AvoidTrick(Strategy):
 
         illuminator = self.memory.illuminated_by[suit]
 
-        # Prípad A — súperov vysvietený horník, illuminator už zahral
-        if illuminator is not None and illuminator != self.player.index:
+        # Prípad A — súperov vysvietený horník, illuminator už zahral.
+        # Easy túto viacstupňovú dedukciu (vysvietenie + poradie hrania +
+        # void-detekcia + prienik možných držiteľov druhého horníka)
+        # nepočíta — pozná len Prípad B nižšie (vlastný živý horník).
+        if (self.difficulty != "easy"
+                and illuminator is not None and illuminator != self.player.index):
             played_indices = {idx for idx, _ in ctx.decision.trick.played_cards}
             if illuminator in played_indices:
                 special_in_trick = any(c.is_special for c in ctx.trick_cards)
@@ -166,6 +170,11 @@ class AvoidTrick(Strategy):
         return [], ""
 
     def _can_risk_pick(self, ctx: AIContext) -> bool:
+        # Easy nehazarduje — nikdy nepodlieza zámerne namiesto bezpečného
+        # dumpu/underplaya (pokrýva aj is_active() aj propose(), obe volajú
+        # cez túto metódu).
+        if self.difficulty == "easy":
+            return False
         if ctx.is_last:
             return False
         suit = ctx.lead_suit

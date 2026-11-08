@@ -6,7 +6,7 @@ from gui import layout, ui_style
 from game.round_points import actual_round_points
 from config import (
     COLOR_GREEN,
-    NO_PENALTY_STREAK, SUIT_ICONS_PATH
+    HIGH_SCORE_THRESHOLD, NO_PENALTY_STREAK, SUIT_ICONS_PATH
 )
 
 
@@ -181,6 +181,11 @@ class RoundStatus:
                                    finished=finished)
         taken = None if current_round.declaration_type is not None \
             else player.round_points
+        # Pod 90 bodmi sa horníci počítajú normálne, reálne = zobraté, takže
+        # stačí jedno (červené) číslo. Dvojica "reálne / zobraté" sa ukazuje
+        # až od 90 bodov (pred kolom), kde sa horníci nepočítajú.
+        if before < HIGH_SCORE_THRESHOLD:
+            taken = None
         return real, taken
 
     def _draw_points(self, y: int, real, taken):
@@ -195,7 +200,7 @@ class RoundStatus:
         if real > 0:
             text, color = str(real), PENALTY_COLOR
         elif real < 0:
-            text, color = "\u2212" + str(-real), COLOR_GREEN
+            text, color = "−" + str(-real), COLOR_GREEN
         else:
             text, color = "0", ui_style.TEXT_DIM
         surf = self.font_num.render(text, True, color)

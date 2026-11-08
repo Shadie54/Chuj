@@ -30,10 +30,12 @@ class AIEngine:
     kontext → aktívne stratégie → selector → karta
     """
 
-    def __init__(self, player: Player, memory: AIMemory, logger=None):
+    def __init__(self, player: Player, memory: AIMemory, logger=None,
+                 difficulty: str = "hard"):
         self.player = player
         self.memory = memory
         self.logger = logger
+        self.difficulty = difficulty
 
         self.evaluator = HandEvaluator(memory)
 
@@ -52,11 +54,11 @@ class AIEngine:
             LeadSafe,
         ]
         self.strategies = [
-            cls(player, memory) for cls in strategy_classes
+            cls(player, memory, difficulty) for cls in strategy_classes
         ]
 
         self.selector = StrategySelector(
-            player, memory, self.strategies, logger
+            player, memory, self.strategies, logger, difficulty
         )
 
     def decide(self,
