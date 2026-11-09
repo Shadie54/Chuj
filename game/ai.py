@@ -1,6 +1,5 @@
 # game/ai.py
 
-import random
 from game.player import Player
 from game.card import Card
 from game.trick import Trick
@@ -127,19 +126,16 @@ class AI:
                 declaration_player=self.declaration_player
             )
 
-        # Easy = čistá náhoda, engine/sweep sa vôbec nevolajú (zmerané proti
-        # hard: ~88.8% prehier vs ~3.8%, pozri claude/05_DIFFICULTY_TUNING.md
-        # — slúži ako najnižšia úroveň, kým sa nenavrhne prepracovanejšia
-        # verzia kombinujúca random s pár stratégiami).
-        if self.difficulty == "easy":
-            self.last_strategy = "EASY_RANDOM"
-            return random.choice(playable)
-
-        # Medium nepočíta sweep pipeline vôbec — je to viacvrstvová (L1-L7)
-        # predikcia s pravdepodobnosťami/EV (claude/03_SWEEP_V2_HANDOFF.md),
-        # presný opak "prehnane opatrnej" hry. Medium teda nikdy nezacieli
-        # vedomý sweep, ani keď by bol v skutočnosti bezpečný.
-        if self.difficulty != "medium":
+        # Sweep pipeline sa počíta len pre hard. Medium ju ignoruje zámerne
+        # (viacvrstvová L1-L7 predikcia s pravdepodobnosťami/EV,
+        # claude/03_SWEEP_V2_HANDOFF.md — presný opak "prehnane opatrnej"
+        # hry, medium teda nikdy nezacieli vedomý sweep, ani keď by bol v
+        # skutočnosti bezpečný). Easy ju ignoruje jednoducho preto, že
+        # nemá žiadnu vedomú "posledná záchrana" risk kalkuláciu — hráva
+        # cez ai_v2 engine s obmedzenou množinou aktívnych stratégií a
+        # randomizovaným fallbackom namiesto toho (selector.py
+        # EASY_ACTIVE_STRATEGIES, claude/05_DIFFICULTY_TUNING.md).
+        if self.difficulty == "hard":
             sweep_result = self.sweep_engine_v2.evaluate(
                 hand_eval, trick_number, current_trick, playable
             )

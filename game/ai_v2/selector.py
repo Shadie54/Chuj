@@ -1,3 +1,4 @@
+import random
 from dataclasses import dataclass, field
 
 from game.card import Card
@@ -30,6 +31,18 @@ class DecisionTrace:
 
 
 class StrategySelector:
+    # Easy hrá cez rovnaký ai_v2 engine ako medium/hard, ale smie súťažiť
+    # len s touto hrstkou stratégií — zvyšok (vrátane celého leader-side:
+    # LeadSafe/ForceSpecial/SetupVoid/RiskSpecial) necháva úplne na
+    # randomizovanom _fallback() nižšie. Výber pokrýva tri najväčšie zdroje
+    # prehier čistej náhody (claude/05_DIFFICULTY_TUNING.md):
+    #   DumpSpecial  — nedrží horníka až do donútenia, zbaví sa ho pri void
+    #   AvoidTrick   — nevyhráva štich s bodmi, ak nemusí
+    #   AcceptTrick  — keď už musí/chce zobrať, zoberie čisto (nie zbytočne vysoko)
+    # Zámerne mimo: DumpHeart/DumpDangerous/DumpHigh/Wait/RiskSpecial a
+    # celé vedenie štichu (leader) — tam easy hráva čistú náhodu.
+    EASY_ACTIVE_STRATEGIES = {"DumpSpecial", "AvoidTrick", "AcceptTrick"}
+
     DUMP_PRIORITY = [
         ("DumpSpecial", None),
         ("DumpDangerous", "DANGER_TRAP"),
@@ -73,6 +86,8 @@ class StrategySelector:
             return card
 
         active = [s for s in self.strategies if s.is_active(ctx)]
+        if self.difficulty == "easy":
+            active = [s for s in active if s.name in self.EASY_ACTIVE_STRATEGIES]
 
         if self.logger:
             self._log_active(active)
@@ -269,7 +284,14 @@ class StrategySelector:
             ]
             if not_trap:
                 pool = not_trap
-        card = min(pool, key=lambda c: c.rank_order)
+        # Easy nedáva fallbacku žiadnu "logiku" navyše — namiesto
+        # deterministického najnižšieho ranku vyberá čisto náhodne
+        # (zachováva "väčšinou random" charakter mimo EASY_ACTIVE_STRATEGIES
+        # vyššie).
+        if self.difficulty == "easy":
+            card = random.choice(pool)
+        else:
+            card = min(pool, key=lambda c: c.rank_order)
 
         # Úzko vymedzený prípad: leader a VŠETKY hrateľné karty (vrátane
         # prípadných horníkov) sú zvonka netknuteľné — nič u súperov ani v

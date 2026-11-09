@@ -29,7 +29,9 @@ class DeclarationAdvisor:
     # ------------------------------------------------------------------
 
     def decide_declaration(self) -> str | None:
-        # Easy = čistá náhoda (game/ai.py), nikdy nedeklaruje.
+        # Easy hrá cez ai_v2 engine s obmedzenou množinou stratégií
+        # (game/ai_v2/selector.py EASY_ACTIVE_STRATEGIES) — na deklarácie
+        # to nestačí, nikdy nedeklaruje.
         if self.difficulty == "easy":
             if self.logger and hasattr(self.logger, 'log_declaration_decision'):
                 self.logger.log_declaration_decision(
@@ -139,7 +141,9 @@ class DeclarationAdvisor:
         illuminate_acorn = False
 
         if self.difficulty == "easy":
-            # Easy = čistá náhoda (game/ai.py), nikdy nesvieti.
+            # Easy hrá cez ai_v2 engine (pozri decide_declaration vyššie),
+            # ale nikdy nesvieti — vysvietenie vyžaduje vyhodnotenie celej
+            # ruky, ktoré easy nerobí.
             self.last_illumination_debug = {
                 "leaf": ("n/a", "n/a", "easy_never", 0, {}, "easy_never"),
                 "acorn": ("n/a", "n/a", "easy_never", 0, {}, "easy_never"),

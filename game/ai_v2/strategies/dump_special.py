@@ -107,11 +107,11 @@ class DumpSpecial(Strategy):
         if len(specials) < 2:
             return specials
 
-        # Medium nerobí 3-vrstvový tiebreak (istota/rezervy/hodnota) — pri
-        # dvoch horníkoch naraz necháva StrategySelector._select_dump()
+        # Medium/easy nerobia 3-vrstvový tiebreak (istota/rezervy/hodnota) —
+        # pri dvoch horníkoch naraz necháva StrategySelector._select_dump()
         # padnúť na prvého v poradí ruky, presne tak, ako to fungovalo
         # pred zavedením tohto tiebreaku (pozri docstring vyššie).
-        if self.difficulty == "medium":
+        if self.difficulty in ("easy", "medium"):
             return specials
 
         return sorted(specials, key=lambda c: self._urgency_key(c, ctx))

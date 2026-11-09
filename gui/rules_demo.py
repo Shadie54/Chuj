@@ -40,7 +40,7 @@ SEATS = ("Hráč", "Počítač 1", "Počítač 2", "Počítač 3")   # index = h
 # Scény: názov, veta, poznámka (2 riadky)
 SCENES = (
     ("Hráč určí farbu", "Hráč, ktorý začína štich, určuje jeho farbu.",
-     ("Počítač 1 vyniesol zeleň —", "hraná farba štichu je zelená.")),
+     ("Počítač 3 vyniesol zeleň —", "hraná farba štichu je zelená.")),
     ("Musíš priznať farbu", "Ak máš kartu hranej farby, musíš ju zahrať.",
      ("Máš zeleného dolníka —", "musíš zahrať zeleň.")),
     ("Nemáš farbu", "Ak nemáš hranú farbu, môžeš zahrať ľubovoľnú kartu.",
@@ -55,6 +55,7 @@ SCENES = (
 )
 
 # Karty jednotlivých scén — jediný zdroj pre kreslenie aj verify_scenes()
+S1_LEAD = (3, "leaf-nine")      # scény 1–3 začínajú rovnakým výnosom od Počítača 3
 S2_LEAD = (3, "leaf-nine")
 S2_HAND = ("heart-ace", "bell-king", "leaf-under", "acorn-ten")
 S2_PLAY = "leaf-under"
@@ -279,7 +280,7 @@ class TrickRulesDemo:
     def _glow_seat(self, t) -> int | None:
         s = self.scene
         if s == 0:
-            return 1
+            return S1_LEAD[0]
         if s in (1, 2, 5):
             return 0
         if s in (3, 4):
@@ -401,8 +402,8 @@ class TrickRulesDemo:
 
     def _scene1(self, t, fade):
         k = _ease((t - 1.0) / 2.0)
-        pos = _arc(self.seat[1], self.spot[1], k)
-        self._card("leaf-nine", pos, alpha=fade * min(1.0, 0.3 + k),
+        pos = _arc(self.seat[S1_LEAD[0]], self.spot[S1_LEAD[0]], k)
+        self._card(S1_LEAD[1], pos, alpha=fade * min(1.0, 0.3 + k),
                    outline=ui_style.GOLD if t >= 3.0 else None)
         if t >= 3.0:
             a = _ease((t - 3.0) / 0.6) * fade

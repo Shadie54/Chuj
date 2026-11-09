@@ -62,11 +62,11 @@ class DumpHeart(Strategy):
         """Vráti všetky karty na rovnakej prioritnej úrovni (trap > non-safe > safe)."""
         if not hearts:
             return []
-        # Medium nerobí trap/safe tiebreak (symetrické k už vyradenému
-        # DumpSpecial._ordered_by_urgency()) — môže zahodiť bezpečnú
-        # vysokú červeň a nechať si trap červeň, ktorú bude neskôr
-        # nútená zobrať aj tak.
-        if self.difficulty == "medium":
+        # Medium/easy nerobia trap/safe tiebreak (symetrické k už
+        # vyradenému DumpSpecial._ordered_by_urgency()) — môžu zahodiť
+        # bezpečnú vysokú červeň a nechať si trap červeň, ktorú budú
+        # neskôr nútené zobrať aj tak.
+        if self.difficulty in ("easy", "medium"):
             return hearts
         trap = [c for c in hearts if self._is_trap(c, ctx)]
         if trap:

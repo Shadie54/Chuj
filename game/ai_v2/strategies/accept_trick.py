@@ -262,10 +262,10 @@ class AcceptTrick(Strategy):
 
     def _can_early_take(self, ctx: AIContext) -> bool:
         """Bell, čistý štich, 2./3. pozícia, nízke void riziko — dobrovoľné zbavenie sa bell karty."""
-        # Medium nehazarduje — nikdy dobrovoľne nezoberie štich skôr len na
-        # základe risk_pick odhadu (pokrýva aj is_active() aj
+        # Medium/easy nehazardujú — nikdy dobrovoľne nezoberú štich skôr len
+        # na základe risk_pick odhadu (pokrýva aj is_active() aj
         # _early_take_cards(), obe volajú cez túto metódu).
-        if self.difficulty == "medium":
+        if self.difficulty in ("easy", "medium"):
             return False
         if ctx.is_last:
             return False
@@ -342,11 +342,11 @@ class AcceptTrick(Strategy):
         if special_in_trick:
             return False
 
-        # Medium nepočíta void-blocking dedukciu (rovnaký typ zjednodušenia
-        # ako AvoidTrick._dump_ak_free() Case A) — ignoruje možnosť, že
-        # hráč po nej je void a mohol by dumpnúť druhého horníka do
-        # tohto štichu.
-        if self.difficulty != "medium":
+        # Medium/easy nepočítajú void-blocking dedukciu (rovnaký typ
+        # zjednodušenia ako AvoidTrick._dump_ak_free() Case A) — ignorujú
+        # možnosť, že hráč po nej je void a mohol by dumpnúť druhého
+        # horníka do tohto štichu.
+        if self.difficulty == "hard":
             other_suit = "acorn" if ctx.lead_suit == "leaf" else "leaf"
             if not self.memory.is_special_gone(other_suit):
                 other_holders = ctx.decision.special_holders.get(other_suit, set())
