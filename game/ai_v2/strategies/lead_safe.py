@@ -83,8 +83,8 @@ class LeadSafe(Strategy):
         inú kartu tej farby na výber), horník tak garantovane prehráva
         a plné body idú súperovi. Vzácny druh forcingu vlastným horníkom.
         """
-        # Easy túto sofistikovanú, zriedkavú taktiku nepočíta.
-        if self.difficulty == "easy":
+        # Medium túto sofistikovanú, zriedkavú taktiku nepočíta.
+        if self.difficulty == "medium":
             return []
 
         candidates = []
@@ -135,10 +135,10 @@ class LeadSafe(Strategy):
 
             my_count = len(suit_cards)
 
-            # Easy vynecháva risk-pick maticu (max/median odhad podľa
+            # Medium vynecháva risk-pick maticu (max/median odhad podľa
             # inej horníkovej farby) — vždy najnižšia karta chránenej
             # farby, konzistentné s už vyradeným risk-clusterom.
-            if self.difficulty == "easy":
+            if self.difficulty == "medium":
                 min_rank = min(c.rank_order for c in suit_cards)
                 picked = [c for c in suit_cards if c.rank_order == min_rank]
             else:
@@ -171,9 +171,9 @@ class LeadSafe(Strategy):
         return False
 
     def _surplus_low_hearts(self, ctx: AIContext) -> list[Card]:
-        # Easy nerobí preventívne čistenie prebytočných nízkych červení
+        # Medium nerobí preventívne čistenie prebytočných nízkych červení
         # pri 90+.
-        if self.difficulty == "easy":
+        if self.difficulty == "medium":
             return []
 
         hand = self.player.hand.cards
@@ -205,9 +205,9 @@ class LeadSafe(Strategy):
         if not all_bell:
             return []
 
-        # Easy nerozlišuje trap/non-trap ani aggressive veľkostné
+        # Medium nerozlišuje trap/non-trap ani aggressive veľkostné
         # pravidlo — vždy najnižšia guľa.
-        if self.difficulty == "easy":
+        if self.difficulty == "medium":
             min_rank = min(c.rank_order for c in all_bell)
             return [c for c in all_bell if c.rank_order == min_rank]
 
@@ -264,9 +264,9 @@ class LeadSafe(Strategy):
                 continue
             if c.suit in ctx.decision.protected_suits:
                 continue
-            # Easy nepočíta tento card-counting odhad — niekedy vyvedie
+            # Medium nepočíta tento card-counting odhad — niekedy vyvedie
             # eso/kráľa do farby so skrytým trapom.
-            if self.difficulty != "easy" and self._is_last_escape_dangerous(c, ctx):
+            if self.difficulty != "medium" and self._is_last_escape_dangerous(c, ctx):
                 continue
             if c.rank in ("ace", "king") and c.suit in ("leaf", "acorn"):
                 if not self.memory.is_special_gone(c.suit):

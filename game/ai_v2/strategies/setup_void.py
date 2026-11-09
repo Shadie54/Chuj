@@ -51,10 +51,10 @@ class SetupVoid(Strategy):
             elif suit == "heart":
                 if card.rank in ("ace", "king"):
                     continue
-                # Easy nepočíta bezpečnosť voidu (_is_safe) — voidne
+                # Medium nepočíta bezpečnosť voidu (_is_safe) — voidne
                 # akúkoľvek singel červenú okrem eso/kráľ, nech je to
                 # bezpečné alebo nie.
-                if self.difficulty != "easy":
+                if self.difficulty != "medium":
                     if not self._is_safe(card, ctx):
                         if card.rank not in ("seven", "eight", "nine"):
                             continue

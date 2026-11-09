@@ -29,13 +29,21 @@ class DeclarationAdvisor:
     # ------------------------------------------------------------------
 
     def decide_declaration(self) -> str | None:
-        # Easy nikdy nevyhlasuje "Nechytím nič" — úplne vypnuté (predtým
-        # mala rovnaký threshold ako medium, total_risk<=0; teraz
-        # nehazarduje vôbec, ani pri objektívne bezpečnej ruke).
+        # Easy = čistá náhoda (game/ai.py), nikdy nedeklaruje.
         if self.difficulty == "easy":
             if self.logger and hasattr(self.logger, 'log_declaration_decision'):
                 self.logger.log_declaration_decision(
                     self.player.name, None, "easy_never_declares"
+                )
+            return None
+
+        # Medium nikdy nevyhlasuje "Nechytím nič" — úplne vypnuté (pôvodne,
+        # keď toto bolo ešte "easy", mala threshold total_risk<=0 ako staré
+        # medium; teraz nehazarduje vôbec, ani pri objektívne bezpečnej ruke).
+        if self.difficulty == "medium":
+            if self.logger and hasattr(self.logger, 'log_declaration_decision'):
+                self.logger.log_declaration_decision(
+                    self.player.name, None, "medium_never_declares"
                 )
             return None
 
@@ -131,26 +139,44 @@ class DeclarationAdvisor:
         illuminate_acorn = False
 
         if self.difficulty == "easy":
+            # Easy = čistá náhoda (game/ai.py), nikdy nesvieti.
+            self.last_illumination_debug = {
+                "leaf": ("n/a", "n/a", "easy_never", 0, {}, "easy_never"),
+                "acorn": ("n/a", "n/a", "easy_never", 0, {}, "easy_never"),
+                "decision": (False, False),
+            }
+            if self.logger:
+                self.logger.log_illumination_decision(
+                    self.player.name, "leaf", "n/a", "n/a", 0, {},
+                    "easy_never", False
+                )
+                self.logger.log_illumination_decision(
+                    self.player.name, "acorn", "n/a", "n/a", 0, {},
+                    "easy_never", False
+                )
+            return False, False
+
+        if self.difficulty == "medium":
             # Hrubé pravidlo, bez ohľadu na kvalitu rezervy/risk_level/
             # compensation/veto (90+, leader-borderline) — vysvieť každého
             # horníka, pre ktorého mám aspoň 1 rezervnú kartu tej farby.
-            # Zámerne nevyvážené: niekedy vyjde, niekedy easy zostane
+            # Zámerne nevyvážené: niekedy vyjde, niekedy medium zostane
             # s horníkom samo a dvojnásobok ho poriadne poškodí.
-            illuminate_leaf = self._easy_should_illuminate(hand, "leaf")
-            illuminate_acorn = self._easy_should_illuminate(hand, "acorn")
+            illuminate_leaf = self._medium_should_illuminate(hand, "leaf")
+            illuminate_acorn = self._medium_should_illuminate(hand, "acorn")
             self.last_illumination_debug = {
-                "leaf": ("n/a", "n/a", "easy_rule", 0, {}, "easy_rule"),
-                "acorn": ("n/a", "n/a", "easy_rule", 0, {}, "easy_rule"),
+                "leaf": ("n/a", "n/a", "medium_rule", 0, {}, "medium_rule"),
+                "acorn": ("n/a", "n/a", "medium_rule", 0, {}, "medium_rule"),
                 "decision": (illuminate_leaf, illuminate_acorn),
             }
             if self.logger:
                 self.logger.log_illumination_decision(
                     self.player.name, "leaf", "n/a", "n/a", 0, {},
-                    "easy_rule", illuminate_leaf
+                    "medium_rule", illuminate_leaf
                 )
                 self.logger.log_illumination_decision(
                     self.player.name, "acorn", "n/a", "n/a", 0, {},
-                    "easy_rule", illuminate_acorn
+                    "medium_rule", illuminate_acorn
                 )
             return illuminate_leaf, illuminate_acorn
 
@@ -160,7 +186,7 @@ class DeclarationAdvisor:
             max_score = max(all_scores)
             is_leader = my_score == max_score and max_score > 0
 
-        if self.difficulty in ("medium", "hard"):
+        if self.difficulty == "hard":
             position = (self.player.index - first_player_index) % NUM_PLAYERS
             illuminate_leaf, leaf_debug = self._should_illuminate(
                 hand, "leaf", position, is_leader
@@ -215,7 +241,7 @@ class DeclarationAdvisor:
         return result, (reserve_quality, risk_level, reason, compensation, comp_breakdown, reason)
 
     @staticmethod
-    def _easy_should_illuminate(hand: list[Card], suit: str) -> bool:
+    def _medium_should_illuminate(hand: list[Card], suit: str) -> bool:
         special = next((c for c in hand if c.is_special and c.suit == suit), None)
         if special is None:
             return False

@@ -68,10 +68,10 @@ class DumpDangerous(Strategy):
                 c for c in self.memory.remaining[suit] if not c.is_special
             ]
 
-            # Easy nerobí bijektívne párovanie rezerv — preventívne dumpne
+            # Medium nerobí bijektívne párovanie rezerv — preventívne dumpne
             # eso/kráľ vždy, keď v danej farbe ešte niečo zvonka existuje,
             # bez ohľadu na to, či to jej rezervy reálne pokryjú.
-            if self.difficulty == "easy":
+            if self.difficulty == "medium":
                 if remaining_non_special:
                     candidates += [c for c in suit_cards if c.rank in ("ace", "king")]
                 continue

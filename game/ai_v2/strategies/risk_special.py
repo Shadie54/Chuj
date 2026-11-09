@@ -17,9 +17,9 @@ class RiskSpecial(Strategy):
         self._risk_roll = False
 
     def is_active(self, ctx: AIContext) -> bool:
-        # Easy nehazarduje — ani vlastným horníkom (RISK), ani cudzím
+        # Medium nehazarduje — ani vlastným horníkom (RISK), ani cudzím
         # (RISK_TRAP). Pokrýva oba vetvy jedným miestom.
-        if self.difficulty == "easy":
+        if self.difficulty == "medium":
             return False
         if ctx.is_leader:
             return bool(self._risk_candidates(ctx))

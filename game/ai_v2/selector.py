@@ -89,12 +89,12 @@ class StrategySelector:
 
     def _select_dump(self, active: list[Strategy],
                      ctx: AIContext) -> Card | None:
-        # Easy pri 90+ nerozpozná, že horník je voči nej v tomto kole 0b
+        # Medium pri 90+ nerozpozná, že horník je voči nej v tomto kole 0b
         # (_special_value_for_me) — necháva si rovnakú prioritu ako
         # mimo 90+ (DUMP_PRIORITY, horník pred červeňou), aj keď by sa
         # jej už nemusela báť. Naivná, ale vysvetliteľná chyba — nie
         # náhodná.
-        if ctx.is_high_score and self.difficulty == "easy":
+        if ctx.is_high_score and self.difficulty == "medium":
             priority = self.DUMP_PRIORITY
         else:
             priority = self.DUMP_PRIORITY_HIGH_SCORE if ctx.is_high_score else self.DUMP_PRIORITY
